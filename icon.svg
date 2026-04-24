@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="110" fill="#1a1f2e"/>
+  <rect x="40" y="40" width="432" height="432" rx="80" fill="#1a1f2e"/>
+  <!-- Coin circle -->
+  <circle cx="256" cy="230" r="130" fill="none" stroke="#5b7fff" stroke-width="22"/>
+  <!-- Dollar sign -->
+  <text x="256" y="295" font-family="Arial Black, Arial, sans-serif" font-size="180" font-weight="900" fill="#5b7fff" text-anchor="middle">$</text>
+  <!-- Bottom bar (chart hint) -->
+  <rect x="80" y="400" width="60" height="50" rx="8" fill="#22c55e" opacity=".9"/>
+  <rect x="160" y="370" width="60" height="80" rx="8" fill="#5b7fff" opacity=".9"/>
+  <rect x="240" y="390" width="60" height="60" rx="8" fill="#5b7fff" opacity=".7"/>
+  <rect x="320" y="355" width="60" height="95" rx="8" fill="#22c55e" opacity=".9"/>
+  <rect x="400" y="380" width="60" height="70" rx="8" fill="#5b7fff" opacity=".6"/>
+</svg>
