@@ -1838,7 +1838,6 @@ let state = {
   cartoes: [],
   caixinhas: [],
   faturasPagas: {},
-  faturasPagasValor: {},
   metas: [],
   lancamentos: [],   // cache do mês atual (extrato + fixos)
   resumo: [],        // 12 meses calculado em JS
@@ -2337,24 +2336,20 @@ async function loadData() {
   // Reconstrói faturasPagas a partir do Supabase (sincroniza entre dispositivos)
   const localFatPagas = JSON.parse(localStorage.getItem('financeFaturasPagas') || '{}');
   const sbFatPagas = {};
-  const sbFatPagasValor = {};
   const _REVERSE_MES = {1:'Jan',2:'Fev',3:'Mar',4:'Abr',5:'Mai',6:'Jun',7:'Jul',8:'Ago',9:'Set',10:'Out',11:'Nov',12:'Dez'};
   for (const tx of allExtratoData) {
     if (tx.categoria !== 'fatura' || !tx.cartao_nome) continue;
-    let key = null;
     if (tx.parcela) {
       // Novo formato: chave armazenada diretamente
-      key = tx.parcela;
+      sbFatPagas[tx.parcela] = true;
     } else if (tx.data) {
       // Retrocompat: deduz o mês da fatura pela data do pagamento
       const [pAno, pMes] = tx.data.split('-').map(Number);
       const abbrev = _REVERSE_MES[pMes];
-      if (abbrev) key = `${tx.cartao_nome}-${abbrev}-${pAno}`;
+      if (abbrev) sbFatPagas[`${tx.cartao_nome}-${abbrev}-${pAno}`] = true;
     }
-    if (key) { sbFatPagas[key] = true; sbFatPagasValor[key] = Number(tx.valor || 0); }
   }
   state.faturasPagas = { ...localFatPagas, ...sbFatPagas };
-  state.faturasPagasValor = sbFatPagasValor;
 
   // Calcula saldos atuais de contas e caixinhas
   state.contas    = todasContas.filter(c => c.tipo === 'conta').map(c => ({
@@ -2948,12 +2943,7 @@ function renderFaturas() {
     const dueFmt  = `${String(dueDate.getDate()).padStart(2,'0')}/${String(dueDate.getMonth()+1).padStart(2,'0')}/${dueDate.getFullYear()}`;
     const dueISO  = `${dueDate.getFullYear()}-${String(dueDate.getMonth()+1).padStart(2,'0')}-${String(dueDate.getDate()).padStart(2,'0')}`;
 
-    // Só considera paga se o valor pago na época ainda bate com o total atual —
-    // se uma compra foi adicionada/movida pra essa fatura depois do pagamento, o
-    // total mudou e ela volta a ficar pendente pela diferença
-    const fatKey       = `${c.nome}-${mesNome}`;
-    const fatValorPago = state.faturasPagasValor?.[fatKey];
-    const pago    = !!(state.faturasPagas || {})[fatKey] && (fatValorPago === undefined || Math.abs(fatValorPago - valor) < 0.01);
+    const pago    = !!(state.faturasPagas || {})[`${c.nome}-${mesNome}`];
     const vencida = !pago && valor > 0 && hoje > dueDate;
     const aVencer = !pago && valor > 0 && hoje <= dueDate;
 
