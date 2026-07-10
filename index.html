@@ -972,6 +972,10 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
         Relatórios
       </button>
+      <button class="sidebar-item" data-page="transferencias">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+        Transferências
+      </button>
       <div class="sidebar-section">Planejamento</div>
       <button class="sidebar-item" data-page="repasses">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
@@ -1144,6 +1148,19 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
       </div>
       <div class="credit-cards" id="faturas-list">
         <div class="empty-state"><div class="emoji">💳</div><p>Nenhuma fatura encontrada</p></div>
+      </div>
+    </div>
+
+    <!-- ── TRANSFERÊNCIAS ───────────────────────────────────────────── -->
+    <div class="page" id="page-transferencias">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Transferências</div>
+          <div class="page-subtitle">Histórico entre contas e caixinhas</div>
+        </div>
+      </div>
+      <div class="tx-list" id="transferencias-list">
+        <div class="empty-state"><div class="emoji">🔁</div><p>Nenhuma transferência encontrada</p></div>
       </div>
     </div>
 
@@ -1361,6 +1378,12 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
       </div>
       Relatórios
+    </button>
+    <button class="nav-item" data-page="transferencias">
+      <div class="nav-icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+      </div>
+      Transferências
     </button>
     <button class="nav-item" data-page="metas">
       <div class="nav-icon-wrap">
@@ -1896,6 +1919,7 @@ function navigate(page) {
   if (page === 'metas') renderMetas();
   if (page === 'config') renderConfig();
   if (page === 'repasses') renderRepasses();
+  if (page === 'transferencias') renderTransferencias();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2345,6 +2369,7 @@ async function loadData() {
   buildSelectores();
   buildCatGrid();
   if (document.getElementById('page-repasses')?.classList.contains('active')) renderRepasses();
+  if (document.getElementById('page-transferencias')?.classList.contains('active')) renderTransferencias();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -4363,6 +4388,71 @@ async function deletarTx(id, mes, row, origem, contaCartao, valor, tipo) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// TRANSFERÊNCIAS
+// ════════════════════════════════════════════════════════════════════════════
+function renderTransferencias() {
+  const el = document.getElementById('transferencias-list');
+  if (!el) return;
+  const transfs = [...(state._allTransferencias || [])].sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+
+  if (!transfs.length) {
+    el.innerHTML = '<div class="empty-state"><div class="emoji">🔁</div><p>Nenhuma transferência encontrada</p></div>';
+    return;
+  }
+
+  const caixinhaNomes = new Set((state.caixinhas || []).map(c => c.nome));
+  const iconFor = nome => caixinhaNomes.has(nome) ? '💰' : '🏦';
+
+  const groups = {};
+  transfs.forEach(tr => { const d = tr.data || ''; (groups[d] = groups[d] || []).push(tr); });
+
+  el.innerHTML = Object.entries(groups).map(([date, list]) => `
+    <div class="tx-date-group">${formatDate(date)}</div>
+    ${list.map(tr => `
+      <div class="tx-item">
+        <div class="tx-icon" style="background:var(--bg-input)">🔁</div>
+        <div class="tx-info">
+          <div class="tx-desc">${tr.descricao || 'Transferência'}</div>
+          <div class="tx-meta">${iconFor(tr.conta_origem)} ${tr.conta_origem} → ${iconFor(tr.conta_dest)} ${tr.conta_dest}</div>
+        </div>
+        <div class="tx-amount" style="color:var(--text)">${fmt(tr.valor || 0)}</div>
+        <div class="tx-actions">
+          <button class="tx-act-btn edit" onclick='editarTransferencia(${JSON.stringify(tr)})' title="Editar">✏️</button>
+          <button class="tx-act-btn del" onclick="deletarTransferencia('${tr.id}')" title="Excluir">🗑️</button>
+        </div>
+      </div>
+    `).join('')}
+  `).join('');
+}
+
+function editarTransferencia(tr) {
+  _editingTx = { ...tr, fonte: 'transferencias' };
+  document.getElementById('lancValor').value = tr.valor || '';
+  document.getElementById('lancDesc').value  = tr.descricao || '';
+  document.getElementById('lancData').value  = tr.data || new Date().toISOString().split('T')[0];
+  document.getElementById('lancRecorrente').checked = false;
+
+  const btn = document.querySelector('.segment-btn.transferencia');
+  if (btn) setTipo('transferencia', btn);
+
+  const origSel = document.getElementById('lancContaOrigem');
+  const destSel = document.getElementById('lancContaDest');
+  if (origSel) origSel.value = tr.conta_origem || '';
+  if (destSel) destSel.value = tr.conta_dest || '';
+
+  document.getElementById('btnSalvarOutro').style.display = 'none';
+  document.getElementById('modalLancamento').classList.add('open');
+}
+
+async function deletarTransferencia(id) {
+  if (!confirm('Excluir esta transferência?')) return;
+  showToast('Excluindo...');
+  const ok = await sbDelete('transferencias', id);
+  if (ok) { showToast('Excluído! ✅'); await loadData(); }
+  else showToast('Erro ao excluir ❌');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // AJUSTE DE SALDO
 // ════════════════════════════════════════════════════════════════════════════
 let _ajusteContaNome = '';
@@ -4736,6 +4826,26 @@ async function salvarLancamento(manterAberto) {
 
   if (!valor || valor <= 0) { showToast('Informe um valor'); return; }
   if (!data) { showToast('Informe a data'); return; }
+
+  // Modo edição — transferência
+  if (_editingTx && _editingTx.fonte === 'transferencias') {
+    const contaOrigem = document.getElementById('lancContaOrigem').value;
+    const contaDest   = document.getElementById('lancContaDest').value;
+    if (contaOrigem === contaDest) { showToast('Contas devem ser diferentes'); return; }
+    const changes = {
+      descricao:    desc || 'Transferência',
+      valor,
+      data,
+      conta_origem: contaOrigem,
+      conta_dest:   contaDest,
+    };
+    const ok = await sbUpdate('transferencias', _editingTx.id, changes);
+    _editingTx = null;
+    closeModal('modalLancamento');
+    if (ok) { showToast('Atualizado! ✅'); await loadData(); }
+    else showToast('Erro ao editar ❌');
+    return;
+  }
 
   // Modo edição
   if (_editingTx && _editingTx.fonte === 'extrato') {
