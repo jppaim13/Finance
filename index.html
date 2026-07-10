@@ -4870,16 +4870,21 @@ async function salvarLancamento(manterAberto) {
 
   // Modo edição
   if (_editingTx && _editingTx.fonte === 'extrato') {
+    const origemVal      = document.getElementById('lancOrigem')?.value || 'conta';
+    const contaCartaoVal = document.getElementById('lancCartao')?.value || '';
     const changes = {
-      descricao:  desc,
+      descricao:   desc,
       valor,
       data,
       categoria,
-      tipo:       tipo === 'receita' ? 'receita' : 'despesa',
-      origem:     document.getElementById('lancOrigem')?.value || 'conta',
-      conta_nome: document.getElementById('lancCartao')?.value || '',
+      tipo:        tipo === 'receita' ? 'receita' : 'despesa',
+      origem:      origemVal,
+      conta_nome:  origemVal === 'cartao' ? '' : contaCartaoVal,
+      cartao_nome: origemVal === 'cartao' ? contaCartaoVal : '',
     };
     if (_editingTx.categoria === 'fatura') {
+      // Fatura: conta_nome é sempre a conta debitada; cartão é editado no campo à parte
+      changes.conta_nome  = contaCartaoVal;
       changes.cartao_nome = document.getElementById('lancFaturaCartao')?.value || '';
     }
     const ok = await sbUpdate('extrato', _editingTx.id, changes);
