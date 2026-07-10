@@ -1486,7 +1486,10 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
       </label>
     </div>
 
-    <button class="btn-primary" onclick="salvarLancamento()">Salvar Lançamento</button>
+    <div class="form-row" id="salvarLancamentoRow">
+      <button class="btn-secondary" id="btnSalvarOutro" onclick="salvarLancamento(true)">Salvar e criar outro</button>
+      <button class="btn-primary" style="margin-top:0" onclick="salvarLancamento()">Salvar Lançamento</button>
+    </div>
   </div>
 </div>
 
@@ -4345,6 +4348,7 @@ function editarTx(tx) {
   const cartaoEl = document.getElementById('lancCartao');
   if (cartaoEl) cartaoEl.value = tx.contaCartao || '';
 
+  document.getElementById('btnSalvarOutro').style.display = 'none';
   document.getElementById('modalLancamento').classList.add('open');
 }
 
@@ -4596,10 +4600,12 @@ async function saveConfig() {
 // LANÇAMENTO
 // ════════════════════════════════════════════════════════════════════════════
 function openLancamento() {
+  _editingTx = null;
   document.getElementById('lancValor').value = '';
   document.getElementById('lancDesc').value = '';
   document.getElementById('lancData').value = new Date().toISOString().split('T')[0];
   document.getElementById('lancRecorrente').checked = false;
+  document.getElementById('btnSalvarOutro').style.display = '';
   setTipo('despesa', document.querySelector('.segment-btn.despesa'));
   document.getElementById('modalLancamento').classList.add('open');
 }
@@ -4626,6 +4632,7 @@ function setTipo(tipo, btn) {
   } else {
     catSection.style.display = 'block';
     origemGroup.style.display = 'block';
+    cartaoGroup.style.display = 'block';
     transFields.style.display = 'none';
     document.getElementById('recorrenteGroup').style.display = 'block';
     buildCatGrid(tipo);
@@ -4704,7 +4711,22 @@ function buildSelectores() {
   }
 }
 
-async function salvarLancamento() {
+function resetCamposLancamento(contaCartaoValue) {
+  document.getElementById('lancValor').value = '';
+  document.getElementById('lancDesc').value = '';
+  document.getElementById('lancRecorrente').checked = false;
+  document.getElementById('lancTotalParcelas').value = '';
+  document.getElementById('lancParcela').value = '';
+  state.selectedCat = '';
+  buildCatGrid(state.selectedTipo);
+  if (contaCartaoValue) {
+    const sel = document.getElementById('lancCartao');
+    if (sel) sel.value = contaCartaoValue;
+  }
+  document.getElementById('lancValor').focus();
+}
+
+async function salvarLancamento(manterAberto) {
   const valor      = parseFloat(document.getElementById('lancValor').value);
   const desc       = document.getElementById('lancDesc').value.trim();
   const data       = document.getElementById('lancData').value;
@@ -4734,7 +4756,7 @@ async function salvarLancamento() {
     return;
   }
   _editingTx = null;
-  closeModal('modalLancamento');
+  if (!manterAberto) closeModal('modalLancamento');
   showToast('Salvando...');
 
   // Transferência
@@ -4749,7 +4771,7 @@ async function salvarLancamento() {
       conta_origem: contaOrigem,
       conta_dest:   contaDest,
     });
-    if (saved) { showToast('Transferência salva! ✅'); await loadData(); }
+    if (saved) { showToast('Transferência salva! ✅'); await loadData(); if (manterAberto) resetCamposLancamento(); }
     else showToast('Erro ao salvar ❌');
     return;
   }
@@ -4772,7 +4794,7 @@ async function salvarLancamento() {
       origem,
       ativo:      true,
     });
-    if (saved) { showToast('Recorrente salvo! ✅'); await loadData(); }
+    if (saved) { showToast('Recorrente salvo! ✅'); await loadData(); if (manterAberto) resetCamposLancamento(contaCartao); }
     else showToast('Erro ao salvar ❌');
     return;
   }
@@ -4795,7 +4817,7 @@ async function salvarLancamento() {
         origem:     'cartao',
         ativo:      true,
       });
-      if (saved) { showToast('Parcelado salvo! ✅'); await loadData(); }
+      if (saved) { showToast('Parcelado salvo! ✅'); await loadData(); if (manterAberto) resetCamposLancamento(contaCartao); }
       else showToast('Erro ao salvar ❌');
       return;
     }
@@ -4812,7 +4834,7 @@ async function salvarLancamento() {
     origem,
     cartao_nome: origem === 'cartao' ? contaCartao : '',
   });
-  if (saved) { showToast('Lançamento salvo! ✅'); await loadData(); }
+  if (saved) { showToast('Lançamento salvo! ✅'); await loadData(); if (manterAberto) resetCamposLancamento(contaCartao); }
   else showToast('Erro ao salvar ❌');
 }
 
