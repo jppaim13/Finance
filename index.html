@@ -4481,10 +4481,12 @@ async function salvarAjusteSaldo() {
   let ok = false;
 
   if (_ajusteTipoConta === 'caixinha') {
-    // Caixinha: atualiza saldo_inicial diretamente
+    // Caixinha: aplica a mesma diferença (delta) sobre o saldo_inicial bruto,
+    // já que o saldo exibido também soma transferências/lançamentos por cima dele
     const caixinha = state.caixinhas.find(c => c.nome === _ajusteContaNome);
     if (caixinha && caixinha.id) {
-      ok = await sbUpdate('contas', caixinha.id, { saldo_inicial: novoSaldo });
+      const novoSaldoInicial = (Number(caixinha.saldo_inicial) || 0) + delta;
+      ok = await sbUpdate('contas', caixinha.id, { saldo_inicial: novoSaldoInicial });
     }
   } else {
     // Conta: insere lançamento de ajuste
