@@ -1483,6 +1483,11 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
       <select class="form-select" id="lancCartao"></select>
     </div>
 
+    <div class="form-group" id="lancFaturaCartaoGroup" style="display:none">
+      <label class="form-label">Cartão da fatura</label>
+      <select class="form-select" id="lancFaturaCartao"></select>
+    </div>
+
     <div class="form-row" id="transferenciaFields" style="display:none">
       <div class="form-group">
         <label class="form-label">Conta Origem</label>
@@ -2079,6 +2084,7 @@ function montarLancamentosMes(mesNome, extratoMes, allLancamentos) {
       tipo:        tx.tipo,
       origem:      tx.origem,
       contaCartao: tx.origem === 'cartao' ? (tx.cartao_nome || tx.conta_nome) : tx.conta_nome,
+      cartaoNome:  tx.cartao_nome || '',
       mes:         mesNome,
       fonte:       'extrato',
     });
@@ -4373,6 +4379,17 @@ function editarTx(tx) {
   const cartaoEl = document.getElementById('lancCartao');
   if (cartaoEl) cartaoEl.value = tx.contaCartao || '';
 
+  // Cartão vinculado a um pagamento de fatura (campo separado da conta debitada)
+  const faturaGroup = document.getElementById('lancFaturaCartaoGroup');
+  if (tx.categoria === 'fatura') {
+    faturaGroup.style.display = 'block';
+    const faturaSel = document.getElementById('lancFaturaCartao');
+    faturaSel.innerHTML = state.cartoes.map(c => `<option value="${c.nome}">${c.nome}</option>`).join('');
+    faturaSel.value = tx.cartaoNome || '';
+  } else {
+    faturaGroup.style.display = 'none';
+  }
+
   document.getElementById('btnSalvarOutro').style.display = 'none';
   document.getElementById('modalLancamento').classList.add('open');
 }
@@ -4440,6 +4457,7 @@ function editarTransferencia(tr) {
   if (origSel) origSel.value = tr.conta_origem || '';
   if (destSel) destSel.value = tr.conta_dest || '';
 
+  document.getElementById('lancFaturaCartaoGroup').style.display = 'none';
   document.getElementById('btnSalvarOutro').style.display = 'none';
   document.getElementById('modalLancamento').classList.add('open');
 }
@@ -4698,6 +4716,7 @@ function openLancamento() {
   document.getElementById('lancData').value = new Date().toISOString().split('T')[0];
   document.getElementById('lancRecorrente').checked = false;
   document.getElementById('btnSalvarOutro').style.display = '';
+  document.getElementById('lancFaturaCartaoGroup').style.display = 'none';
   setTipo('despesa', document.querySelector('.segment-btn.despesa'));
   document.getElementById('modalLancamento').classList.add('open');
 }
@@ -4860,6 +4879,9 @@ async function salvarLancamento(manterAberto) {
       origem:     document.getElementById('lancOrigem')?.value || 'conta',
       conta_nome: document.getElementById('lancCartao')?.value || '',
     };
+    if (_editingTx.categoria === 'fatura') {
+      changes.cartao_nome = document.getElementById('lancFaturaCartao')?.value || '';
+    }
     const ok = await sbUpdate('extrato', _editingTx.id, changes);
     _editingTx = null;
     closeModal('modalLancamento');
