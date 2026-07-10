@@ -2968,7 +2968,18 @@ function renderFaturas() {
         tx.origem === 'cartao' && tx.cartao_nome === c.nome && tx.data &&
         getVencimentoIdx(tx.data, fec, ven) === mesIdx
       )
-      .map(tx => ({ descricao: tx.descricao, valor: Number(tx.valor) }));
+      .map(tx => ({
+        id:          tx.id,
+        data:        tx.data,
+        descricao:   tx.descricao,
+        categoria:   tx.categoria,
+        valor:       Number(tx.valor),
+        tipo:        tx.tipo,
+        origem:      tx.origem,
+        contaCartao: tx.cartao_nome || tx.conta_nome,
+        cartaoNome:  tx.cartao_nome || '',
+        fonte:       'extrato',
+      }));
 
     const itensLan = [];
     for (const lan of (state._allLancamentos || [])) {
@@ -2983,7 +2994,7 @@ function renderFaturas() {
         const vIdx = getInstVencIdx(lan, n, fec, ven);
         if (vIdx === mesIdx) {
           const parc = tipo === 'parcelado' ? ` (${n+1}/${lan.parcelas})` : '';
-          itensLan.push({ descricao: lan.descricao + parc, valor: Number(lan.valor) });
+          itensLan.push({ id: lan.id, descricao: lan.descricao + parc, valor: Number(lan.valor), fonte: 'lancamentos' });
           break;
         }
         if (vIdx > mesIdx) break;
@@ -3002,6 +3013,7 @@ function renderFaturas() {
             <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:13px">
               <div style="color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;padding-right:8px">${t.descricao || '—'}</div>
               <div style="color:var(--red);font-family:var(--font-mono);flex-shrink:0">${fmt(t.valor)}</div>
+              <button class="tx-act-btn edit" style="flex-shrink:0" onclick='${t.fonte === 'lancamentos' ? `abrirEditFixo("${t.id}")` : `editarTx(${JSON.stringify(t)})`}' title="Editar">✏️</button>
             </div>`).join('')}
         </div>
       </details>` : (valor > 0 ? '' : '<div class="text-xs text-3" style="margin-top:8px">Nenhuma compra neste mês</div>');
