@@ -2186,6 +2186,18 @@ async function exportarTudoJSON() {
 // ════════════════════════════════════════════════════════════════════════════
 const _MES_MAP = {Mar:3,Abr:4,Mai:5,Jun:6,Jul:7,Ago:8,Set:9,Out:10,Nov:11,Dez:12,Jan:1,Fev:2};
 
+// Parseia uma data "YYYY-MM-DD" em horário LOCAL. new Date("YYYY-MM-DD")
+// interpreta a string como UTC meia-noite, o que em fusos negativos (Brasil)
+// pode "voltar" um dia — usar sempre isto no lugar de new Date(string) pra
+// datas vindas do banco (extrato.data, lancamentos, etc).
+function parseData(dataStr) {
+  if (!dataStr) return null;
+  if (dataStr instanceof Date) return dataStr;
+  const [ano, mes, dia] = String(dataStr).split('-').map(Number);
+  if (!ano || !mes || !dia) return null;
+  return new Date(ano, mes - 1, dia);
+}
+
 function mesNomeToAnoMes(mesNome) {
   const [nome, ano] = mesNome.split('-');
   return [Number(ano), _MES_MAP[nome]];
@@ -2275,16 +2287,16 @@ function montarLancamentosMes(mesNome, extratoMes, allLancamentos) {
   const result = [];
 
   for (const tx of extratoMes) {
+    // Espalha a linha inteira primeiro — qualquer coluna nova em `extrato`
+    // (ex: campos que a integração Pluggy vier a trazer) chega até a tela
+    // automaticamente, em vez de precisar ser adicionada aqui manualmente.
+    // Os campos abaixo sobrescrevem/derivam o que a UI já espera.
     result.push({
-      id:          tx.id,
-      data:        tx.data,
-      descricao:   tx.descricao,
-      categoria:   tx.categoria,
+      ...tx,
       valor:       Number(tx.valor),
-      tipo:        tx.tipo,
-      origem:      tx.origem,
       contaCartao: tx.origem === 'cartao' ? (tx.cartao_nome || tx.conta_nome) : tx.conta_nome,
       cartaoNome:  tx.cartao_nome || '',
+      dataObj:     parseData(tx.data),
       mes:         mesNome,
       fonte:       'extrato',
     });
@@ -2321,15 +2333,16 @@ function montarLancamentosMes(mesNome, extratoMes, allLancamentos) {
 
     // Usa o dia original da compra; limita ao último dia do mês (ex: fev não tem dia 31)
     const diaLan = Math.min(lan.dia_ini || 1, new Date(anoAtual, mesAtual, 0).getDate());
+    const dataOcorrencia = `${anoAtual}-${String(mesAtual).padStart(2,'0')}-${String(diaLan).padStart(2,'0')}`;
     result.push({
-      id:          lan.id,
-      data:        `${anoAtual}-${String(mesAtual).padStart(2,'0')}-${String(diaLan).padStart(2,'0')}`,
+      ...lan,
+      data:        dataOcorrencia,
       descricao:   lan.descricao + (parcelaAtual ? ` (${parcelaAtual}/${totalParcelas})` : ''),
-      categoria:   lan.categoria,
       valor:       Number(lan.valor),
       tipo:        isReceita ? 'receita' : 'despesa',
       origem:      lan.origem || 'conta',
       contaCartao: lan.conta_nome,
+      dataObj:     parseData(dataOcorrencia),
       mes:         mesNome,
       fonte:       'lancamentos',
     });
