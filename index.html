@@ -2081,18 +2081,41 @@ async function fazerLogout() {
 // ════════════════════════════════════════════════════════════════════════════
 // NAVIGATION
 // ════════════════════════════════════════════════════════════════════════════
+// Registry único de renderers por página — consumido tanto por navigate()
+// (ao trocar de página) quanto por loadData()/renderAtual() (ao recarregar
+// dados com a página atual já visível). Página nova = adicionar uma linha
+// aqui; nenhum outro lugar do código precisa saber a lista de páginas.
+const PAGES = {
+  dashboard:      renderDashboard,
+  extrato:        renderExtrato,
+  faturas:        renderFaturas,
+  relatorios:     renderRelatorios,
+  metas:          renderMetas,
+  config:         renderConfig,
+  repasses:       renderRepasses,
+  transferencias: renderTransferencias,
+};
+
+function paginaAtiva() {
+  const el = document.querySelector('.page.active');
+  return el ? el.id.replace('page-', '') : null;
+}
+
+// Re-renderiza a página atualmente visível, se houver renderer registrado.
+// Chamar depois de qualquer mutação de dados (loadData()) em vez de manter
+// uma lista solta de "se a página X está ativa, re-renderiza" — foi
+// exatamente essa lista hardcoded que, incompleta, fez o Extrato não
+// atualizar sozinho depois de uma edição.
+function renderAtual() {
+  PAGES[paginaAtiva()]?.();
+}
+
 function navigate(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('[data-page]').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + page)?.classList.add('active');
   document.querySelectorAll(`[data-page="${page}"]`).forEach(b => b.classList.add('active'));
-  if (page === 'extrato') renderExtrato();
-  if (page === 'faturas') renderFaturas();
-  if (page === 'relatorios') renderRelatorios();
-  if (page === 'metas') renderMetas();
-  if (page === 'config') renderConfig();
-  if (page === 'repasses') renderRepasses();
-  if (page === 'transferencias') renderTransferencias();
+  PAGES[page]?.();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2499,7 +2522,7 @@ async function refreshApp() {
 
 async function loadData() {
   updateMonthLabels();
-  if (!_sb) { renderDashboard(); return; }
+  if (!_sb) { renderAtual(); return; }
 
   const mesNome = MESES_NOMES[state.currentMonth];
   const [ano, mes] = mesNomeToAnoMes(mesNome);
@@ -2583,13 +2606,9 @@ async function loadData() {
   // Calcula resumo dos 12 meses
   state.resumo = calcularResumo(lanFixData, allExtratoData, cartoesData);
 
-  renderDashboard();
-  renderFaturas();
   buildSelectores();
   buildCatGrid();
-  if (document.getElementById('page-repasses')?.classList.contains('active')) renderRepasses();
-  if (document.getElementById('page-transferencias')?.classList.contains('active')) renderTransferencias();
-  if (document.getElementById('page-extrato')?.classList.contains('active')) renderExtrato();
+  renderAtual();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
