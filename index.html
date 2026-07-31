@@ -1061,8 +1061,8 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
       </div>
 
       <div class="config-banner" id="configBanner">
-        <strong>⚙️ Configure sua planilha primeiro</strong>
-        Acesse <a onclick="navigate('config')">Configurações</a> e insira a URL do seu Google Apps Script para começar.
+        <strong>⚙️ Configure a conexão primeiro</strong>
+        Acesse <a onclick="navigate('config')">Configurações</a> e insira a URL e a chave do seu projeto Supabase para começar.
       </div>
 
       <!-- KPIs -->
@@ -1836,13 +1836,11 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 <div class="toast" id="toast"></div>
 
 <!-- Funções puras de data/saldo — em date-utils.js pra poderem ser testadas
-     de verdade em tests.html sem duplicar código. O ?v=N é proposital: o
-     Service Worker só é network-first pro index.html, então sem esse
-     cache-busting um date-utils.js velho podia ficar em cache enquanto o
-     index.html novo já chama uma assinatura diferente — bump o N sempre
-     que o CONTEÚDO de date-utils.js mudar (não precisa a cada mudança do
-     index.html). -->
-<script src="date-utils.js?v=1"></script>
+     de verdade em tests.html sem duplicar código. sw.js trata este arquivo
+     como network-first (igual index.html), então não precisa de
+     cache-busting manual (?v=N) — sempre carrega junto com a versão mais
+     recente do index.html. -->
+<script src="date-utils.js"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIG & STATE

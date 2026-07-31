@@ -1,96 +1,82 @@
 # 💰 Finance App — Guia de Instalação
 
-Tempo estimado: **15 minutos**
+Tempo estimado: **20 minutos**
 
 ---
 
 ## O que você vai precisar
-- Conta Google (Gmail)
-- A planilha `Controle_Financeiro_V6.xlsx` já no seu Google Drive
-- Os arquivos `index.html` e `apps-script.gs` deste pacote
+- Conta no [Supabase](https://supabase.com) (gratuita)
+- O arquivo `index.html` deste pacote (ou o link já hospedado, se você recebeu um)
 
 ---
 
-## Passo 1 — Preparar a planilha no Google Drive
+## Passo 1 — Criar o projeto no Supabase
 
-1. Abra o [Google Drive](https://drive.google.com)
-2. Faça upload do arquivo `Controle_Financeiro_V6.xlsx`
-3. Clique com botão direito → **"Abrir com" → "Planilhas Google"**
-4. A planilha vai abrir como Planilha Google — aguarde
-5. Copie o **ID da planilha** da URL:
-   - URL exemplo: `docs.google.com/spreadsheets/d/`**`1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms`**`/edit`
-   - O ID é a parte em negrito acima (entre `/d/` e `/edit`)
-   - Guarde esse ID — você vai precisar no próximo passo
+1. Acesse [supabase.com](https://supabase.com) e crie uma conta (dá pra usar login do Google)
+2. Clique em **"New Project"**
+3. Escolha um nome, uma senha de banco (guarde essa senha) e a região mais próxima
+4. Aguarde alguns minutos até o projeto ficar pronto
 
 ---
 
-## Passo 2 — Configurar o Apps Script (backend)
+## Passo 2 — Criar as tabelas
 
-1. Na planilha aberta, clique em **"Extensões"** → **"Apps Script"**
-2. Uma nova aba vai abrir com um editor de código
-3. **Apague todo o código** que aparece lá (selecione tudo e delete)
-4. Abra o arquivo `apps-script.gs` deste pacote em qualquer editor de texto
-5. **Copie todo o conteúdo** e cole no editor do Apps Script
-6. Na linha 8, substitua `SEU_ID_AQUI` pelo ID que você copiou no Passo 1:
-   ```javascript
-   const SPREADSHEET_ID = '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms'; // seu ID aqui
-   ```
-7. Clique no ícone de **salvar** (💾) ou pressione `Ctrl+S`
+1. No painel do projeto, clique em **SQL Editor** (barra lateral)
+2. Abra o arquivo `supabase-schema.sql` deste pacote em qualquer editor de texto
+3. **Copie todo o conteúdo**, cole no SQL Editor e clique em **Run**
+4. Repita o mesmo processo para cada arquivo dentro da pasta `migrations/`, **em ordem numérica** (ex: `001_auth_rls.sql` antes de qualquer outro que vier depois)
+   > Cada migration tem um arquivo `_rollback.sql` correspondente — só use se algo der errado e você precisar desfazer.
 
 ---
 
-## Passo 3 — Publicar como Web App
+## Passo 3 — Configurar o login (Auth)
 
-1. No Apps Script, clique em **"Implantar"** (botão azul, canto superior direito)
-2. Clique em **"Nova implantação"**
-3. Clique no ícone de engrenagem ⚙️ ao lado de "Tipo" e selecione **"App da Web"**
-4. Preencha assim:
-   - **Descrição:** Finance App
-   - **Executar como:** Eu mesmo (seu email)
-   - **Quem tem acesso:** Qualquer pessoa
-5. Clique em **"Implantar"**
-6. Uma janela vai pedir permissão — clique em **"Autorizar acesso"**
-7. Escolha sua conta Google → clique em **"Avançado"** → **"Acessar Finance App (não seguro)"** → **"Permitir"**
-   > ⚠️ Essa mensagem aparece porque o app não foi verificado pelo Google, mas o código é seu — é seguro.
-8. Copie a **URL da implantação** que aparece (começa com `https://script.google.com/macros/s/...`)
-9. **Guarde essa URL** — você vai usar no próximo passo
+O app exige login — sem isso, ninguém acessa os dados, nem você.
+
+1. No painel do Supabase, vá em **Authentication → Providers → Email**
+2. Desmarque **"Allow new users to sign up"** (impede que qualquer pessoa com o link crie uma conta sozinha)
+3. Vá em **Authentication → Users** → **"Add user"**
+4. Crie um usuário pra você (e-mail + senha)
+5. Se for compartilhar com cônjuge/sócio, crie um segundo usuário pra ela(e) aqui também — cada pessoa loga com o próprio e-mail e senha
 
 ---
 
-## Passo 4 — Configurar o App HTML
+## Passo 4 — Pegar a URL e a chave do projeto
+
+1. No painel do Supabase, vá em **Settings → API**
+2. Copie a **Project URL** (algo como `https://xxxx.supabase.co`)
+3. Copie a chave **`anon` `public`**
+4. Guarde os dois — você vai usar no próximo passo
+
+---
+
+## Passo 5 — Configurar o App HTML
 
 ### Opção A: Abrir localmente (mais simples)
 1. Abra o arquivo `index.html` no seu navegador (Chrome recomendado)
-2. Clique em **"Configurações"** (último ícone da barra de navegação)
-3. Cole a URL do Apps Script no campo **"URL do Google Apps Script"**
-4. Clique em **"Salvar e Testar Conexão"**
-5. Se aparecer **"✅ Conectado com sucesso!"** — está funcionando!
+2. Na tela de login, cole a **URL do Projeto** e a **Anon Key** do Passo 4 e clique em **"Conectar"**
+3. Faça login com o e-mail e senha criados no Passo 3
 
-### Opção B: Hospedar no Google Drive (acesso de qualquer lugar)
-1. Faça upload do `index.html` para uma pasta no Google Drive
-2. Clique com botão direito → **"Compartilhar"** → **"Qualquer pessoa com o link pode ver"**
-3. Copie o link e abra no navegador
-   > Nota: pelo Drive o arquivo HTML abre como prévia — para funcionar melhor, veja Opção C.
-
-### Opção C: GitHub Pages (gratuito, melhor opção para acesso remoto)
+### Opção B: GitHub Pages (gratuito, melhor opção para acesso remoto)
 1. Crie uma conta em [github.com](https://github.com) se não tiver
-2. Crie um novo repositório público chamado `finance-app`
-3. Faça upload do `index.html`
-4. Vá em **Settings** → **Pages** → **Source: Deploy from branch: main**
+2. Crie um novo repositório (público — GitHub Pages em repositório privado exige plano pago) chamado `finance-app`
+3. Faça upload de todos os arquivos deste pacote
+4. Vá em **Settings → Pages → Source: Deploy from branch: main**
 5. Aguarde ~2 minutos e acesse: `https://seuusuario.github.io/finance-app`
+6. Na tela de login que aparecer, cole a URL/chave do Passo 4 e faça login
 
 ---
 
-## Passo 5 — Adicionar ao celular como App
+## Passo 6 — Adicionar ao celular como App
 
 ### iPhone (Safari)
-1. Abra o app no Safari
+1. Abra o app no Safari e faça login
 2. Toque no botão de compartilhar (⬆️)
 3. Role para baixo e toque em **"Adicionar à Tela de Início"**
 4. Toque em **"Adicionar"**
 
 ### Android (Chrome)
-1. Abra o app no Chrome
+1. Abra o app no Chrome e faça login
 2. Toque nos três pontos (⋮)
 3. Toque em **"Adicionar à tela inicial"**
 4. Toque em **"Adicionar"**
@@ -100,18 +86,9 @@ Tempo estimado: **15 minutos**
 ## Compartilhar com cônjuge/sócio
 
 1. Compartilhe o link do app (GitHub Pages ou onde hospedar)
-2. A outra pessoa abre o link, vai em Configurações e cola a mesma URL do Apps Script
-3. Pronto — vocês dois lançam no mesmo banco de dados em tempo real!
-
----
-
-## Atualizar o Apps Script depois de mudanças
-
-Se você precisar atualizar o código do backend:
-1. Abra o Apps Script
-2. Faça as alterações
-3. Clique em **"Implantar"** → **"Gerenciar implantações"**
-4. Clique no lápis ✏️ → **"Versão: Nova versão"** → **"Implantar"**
+2. A outra pessoa abre o link e, na tela de login, cola a mesma **URL/chave do Supabase** (Passo 4) — isso conecta ao mesmo banco
+3. Cada pessoa faz login com o **próprio usuário** (criado no Passo 3) — não existe usuário compartilhado
+4. Pronto — os dois lançam no mesmo banco de dados em tempo real!
 
 ---
 
@@ -119,11 +96,11 @@ Se você precisar atualizar o código do backend:
 
 | Problema | Solução |
 |----------|---------|
-| "Erro na conexão" | Verifique se a URL do Apps Script está correta e se publicou como "Qualquer pessoa" |
-| Dados não carregam | Verifique se o ID da planilha está correto no código |
-| Lançamento não salva | Confirme que a aba `Extrato Mar-2026` existe na planilha |
+| "Erro na conexão" ao conectar | Verifique se a URL e a Anon Key do Supabase estão corretas (Passo 4) |
+| "E-mail ou senha inválidos" | Confirme que o usuário foi criado em Authentication → Users (Passo 3) |
+| Tela de login não sai do lugar depois de logar | Confira o Console do navegador (F12) por erros |
+| Dados aparecem todos zerados mesmo logado | As tabelas/migrations podem não ter sido criadas — repita o Passo 2 |
 | Tela em branco | Abra o Console do navegador (F12) e veja o erro |
-| Permissão negada | Repita o Passo 3 e aceite todas as permissões |
 
 ---
 
@@ -131,12 +108,16 @@ Se você precisar atualizar o código do backend:
 
 ```
 📁 Finance App
-  ├── index.html        ← App principal (interface)
-  ├── apps-script.gs    ← Backend (cola no Apps Script)
-  └── README.md         ← Este guia
+  ├── index.html            ← App principal (interface)
+  ├── date-utils.js         ← Funções de data/saldo usadas pelo app (não editar isoladamente)
+  ├── tests.html             ← Testes — abra no navegador pra conferir
+  ├── sw.js, manifest.json  ← Suporte a instalação como app (PWA)
+  ├── supabase-schema.sql   ← Estrutura das tabelas (Passo 2)
+  ├── migrations/           ← Mudanças no banco aplicadas depois do schema inicial (Passo 2)
+  └── README.md             ← Este guia
 
-📊 Google Drive
-  └── Controle_Financeiro_V6.xlsx ← Banco de dados
+☁️ Supabase
+  └── Seu projeto           ← Banco de dados + login (Passos 1-4)
 ```
 
 ---

@@ -1,12 +1,7 @@
-const CACHE_NAME = 'financas-v4';
+const CACHE_NAME = 'financas-v5';
 
-// date-utils.js precisa bater exatamente com a URL (incluindo ?v=N) que o
-// index.html pede — se divergir, o cache-first nunca acha o precache e o
-// index.html novo pode acabar servindo um date-utils.js velho em cache sob
-// outra chave. Atualize esta linha junto com o <script src> em index.html.
 const SHELL = [
   './icon.svg',
-  './date-utils.js?v=1',
   'https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
 ];
@@ -31,8 +26,12 @@ self.addEventListener('fetch', event => {
   // Supabase: sempre rede
   if (url.includes('supabase.co') || url.includes('supabase-js')) return;
 
-  // index.html: network-first — garante que o app sempre carrega a versão mais recente
-  if (event.request.mode === 'navigate' || url.endsWith('index.html')) {
+  // App shell essencial (index.html + date-utils.js): network-first — garante
+  // que o app sempre carrega a versão mais recente de ambos juntos. Sem isso,
+  // um date-utils.js em cache podia ficar "para trás" do index.html mais novo
+  // sem erro nenhum, só com sintoma de saldo/data errados.
+  const isAppShell = event.request.mode === 'navigate' || url.endsWith('index.html') || url.endsWith('date-utils.js');
+  if (isAppShell) {
     event.respondWith(
       fetch(event.request)
         .then(response => {
@@ -40,7 +39,7 @@ self.addEventListener('fetch', event => {
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
           return response;
         })
-        .catch(() => caches.match('./index.html'))
+        .catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html')))
     );
     return;
   }
