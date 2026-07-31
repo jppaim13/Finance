@@ -1322,6 +1322,12 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
         <div class="text-xs text-3 mt-8" id="conn-status"></div>
       </div>
 
+      <div class="section-label">Backup</div>
+      <div class="card">
+        <p class="text-sm text-2" style="margin-bottom:10px">Baixa um arquivo .json com todos os dados (contas, cartões, extrato, lançamentos, transferências, repasses e categorias). Guarde antes de mudanças estruturais no banco.</p>
+        <button class="btn-secondary" onclick="exportarTudoJSON()">⬇️ Exportar tudo (JSON)</button>
+      </div>
+
       <!-- CONTAS -->
       <div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
         Contas Bancárias
@@ -1979,6 +1985,38 @@ async function sbDeleteWhere(table, col, val) {
   const { error } = await _sb.from(table).delete().eq(col, val);
   if (error) { console.error('sbDeleteWhere', table, error); return false; }
   return true;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BACKUP — exporta todas as tabelas em um único JSON
+// ════════════════════════════════════════════════════════════════════════════
+const BACKUP_TABELAS = ['contas', 'cartoes', 'extrato', 'lancamentos', 'transferencias', 'repasses', 'categorias'];
+
+async function exportarTudoJSON() {
+  if (!_sb) { showToast('Sem conexão com Supabase ❌'); return; }
+  showToast('Exportando...');
+
+  const dump = { exportado_em: new Date().toISOString(), tabelas: {} };
+  for (const tabela of BACKUP_TABELAS) {
+    const { data, error } = await _sb.from(tabela).select('*');
+    if (error) {
+      showToast(`Erro ao exportar "${tabela}" ❌ — backup cancelado`);
+      console.error('exportarTudoJSON', tabela, error);
+      return;
+    }
+    dump.tabelas[tabela] = data || [];
+  }
+
+  const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `financas-backup-${new Date().toISOString().split('T')[0]}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast('Backup baixado! ✅');
 }
 
 // ════════════════════════════════════════════════════════════════════════════
