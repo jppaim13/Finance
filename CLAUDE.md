@@ -4,17 +4,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A personal/family finance PWA (single page, in Portuguese). There is no build system, no package manager, and no test suite — it's a static site you open directly in a browser or serve as-is.
+A personal/family finance PWA (single page, in Portuguese). There is no build system and no package manager — it's a static site you open directly in a browser or serve as-is. There is a minimal no-framework test page (`tests.html`) covering the pure date/saldo functions.
 
-- `index.html` — the entire application: HTML + CSS + JS in one file (~5000 lines). Uses Chart.js and the Supabase JS SDK, both loaded from CDN `<script>` tags. No framework, no bundler, no modules.
+- `index.html` — the application shell: HTML + CSS + JS (~5200 lines). Uses Chart.js and the Supabase JS SDK, both loaded from CDN `<script>` tags. No framework, no bundler, no build step.
+- `date-utils.js` — a handful of **pure** functions (`parseData`, `formatarData`, `calcularDataVencimento`, `mesNomeToAnoMes`, `getVencimentoIdx`, `getInstVencIdx`, `calcularSaldo`) extracted out of `index.html` specifically so `tests.html` can exercise the real production code instead of a duplicated copy. Loaded via `<script src="date-utils.js">` before the main inline script in `index.html`; also loaded standalone by `tests.html`. This is the one deliberate exception to "single file" — see Decisões.
+- `tests.html` — open directly in a browser; renders pass/fail for each assertion, no server or build needed. Covers the two bug classes most likely to fail silently (date parsing/formatting, and card competência/vencimento math) plus a fixed `calcularSaldo` fixture.
 - `apps-script.gs` — legacy backend: a Google Apps Script that reads/writes a Google Sheet, deployed as a Web App (`doGet`/`doPost` action-dispatch pattern). Superseded by Supabase but still supported as a fallback.
 - `supabase-schema.sql` — current backend: Postgres schema for Supabase (this is the schema actually in use).
-- `manifest.json`, `sw.js`, `icon*` — PWA shell (installable, offline app-shell caching). `sw.js` uses network-first for `index.html` specifically, so app updates are picked up on next load without needing cache-busting.
+- `migrations/` — numbered, manually-applied SQL migrations for schema/RLS changes (e.g. `001_auth_rls.sql` + matching `..._rollback.sql`). These are **not** part of the normal auto-push flow — see "Schema/RLS changes" below.
+- `manifest.json`, `sw.js`, `icon*` — PWA shell (installable, offline app-shell caching). `sw.js` uses network-first for `index.html` specifically, so app updates are picked up on next load without needing cache-busting; `date-utils.js` is precached in `SHELL` since the app can't function without it.
 - `README.md` — end-user setup guide (connecting a spreadsheet + Apps Script, or hosting via GitHub Pages, installing as a home-screen app).
 
 ## Commands
 
-There is nothing to build, lint, or test. To work on the app, open `index.html` directly in a browser (Chrome recommended). The only "backend" during local dev is whatever Supabase project the user configures via the in-app Settings screen (URL + anon key), which is stored in `localStorage` — never hardcode credentials into the file.
+Nothing to build or lint. To work on the app, open `index.html` directly in a browser (Chrome recommended). To run the test suite, open `tests.html` directly in a browser — it's self-contained, no server needed. The only "backend" during local dev is whatever Supabase project the user configures via the in-app Settings/login screen (URL + anon key), which is stored in `localStorage` — never hardcode credentials into the file.
+
+### Schema/RLS changes — different rules than code changes
+
+Code changes to `index.html`/`date-utils.js`/etc. get committed and pushed automatically. Changes that touch the Supabase schema or RLS policies do **not** follow that flow:
+1. Export a fresh backup first (Configurações → Backup → "Exportar tudo (JSON)").
+2. Write the change as a new numbered file in `migrations/` plus a matching `_rollback.sql`.
+3. The migration is applied **manually** by the user in the Supabase SQL Editor, announced explicitly — never bundled into an unrelated commit, never applied by Claude directly (no DB connection is available in-session).
+4. One structural change at a time, each verified independently before moving to the next.
 
 ## Repository / deployment topology
 
@@ -28,7 +39,7 @@ The app supports two interchangeable backends behind the same UI, selected impli
 - **Apps Script**: `doGet`/`doPost` dispatch on an `action` param, operating on fixed cell ranges/sheet names (`Painel`, `Configurações`, `Lançamentos`, `Extrato <mês>`, etc.) in a specific spreadsheet layout.
 - **Supabase**: the client (`_sb`, initialized in `saveConfig()`/on load from stored URL+key) talks directly to Postgres tables via `sbSelect`/`sbInsert`/`sbUpdate`/`sbDelete` helpers — thin wrappers around `supabase-js`. This is the actively used path.
 
-Row Level Security is **disabled by default** in `supabase-schema.sql` — anyone holding the URL + anon key (which the user shares with his wife so both can use the app) has full read/write access, no auth. This is intentional per the schema comments, not an oversight to "fix" unprompted.
+Row Level Security is **enabled** (`migrations/001_auth_rls.sql`) with a single permissive policy per table (`for all to authenticated using (true) with check (true)`) — any logged-in user (the two family members) has full read/write access; anyone without a session gets empty results. Public signup is disabled in Supabase Auth; the two users were created manually. See "Auth" below.
 
 ### Data model (Supabase tables)
 
@@ -48,14 +59,19 @@ The fatura payment's `data` field is set to the card's computed **vencimento (du
 
 Once a fatura is marked paid (`state.faturasPagas`, keyed `"<cartão>-<mêsAbrev>"`), that status is **not** revalidated against the current total if purchases are later added/moved into that billing period — deliberately, since re-showing "Pagar Fatura" would charge the *full current total* again, double-debiting the account for the part already paid. Any future fix here needs to account for partial/delta payments, not just a paid/unpaid boolean.
 
+### Auth
+
+`iniciarAuthGate()` subscribes to `_sb.auth.onAuthStateChange` once a Supabase client exists; it's the single source of truth for whether `#appRoot` (the whole app) or `#loginScreen` is visible — `loadData()` is never called without an active session. The login screen itself has two sub-forms toggled by whether `_sb` exists yet: `#loginConnectForm` (URL + anon key — first-time setup / no `localStorage`, e.g. a fresh browser or private tab) and `#loginAuthForm` (email + password). `conectarSupabase(url, key)` is the shared helper behind both `saveConfig()` (Configurações page) and `conectarESeguir()` (login screen) — don't duplicate the connection-test logic. Logout is `fazerLogout()` → `_sb.auth.signOut()`, which the same `onAuthStateChange` callback reacts to.
+
 ### Client-side state and rendering
 
 Everything lives in a single global `state` object, rebuilt by `loadData()` on every month change / mutation:
-- `calcularSaldo(conta, ...)` computes an account's balance by summing all matching `lancamentos`/`extrato`/`transferencias` rows by **exact string match** on account name (no IDs) — case, accents, and whitespace all matter.
-- `montarLancamentosMes()` flattens raw Supabase rows into the shape the UI actually renders (`state.lancamentos`) for the currently selected month. **This is a common source of bugs**: a raw column that isn't explicitly copied through here (e.g. `cartao_nome`) becomes invisible to the UI/edit forms even though it exists in the DB — check this function first when "a field can't be edited" or "shows blank" despite being present in Supabase.
+- `calcularSaldo(conta, ...)` (in `date-utils.js`) computes an account's balance by summing all matching `lancamentos`/`extrato`/`transferencias` rows by **exact string match** on account name (no IDs) — case, accents, and whitespace all matter.
+- `montarLancamentosMes()` flattens raw Supabase rows into the shape the UI actually renders (`state.lancamentos`) for the currently selected month. It spreads the raw row first (`{...tx, ...derived fields}`) specifically so a new/overlooked column is never silently dropped — derived/renamed fields (`valor`, `contaCartao`, `cartaoNome`, `dataObj`, `mes`, `fonte`) are listed *after* the spread and must stay after it if this function is touched again, or they'd be shadowed by the raw column of the same name.
 - `calcularResumo()` produces the 12-month rollup used by charts/dashboard.
-- There's no router/framework: `navigate(page)` toggles a `.page.active` class and calls that page's `render*()` function from a hardcoded dispatch list. `loadData()` also has its own hardcoded list of "if page X is currently active, re-render it" checks — **any page that supports in-place editing/deleting must be added to this list**, or edits will silently save correctly to Supabase while the visible list keeps showing stale data until the user navigates away and back.
+- Page routing is a single registry: `const PAGES = { dashboard: renderDashboard, extrato: renderExtrato, ... }`. `navigate(page)` calls `PAGES[page]()` when switching pages; `renderAtual()` (`PAGES[paginaAtiva()]?.()`) is called at the end of `loadData()` to refresh whatever page is currently visible. **A new page = one line in `PAGES`** — there is no second list to remember to update. (This replaced a pair of hand-maintained lists that used to drift out of sync with each other, which is exactly how the Extrato page once stopped refreshing after edits.)
 - The lançamento edit modal is shared across contexts (Extrato page, Faturas page item list) and branches internally on `_editingTx.fonte` (`'extrato'` vs `'transferencias'`) and `_editingTx.categoria` (`'fatura'` gets an extra card-selector field) to decide which table/columns to update. Recurring/parcelado entries (`fonte: 'lancamentos'`) use a *separate* modal/flow (`abrirEditFixo`/`executarEditFixo`), not this one.
+- `#modalLancamento` (and other modals) live outside every `.page` container in the DOM — re-rendering the active page's content never touches an open modal. Rely on this rather than adding guards against `renderAtual()` when opening new modals.
 
 ## Decisões
 
@@ -65,3 +81,10 @@ Registro de escolhas não óbvias a partir do código — principalmente as que 
   **Direção aceita para o mesmo problema, ainda não implementada:** tabela `pagamentos_fatura (cartao_id, conta_id, competencia, valor, data)` — cada pagamento fica registrado individualmente, e o status/falta é derivado por `total − soma(pagamentos)` em vez de um booleano único. Isso permite pagamento parcial e recompra depois de pago sem duplicar cobrança. É uma peça da migração maior de Auth/RLS (ver Fase 0) — não implementar isolada.
 
 - **Visibilidade do repositório (público/privado) é uma decisão separada de Auth/RLS.** Repo público hoje não é risco de segurança por si só (nenhum segredo commitado — URL/chave do Supabase ficam em `localStorage`, nunca no código). O risco real de exposição de dados é a ausência de autenticação/RLS no banco. Se só uma dessas duas puder ser endereçada primeiro, priorizar Auth/RLS — tornar o repo privado sem RLS não protege os dados financeiros, só esconde o código-fonte.
+
+- **Auth/RLS implementado em ordem estrita (Fase 0), não tudo de uma vez.** Sequência: (1) botão de export/backup primeiro — é o rollback manual de tudo que vem depois; (2) cadastro público desligado + os 2 usuários criados manualmente no Supabase Auth *antes* de qualquer código de login, porque a policy do RLS libera tudo pra qualquer `authenticated`, e cadastro aberto = qualquer um vira `authenticated`; (3) tela de login construída e testada com RLS **ainda desligada**, validando o fluxo de auth sem risco de derrubar o acesso; (4) só então a migration de RLS. Motivo: religar RLS antes do login existir (ou antes do cadastro público estar fechado) transforma engano de sequência em "app mostra R$0,00 pra todo mundo" sem erro nenhum no console.
+  **Bug descoberto durante a Fase 0.5 (e corrigido):** o gate de login só ativava se já existisse URL/chave do Supabase salva em `localStorage`. Numa aba anônima (storage vazio) o app caía no fluxo antigo "não configurado" e mostrava a casca inteira do app (sidebar, dashboard zerado) sem nunca pedir login — risco baixo na prática (nenhuma query real roda sem cliente Supabase), mas inconsistente. Corrigido unificando as duas telas: `showLoginScreen()` agora sempre aparece antes do app, alternando entre sub-formulário de conexão (sem `_sb`) e de login (com `_sb`, sem sessão).
+
+- **`date-utils.js` extraído do `index.html` — única exceção deliberada ao "single file".** Contém só funções puras (sem `state`, sem DOM): `parseData`, `formatarData`, `calcularDataVencimento`, `mesNomeToAnoMes`, `getVencimentoIdx`, `getInstVencIdx`, `calcularSaldo`. Motivo: sem isso, `tests.html` testaria uma cópia colada do código, que diverge da versão real em produção sem avisar ninguém — o oposto do que os testes existem pra garantir. Não é o primeiro passo da refatoração "unificar extrato+lancamentos numa tabela" (essa continua rejeitada por enquanto, ver `## Architecture`) — é uma extração cirúrgica de funções que já eram puras e isoladas, sem tocar o resto da arquitetura.
+
+- **`calcularDataVencimento()` trava no último dia válido do mês — bug real encontrado ao escrever os testes.** `renderFaturas()` calculava a data de vencimento com `new Date(ano, mes, cartao.vencimento)` sem checar se aquele dia existe no mês — um cartão com vencimento dia 31 numa fatura de fevereiro estourava pra março (JS normaliza dia inválido silenciosamente). Corrigido reaproveitando o padrão de clamp (`Math.min(dia, últimoDiaDoMes)`) que já existia em outro lugar do código (`montarLancamentosMes`) mas não tinha sido aplicado aqui.

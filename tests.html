@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Testes — Finanças</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; background: #0f1117; color: #f1f5f9; }
+  h1 { font-size: 20px; }
+  .summary { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+  .ok { color: #22c55e; }
+  .fail { color: #ef4444; }
+  .row { padding: 4px 0; font-size: 13px; font-family: 'DM Mono', monospace; }
+  .detail { color: #94a3b8; margin-left: 20px; }
+</style>
+</head>
+<body>
+<h1>Testes — funções puras (date-utils.js)</h1>
+<div id="results">Rodando...</div>
+
+<script src="date-utils.js"></script>
+<script>
+let pass = 0, fail = 0;
+const rows = [];
+
+function assertEqual(actual, expected, label) {
+  const ok = Object.is(actual, expected);
+  if (ok) pass++; else fail++;
+  rows.push({ ok, label, actual, expected });
+}
+
+// ─── parseData: parseia em horário local, não UTC ──────────────────────────
+{
+  const d = parseData('2026-03-05');
+  assertEqual(d.getFullYear(), 2026, 'parseData: ano');
+  assertEqual(d.getMonth(), 2, 'parseData: mês 0-based (março = 2)');
+  assertEqual(d.getDate(), 5, 'parseData: dia (não 4 — o bug clássico do new Date(string) em UTC)');
+}
+assertEqual(parseData(''), null, 'parseData: string vazia devolve null');
+assertEqual(parseData(null), null, 'parseData: null devolve null');
+
+// ─── formatarData: não desloca o dia por causa da hora ─────────────────────
+assertEqual(formatarData(new Date(2026, 2, 5, 21, 30)), '2026-03-05',
+  'formatarData: 5/mar 21h30 GMT-3 continua 5/mar (toISOString() erraria pra 6/mar)');
+assertEqual(formatarData(new Date(2026, 0, 1, 23, 59)), '2026-01-01',
+  'formatarData: 23h59 continua no mesmo dia');
+
+// ─── Round-trip formatarData(parseData(s)) === s ───────────────────────────
+for (let m = 1; m <= 12; m++) {
+  const s = `2026-${String(m).padStart(2, '0')}-15`;
+  assertEqual(formatarData(parseData(s)), s, `round-trip: mês ${m}/2026`);
+}
+assertEqual(formatarData(parseData('2026-12-31')), '2026-12-31', 'round-trip: 31/12/2026');
+assertEqual(formatarData(parseData('2028-02-29')), '2028-02-29', 'round-trip: 29/02/2028 (ano bissexto)');
+
+// ─── calcularSaldo: fixture fixa ────────────────────────────────────────────
+{
+  const conta = { nome: 'Conta Teste', saldo_inicial: 1000 };
+  const lancamentos = []; // vazio de propósito: evita depender da data "hoje" do teste
+  const extrato = [
+    { conta_nome: 'Conta Teste', tipo: 'despesa', valor: 100 },
+    { conta_nome: 'Conta Teste', tipo: 'receita', valor: 50 },
+    // compra no cartão: conta_nome vazio, não pode afetar o saldo da conta
+    { origem: 'cartao', conta_nome: '', cartao_nome: 'Cartão X', tipo: 'despesa', valor: 9999 },
+    // pagamento de fatura: conta_nome preenchido, precisa afetar o saldo
+    { origem: 'conta', conta_nome: 'Conta Teste', cartao_nome: 'Cartão X', categoria: 'fatura', tipo: 'despesa', valor: 300 },
+  ];
+  const transferencias = [
+    { conta_dest: 'Conta Teste', conta_origem: 'Outra Conta', valor: 200 },
+    { conta_origem: 'Conta Teste', conta_dest: 'Outra Conta', valor: 80 },
+  ];
+  // 1000 - 100 (despesa) + 50 (receita) - 300 (fatura) + 200 (transf. entrada) - 80 (transf. saída)
+  // a compra de 9999 no cartão NÃO entra nessa conta
+  const saldo = calcularSaldo(conta, lancamentos, extrato, transferencias);
+  assertEqual(saldo, 770, 'calcularSaldo: fixture completa (compra de cartão não afeta, fatura afeta)');
+}
+
+// ─── getVencimentoIdx: competência/vencimento de cartão ────────────────────
+assertEqual(getVencimentoIdx('2026-06-10', 10, 20), 2026 * 12 + 6,
+  'vencimento: compra NO dia do fechamento fecha no mesmo mês (dia <= fechamento)');
+assertEqual(getVencimentoIdx('2026-06-11', 10, 20), 2026 * 12 + 7,
+  'vencimento: compra no dia SEGUINTE ao fechamento fecha no mês seguinte');
+assertEqual(getVencimentoIdx('2026-12-28', 25, 5), 2027 * 12 + 2,
+  'vencimento: virada dez→jan (fecha jan/2027, vence fev/2027 pois vencimento 5 < fechamento 25)');
+
+// ─── calcularDataVencimento: trava no último dia do mês ────────────────────
+{
+  const d = calcularDataVencimento(2026, 2, 31); // 2026 não é bissexto
+  assertEqual(d.getMonth(), 1, 'vencimento dia 31 em fevereiro/2026: não estoura pra março');
+  assertEqual(d.getDate(), 28, 'vencimento dia 31 em fevereiro/2026 (não bissexto): trava no dia 28');
+}
+{
+  const d = calcularDataVencimento(2028, 2, 31); // 2028 é bissexto
+  assertEqual(d.getMonth(), 1, 'vencimento dia 31 em fevereiro/2028: não estoura pra março');
+  assertEqual(d.getDate(), 29, 'vencimento dia 31 em fevereiro/2028 (bissexto): trava no dia 29');
+}
+
+// ─── Render ─────────────────────────────────────────────────────────────────
+const el = document.getElementById('results');
+el.innerHTML =
+  `<div class="summary ${fail ? 'fail' : 'ok'}">${pass} passaram, ${fail} falharam</div>` +
+  rows.map(r => `
+    <div class="row ${r.ok ? 'ok' : 'fail'}">
+      ${r.ok ? '✓' : '✗'} ${r.label}
+      ${r.ok ? '' : `<div class="detail">esperado: ${JSON.stringify(r.expected)} — obtido: ${JSON.stringify(r.actual)}</div>`}
+    </div>
+  `).join('');
+document.title = (fail ? `❌ ${fail} falha(s)` : `✓ ${pass} ok`) + ' — Testes';
+</script>
+</body>
+</html>
