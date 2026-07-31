@@ -951,17 +951,33 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
         </svg>
       </div>
       <div style="font-weight:600;font-size:18px">Finanças</div>
-      <div class="text-xs text-3">Entre para continuar</div>
+      <div class="text-xs text-3" id="loginSubtitle">Entre para continuar</div>
     </div>
-    <div class="form-group">
-      <label class="form-label">E-mail</label>
-      <input class="form-input" id="loginEmail" type="email" placeholder="voce@email.com" autocomplete="username" onkeydown="if(event.key==='Enter')fazerLogin()">
+
+    <div id="loginConnectForm" style="display:none">
+      <div class="form-group">
+        <label class="form-label">URL do Projeto</label>
+        <input class="form-input" id="loginSupabaseUrl" placeholder="https://xxxx.supabase.co" style="font-size:13px">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Anon Key (chave pública)</label>
+        <input class="form-input" id="loginSupabaseKey" placeholder="eyJhbGciOiJIUzI1NiIs..." style="font-size:13px">
+      </div>
+      <button class="btn-primary" onclick="conectarESeguir()">Conectar</button>
     </div>
-    <div class="form-group">
-      <label class="form-label">Senha</label>
-      <input class="form-input" id="loginPassword" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
+
+    <div id="loginAuthForm" style="display:none">
+      <div class="form-group">
+        <label class="form-label">E-mail</label>
+        <input class="form-input" id="loginEmail" type="email" placeholder="voce@email.com" autocomplete="username" onkeydown="if(event.key==='Enter')fazerLogin()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Senha</label>
+        <input class="form-input" id="loginPassword" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
+      </div>
+      <button class="btn-primary" onclick="fazerLogin()">Entrar</button>
     </div>
-    <button class="btn-primary" onclick="fazerLogin()">Entrar</button>
+
     <div class="text-xs" id="loginError" style="color:var(--red);margin-top:10px;display:none"></div>
   </div>
 </div>
@@ -1940,12 +1956,14 @@ async function init() {
     document.getElementById('configBanner').classList.add('show');
   }
 
-  // Autenticação: só carrega dados com sessão ativa. Sem Supabase configurado
-  // ainda, mantém o comportamento antigo (deixa passar pro banner de config).
+  // Gate: o app (appRoot) só fica visível com sessão autenticada ativa.
+  // Sem URL/chave do Supabase salvos (ex: aba anônima, navegador novo),
+  // a tela de login mostra o sub-formulário de conexão em vez do app —
+  // nunca deixa passar direto pro dashboard sem checar sessão.
   if (_sb) {
     iniciarAuthGate();
   } else {
-    await loadData();
+    showLoginScreen();
     hideLoading();
   }
 }
@@ -1975,11 +1993,59 @@ function iniciarAuthGate() {
 function showLoginScreen() {
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('appRoot').style.display = 'none';
+
+  // Sem cliente Supabase ainda (ex: aba anônima, navegador novo, primeiro
+  // acesso): pede a URL/chave em vez do login, já que não há sessão pra
+  // checar sem um cliente configurado.
+  const temSupabase = !!_sb;
+  document.getElementById('loginConnectForm').style.display = temSupabase ? 'none' : 'block';
+  document.getElementById('loginAuthForm').style.display    = temSupabase ? 'block' : 'none';
+  document.getElementById('loginSubtitle').textContent = temSupabase
+    ? 'Entre para continuar'
+    : 'Configure a conexão pra continuar';
+  document.getElementById('loginError').style.display = 'none';
 }
 
 function hideLoginScreen() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('appRoot').style.display = '';
+}
+
+// Cria o client e testa a conexão. Não depende de sessão — RLS deixa a
+// query passar com 0 linhas mesmo sem login, então serve só pra validar
+// que a URL/chave são válidas, sem expor dado nenhum.
+async function conectarSupabase(url, key) {
+  state.supabaseUrl = url;
+  state.supabaseKey = key;
+  localStorage.setItem('financeSupabaseUrl', url);
+  localStorage.setItem('financeSupabaseKey', key);
+  _sb = supabase.createClient(url, key);
+  const { count, error } = await _sb.from('contas').select('*', { count: 'exact', head: true });
+  if (error) { _sb = null; return { ok: false, error }; }
+  return { ok: true, count };
+}
+
+async function conectarESeguir() {
+  const url = document.getElementById('loginSupabaseUrl').value.trim();
+  const key = document.getElementById('loginSupabaseKey').value.trim();
+  const errEl = document.getElementById('loginError');
+  errEl.style.display = 'none';
+  if (!url || !key) { errEl.textContent = 'Insira URL e chave do Supabase'; errEl.style.display = 'block'; return; }
+
+  const btn = document.querySelector('#loginConnectForm .btn-primary');
+  btn.disabled = true;
+  btn.textContent = 'Conectando...';
+  const res = await conectarSupabase(url, key);
+  btn.disabled = false;
+  btn.textContent = 'Conectar';
+
+  if (!res.ok) {
+    errEl.textContent = 'Erro ao conectar: ' + (res.error?.message || '');
+    errEl.style.display = 'block';
+    return;
+  }
+  document.getElementById('configBanner').classList.remove('show');
+  iniciarAuthGate();
 }
 
 async function fazerLogin() {
@@ -1991,7 +2057,7 @@ async function fazerLogin() {
   if (!_sb) { errEl.textContent = 'Configure a conexão com o Supabase primeiro'; errEl.style.display = 'block'; return; }
   if (!email || !senha) { errEl.textContent = 'Preencha e-mail e senha'; errEl.style.display = 'block'; return; }
 
-  const btn = document.querySelector('#loginScreen .btn-primary');
+  const btn = document.querySelector('#loginAuthForm .btn-primary');
   btn.disabled = true;
   btn.textContent = 'Entrando...';
   const { error } = await _sb.auth.signInWithPassword({ email, password: senha });
@@ -4830,25 +4896,17 @@ async function saveConfig() {
   const key = document.getElementById('supabaseKey').value.trim();
   if (!url || !key) { showToast('Insira URL e chave do Supabase'); return; }
 
-  state.supabaseUrl = url;
-  state.supabaseKey = key;
-  localStorage.setItem('financeSupabaseUrl', url);
-  localStorage.setItem('financeSupabaseKey', key);
-
   document.getElementById('conn-status').textContent = 'Conectando...';
   document.getElementById('configBanner').classList.remove('show');
 
-  _sb = supabase.createClient(url, key);
-
-  const { count, error } = await _sb.from('contas').select('*', { count: 'exact', head: true });
-  if (error) {
-    document.getElementById('conn-status').textContent = '❌ Erro: ' + error.message;
+  const res = await conectarSupabase(url, key);
+  if (!res.ok) {
+    document.getElementById('conn-status').textContent = '❌ Erro: ' + (res.error?.message || '');
     showToast('Erro na conexão ❌');
-    _sb = null;
     return;
   }
 
-  document.getElementById('conn-status').textContent = `✅ Conectado ao Supabase! (${count ?? 0} conta(s))`;
+  document.getElementById('conn-status').textContent = `✅ Conectado ao Supabase! (${res.count ?? 0} conta(s))`;
   showToast('Conectado! ✅');
   iniciarAuthGate();
 }
