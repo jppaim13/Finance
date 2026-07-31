@@ -1932,7 +1932,7 @@ async function init() {
 
   // Set today's date on form
 
-  document.getElementById('lancData').value = new Date().toISOString().split('T')[0];
+  document.getElementById('lancData').value = formatarData(new Date());
 
   // Nav
   document.querySelectorAll('[data-page]').forEach(btn => {
@@ -3200,7 +3200,9 @@ function renderFaturas() {
 async function confirmarPagarFatura(cartaoNome, contaNome, valor, dataVencimento) {
   if (!confirm(`Pagar fatura de ${cartaoNome} (${fmt(valor)}) debitando de "${contaNome}"?`)) return;
   showToast('Registrando pagamento...');
-  const data = dataVencimento || new Date().toISOString().split('T')[0];
+  // dataVencimento sempre vem preenchida do único call site (botão "Pagar Fatura"),
+  // que já calcula a data de vencimento antes de chamar esta função.
+  const data = dataVencimento;
   const key = `${cartaoNome}-${MESES_NOMES[state.currentMonth]}`;
   const saved = await sbInsert('extrato', {
     data,
@@ -3582,7 +3584,9 @@ async function salvarRepasse() {
   const descricao = document.getElementById('rDesc').value.trim();
   const modal     = document.getElementById('modalRepasse');
   const ref_key   = modal.dataset.refKey || null;
-  const data      = modal.dataset.data   || new Date().toISOString().split('T')[0];
+  // modal.dataset.data sempre é preenchido antes de abrir o modal (auto,
+  // manual ou edição), nunca vazio nesse ponto.
+  const data      = modal.dataset.data;
 
   let row;
   if (_repasseIsManual) {
@@ -4520,7 +4524,9 @@ function editarTx(tx) {
   // Pré-preenche o modal
   document.getElementById('lancValor').value = tx.valor || '';
   document.getElementById('lancDesc').value  = tx.descricao || '';
-  document.getElementById('lancData').value  = tx.data || new Date().toISOString().split('T')[0];
+  // tx.data sempre vem preenchido (extrato.data é NOT NULL); tx é sempre uma
+  // linha real vinda do banco, nunca um objeto sintético parcial.
+  document.getElementById('lancData').value  = tx.data;
   document.getElementById('lancRecorrente').checked = false;
 
   const tipo = tx.tipo || 'despesa';
@@ -4603,7 +4609,9 @@ function editarTransferencia(tr) {
   _editingTx = { ...tr, fonte: 'transferencias' };
   document.getElementById('lancValor').value = tr.valor || '';
   document.getElementById('lancDesc').value  = tr.descricao || '';
-  document.getElementById('lancData').value  = tr.data || new Date().toISOString().split('T')[0];
+  // tr.data sempre vem preenchido (transferencias.data é NOT NULL); tr é
+  // sempre uma linha real vinda do banco.
+  document.getElementById('lancData').value  = tr.data;
   document.getElementById('lancRecorrente').checked = false;
 
   const btn = document.querySelector('.segment-btn.transferencia');
@@ -4665,7 +4673,7 @@ async function salvarAjusteSaldo() {
     }
   } else {
     // Conta: insere lançamento de ajuste
-    const data = new Date().toISOString().split('T')[0];
+    const data = formatarData(new Date());
     const absD = Math.abs(delta);
     if (delta > 0) {
       const d = new Date();
@@ -4862,7 +4870,7 @@ function openLancamento() {
   _editingTx = null;
   document.getElementById('lancValor').value = '';
   document.getElementById('lancDesc').value = '';
-  document.getElementById('lancData').value = new Date().toISOString().split('T')[0];
+  document.getElementById('lancData').value = formatarData(new Date());
   document.getElementById('lancRecorrente').checked = false;
   document.getElementById('btnSalvarOutro').style.display = '';
   document.getElementById('lancFaturaCartaoGroup').style.display = 'none';
@@ -5140,7 +5148,7 @@ function openLote() {
 
 function addLoteRow() {
   const id  = _loteRowId++;
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatarData(new Date());
   const _catMap2 = new Map(CATS_DESPESA.map(c=>[c.id,c]));
   (state.catsExtra||[]).filter(c=>c.tipo==='despesa').forEach(c=>_catMap2.set(c.id,c));
   const catOpts = [..._catMap2.values()]
