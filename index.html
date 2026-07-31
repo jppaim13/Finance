@@ -940,8 +940,34 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
   <span class="loading-text">Carregando...</span>
 </div>
 
+<!-- Login -->
+<div class="loading-screen" id="loginScreen" style="display:none">
+  <div class="card" style="max-width:340px;width:90%;padding:28px">
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="width:44px;height:44px;background:var(--accent);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" style="width:22px;height:22px;stroke:white">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+          <path d="M12 6v6l4 2"/>
+        </svg>
+      </div>
+      <div style="font-weight:600;font-size:18px">Finanças</div>
+      <div class="text-xs text-3">Entre para continuar</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">E-mail</label>
+      <input class="form-input" id="loginEmail" type="email" placeholder="voce@email.com" autocomplete="username" onkeydown="if(event.key==='Enter')fazerLogin()">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Senha</label>
+      <input class="form-input" id="loginPassword" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
+    </div>
+    <button class="btn-primary" onclick="fazerLogin()">Entrar</button>
+    <div class="text-xs" id="loginError" style="color:var(--red);margin-top:10px;display:none"></div>
+  </div>
+</div>
+
 <!-- App -->
-<div class="app">
+<div class="app" id="appRoot">
 
   <!-- Sidebar (desktop) -->
   <nav class="sidebar">
@@ -1306,6 +1332,12 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
     <div class="page" id="page-config">
       <div class="page-header">
         <div><div class="page-title">Configurações</div></div>
+      </div>
+
+      <div class="section-label">Conta</div>
+      <div class="card">
+        <div class="text-sm text-2" style="margin-bottom:10px">Conectado como: <span id="loggedUserEmail" style="color:var(--text)">—</span></div>
+        <button class="btn-secondary" onclick="fazerLogout()">Sair</button>
       </div>
 
       <div class="section-label">Conexão com Supabase</div>
@@ -1880,6 +1912,7 @@ async function init() {
   }
 
   // Set today's date on form
+
   document.getElementById('lancData').value = new Date().toISOString().split('T')[0];
 
   // Nav
@@ -1907,13 +1940,76 @@ async function init() {
     document.getElementById('configBanner').classList.add('show');
   }
 
-  // Load data
-  await loadData();
-  hideLoading();
+  // Autenticação: só carrega dados com sessão ativa. Sem Supabase configurado
+  // ainda, mantém o comportamento antigo (deixa passar pro banner de config).
+  if (_sb) {
+    iniciarAuthGate();
+  } else {
+    await loadData();
+    hideLoading();
+  }
 }
 
 function hideLoading() {
   document.getElementById('loadingScreen').classList.add('hidden');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// AUTH
+// ════════════════════════════════════════════════════════════════════════════
+function iniciarAuthGate() {
+  _sb.auth.onAuthStateChange(async (event, session) => {
+    if (session) {
+      document.getElementById('loginError').style.display = 'none';
+      const emailEl = document.getElementById('loggedUserEmail');
+      if (emailEl) emailEl.textContent = session.user.email || '—';
+      hideLoginScreen();
+      await loadData();
+    } else {
+      showLoginScreen();
+    }
+    hideLoading();
+  });
+}
+
+function showLoginScreen() {
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('appRoot').style.display = 'none';
+}
+
+function hideLoginScreen() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appRoot').style.display = '';
+}
+
+async function fazerLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const senha = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.style.display = 'none';
+
+  if (!_sb) { errEl.textContent = 'Configure a conexão com o Supabase primeiro'; errEl.style.display = 'block'; return; }
+  if (!email || !senha) { errEl.textContent = 'Preencha e-mail e senha'; errEl.style.display = 'block'; return; }
+
+  const btn = document.querySelector('#loginScreen .btn-primary');
+  btn.disabled = true;
+  btn.textContent = 'Entrando...';
+  const { error } = await _sb.auth.signInWithPassword({ email, password: senha });
+  btn.disabled = false;
+  btn.textContent = 'Entrar';
+
+  if (error) {
+    errEl.textContent = 'E-mail ou senha inválidos';
+    errEl.style.display = 'block';
+    return;
+  }
+  // onAuthStateChange cuida de esconder a tela de login e carregar os dados
+}
+
+async function fazerLogout() {
+  if (!_sb) return;
+  await _sb.auth.signOut();
+  // onAuthStateChange cuida de mostrar a tela de login de novo
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -4754,7 +4850,7 @@ async function saveConfig() {
 
   document.getElementById('conn-status').textContent = `✅ Conectado ao Supabase! (${count ?? 0} conta(s))`;
   showToast('Conectado! ✅');
-  await loadData();
+  iniciarAuthGate();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
