@@ -1,8 +1,12 @@
-const CACHE_NAME = 'financas-v3';
+const CACHE_NAME = 'financas-v4';
 
+// date-utils.js precisa bater exatamente com a URL (incluindo ?v=N) que o
+// index.html pede — se divergir, o cache-first nunca acha o precache e o
+// index.html novo pode acabar servindo um date-utils.js velho em cache sob
+// outra chave. Atualize esta linha junto com o <script src> em index.html.
 const SHELL = [
   './icon.svg',
-  './date-utils.js',
+  './date-utils.js?v=1',
   'https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
 ];
