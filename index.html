@@ -5077,7 +5077,7 @@ async function salvarLancamento(manterAberto) {
 
   // Recorrente → lancamentos
   if (recorrente) {
-    const d = new Date(data + 'T12:00:00');
+    const d = parseData(data);
     const saved = await sbInsert('lancamentos', {
       descricao:  desc,
       categoria,
@@ -5099,7 +5099,7 @@ async function salvarLancamento(manterAberto) {
   if (origem === 'cartao') {
     const totalParcelas = parseInt(document.getElementById('lancTotalParcelas')?.value || 0);
     if (totalParcelas > 1) {
-      const d = new Date(data + 'T12:00:00');
+      const d = parseData(data);
       const saved = await sbInsert('lancamentos', {
         descricao:  desc,
         categoria,
@@ -5236,7 +5236,7 @@ async function salvarLote() {
     if (!valor || valor <= 0 || !dataVal) continue;
 
     if (origem === 'cartao' && parcelas > 1) {
-      const d = new Date(dataVal + 'T12:00:00');
+      const d = parseData(dataVal);
       parceladoItems.push({
         descricao,
         categoria,
