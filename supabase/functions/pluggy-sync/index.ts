@@ -148,9 +148,11 @@ Deno.serve(async (req) => {
         // data também mudou de `from` para `dateFrom`. A resposta traz `next`
         // como URL COMPLETA e pronta pra usar (confirmado no SDK oficial:
         // pluggy-node client.ts, fetchAllTransactions faz `new URL(next, ...)`
-        // direto) — não precisa recompor com PLUGGY como base.
+        // direto) — não precisa recompor com PLUGGY como base. `pageSize` não
+        // é aceito no v2 (400 "property pageSize should not exist") — o
+        // tamanho de página parece ser fixo (500) do lado da Pluggy agora.
         let proxima: string | null =
-          `${PLUGGY}/v2/transactions?accountId=${c.id}&dateFrom=${desde}&pageSize=500`;
+          `${PLUGGY}/v2/transactions?accountId=${c.id}&dateFrom=${desde}`;
 
         while (proxima) {
           const pg = await get(proxima, apiKey);
