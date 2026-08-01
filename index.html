@@ -1217,7 +1217,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
           <div class="page-title">Sincronização</div>
           <div class="page-subtitle">Saldo real (banco) vs. calculado pelo app — não altera nenhum lançamento</div>
         </div>
-        <button class="btn-secondary" id="btnSincronizarPluggy" onclick="sincronizarPluggy()">🔄 Sincronizar</button>
+        <button class="btn-secondary" id="btnSincronizarPluggy" onclick="sincronizarPluggy()">🔄 Sincronizar agora</button>
       </div>
       <div class="text-xs text-3" id="pluggySyncStatus" style="margin-bottom:12px"></div>
       <div id="pluggy-contas-list">
@@ -4691,25 +4691,45 @@ async function sincronizarPluggy() {
     });
     const json = await res.json();
     if (!res.ok || json.ok === false) {
-      statusEl.textContent = `Erro: ${json.erro || res.statusText}`;
+      showToast(`Erro na sincronização ❌ ${json.erro || res.statusText}`);
     } else {
-      statusEl.textContent = `Sincronizado ✅ — ${json.criadas} nova(s), ${json.atualizadas} atualizada(s)`;
-      await carregarPluggyContas();
+      showToast(`Sincronizado ✅ — ${json.criadas} nova(s), ${json.atualizadas} atualizada(s)`);
     }
   } catch (e) {
-    statusEl.textContent = `Erro: ${e.message}`;
+    showToast(`Erro na sincronização ❌ ${e.message}`);
   }
   btn.disabled = false;
+  // recarrega mesmo em erro, pra refletir o log mais recente (inclusive falhas)
+  await carregarPluggyContas();
 }
 
 async function carregarPluggyContas() {
   const el = document.getElementById('pluggy-contas-list');
   if (!el || !_sb) return;
 
-  const [{ data: contas, error }, { data: items }] = await Promise.all([
+  const [{ data: contas, error }, { data: items }, { data: ultimoLog }] = await Promise.all([
     _sb.from('pluggy_contas').select('*').order('nome'),
     _sb.from('pluggy_items').select('*'),
+    _sb.from('pluggy_sync_log').select('*').order('iniciado_em', { ascending: false }).limit(1).maybeSingle(),
   ]);
+
+  const statusEl = document.getElementById('pluggySyncStatus');
+  if (statusEl) {
+    if (!ultimoLog) {
+      statusEl.textContent = 'Nunca sincronizado';
+    } else {
+      const quando = new Date(ultimoLog.terminado_em || ultimoLog.iniciado_em);
+      const p = n => String(n).padStart(2, '0');
+      const quandoFmt = `${p(quando.getDate())}/${p(quando.getMonth()+1)}/${quando.getFullYear()} ${p(quando.getHours())}:${p(quando.getMinutes())}`;
+      if (ultimoLog.status === 'erro') {
+        statusEl.textContent = `Última sincronização: ${quandoFmt} — erro: ${ultimoLog.erro || '?'}`;
+      } else if (!ultimoLog.terminado_em) {
+        statusEl.textContent = `Sincronizando desde ${quandoFmt}...`;
+      } else {
+        statusEl.textContent = `Última sincronização: ${quandoFmt} — ${ultimoLog.criadas || 0} nova(s), ${ultimoLog.atualizadas || 0} atualizada(s)`;
+      }
+    }
+  }
 
   if (error) {
     el.innerHTML = '<div class="empty-state"><p>Erro ao carregar dados da Pluggy</p></div>';
@@ -4746,17 +4766,17 @@ async function carregarPluggyContas() {
       ${(state.contas || []).length ? `<optgroup label="Contas">${(state.contas || []).map(optConta).join('')}</optgroup>` : ''}
       ${(state.caixinhas || []).length ? `<optgroup label="Caixinhas">${(state.caixinhas || []).map(optConta).join('')}</optgroup>` : ''}
       ${(state.cartoes || []).length ? `<optgroup label="Cartões">${(state.cartoes || []).map(optCartao).join('')}</optgroup>` : ''}
-      <option value="ignorar" ${c.ignorar ? 'selected' : ''}>Ignorar</option>
     `;
 
     const diffColor = diff === null ? 'var(--text-3)' : Math.abs(diff) < 0.01 ? 'var(--green)' : 'var(--red)';
+    const meta = [banco, c.tipo, c.numero].filter(Boolean).join(' · ');
 
     return `
-      <div class="card" style="padding:14px;margin-bottom:10px">
+      <div class="card" style="padding:14px;margin-bottom:10px;${c.ignorar ? 'opacity:.6' : ''}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
           <div>
             <div style="font-weight:500">${c.nome}</div>
-            <div class="text-xs text-3">${banco}${c.numero ? ' · ' + c.numero : ''}</div>
+            <div class="text-xs text-3">${meta}</div>
           </div>
           <div style="text-align:right">
             <div class="text-xs text-3">Saldo real (banco)</div>
@@ -4765,8 +4785,12 @@ async function carregarPluggyContas() {
         </div>
         <div class="form-group" style="margin-top:10px;margin-bottom:0">
           <label class="form-label">Mapeamento</label>
-          <select class="form-select" onchange="atualizarMapeamentoPluggy('${c.id}', this.value)">${mapOpts}</select>
+          <select class="form-select" ${c.ignorar ? 'disabled' : ''} onchange="atualizarMapeamentoPluggy('${c.id}', this.value)">${mapOpts}</select>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer">
+          <input type="checkbox" ${c.ignorar ? 'checked' : ''} onchange="atualizarIgnorarPluggy('${c.id}', this.checked)">
+          <span class="text-xs text-2">Ignorar esta conta (não comparar saldo)</span>
+        </label>
         ${saldoCalc !== null ? `
           <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px">
             <span class="text-2">Saldo calculado (app)</span>
@@ -4777,7 +4801,7 @@ async function carregarPluggyContas() {
             <span class="font-mono" style="color:${diffColor}">${fmt(diff)}</span>
           </div>
         ` : c.ignorar
-          ? '<div class="text-xs text-3" style="margin-top:8px">Ignorada</div>'
+          ? ''
           : '<div class="text-xs text-3" style="margin-top:8px">Sem mapeamento — selecione uma conta ou cartão acima</div>'}
       </div>
     `;
@@ -4785,14 +4809,19 @@ async function carregarPluggyContas() {
 }
 
 async function atualizarMapeamentoPluggy(id, value) {
-  const changes = { conta_nome: null, cartao_nome: null, ignorar: false };
-  if (value === 'ignorar') changes.ignorar = true;
-  else if (value.startsWith('conta:')) changes.conta_nome = value.slice(6);
+  const changes = { conta_nome: null, cartao_nome: null };
+  if (value.startsWith('conta:')) changes.conta_nome = value.slice(6);
   else if (value.startsWith('cartao:')) changes.cartao_nome = value.slice(7);
 
   const { error } = await _sb.from('pluggy_contas').update(changes).eq('id', id);
   if (error) { showToast('Erro ao salvar mapeamento ❌'); return; }
   showToast('Mapeamento salvo ✅');
+  await carregarPluggyContas();
+}
+
+async function atualizarIgnorarPluggy(id, ignorar) {
+  const { error } = await _sb.from('pluggy_contas').update({ ignorar }).eq('id', id);
+  if (error) { showToast('Erro ao salvar ❌'); return; }
   await carregarPluggyContas();
 }
 
