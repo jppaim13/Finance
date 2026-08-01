@@ -4732,7 +4732,8 @@ async function carregarPluggyContas() {
   }
 
   if (error) {
-    el.innerHTML = '<div class="empty-state"><p>Erro ao carregar dados da Pluggy</p></div>';
+    console.error('carregarPluggyContas', error);
+    el.innerHTML = `<div class="empty-state"><p>Erro ao carregar dados da Pluggy</p><p class="text-xs text-3" style="margin-top:6px">${error.message || ''}</p></div>`;
     return;
   }
   if (!contas || !contas.length) {
