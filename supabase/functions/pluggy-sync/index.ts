@@ -145,14 +145,21 @@ Deno.serve(async (req) => {
 
         // /transactions (sem v2) foi descontinuado pela Pluggy (HTTP 410) em
         // favor de /v2/transactions com paginação por cursor. O parâmetro de
-        // data também mudou de `from` para `dateFrom`. A resposta traz `next`
-        // como URL COMPLETA e pronta pra usar (confirmado no SDK oficial:
-        // pluggy-node client.ts, fetchAllTransactions faz `new URL(next, ...)`
-        // direto) — não precisa recompor com PLUGGY como base. `pageSize` não
-        // é aceito no v2 (400 "property pageSize should not exist") — o
+        // data também mudou de `from` para `dateFrom`. `pageSize` não é
+        // aceito no v2 (400 "property pageSize should not exist") — o
         // tamanho de página parece ser fixo (500) do lado da Pluggy agora.
+        //
+        // `next` é INCONSISTENTE entre conectores: no Nubank veio como URL
+        // completa; em outro (XP/Mercado Pago/Inter, ainda não isolado qual)
+        // veio só como fragmento de query ("?accountId=...&after=..."), o
+        // que quebrava com "Invalid URL" ao tentar usar direto como URL.
+        // O próprio SDK oficial (pluggy-node) já lida com essa ambiguidade
+        // via `new URL(next, baseUrl)`, que resolve tanto absoluta quanto
+        // relativa — mesma solução aqui, usando o endpoint como base pra
+        // preservar o path (`/v2/transactions`) quando next é só a query.
+        const baseTransacoes = `${PLUGGY}/v2/transactions`;
         let proxima: string | null =
-          `${PLUGGY}/v2/transactions?accountId=${c.id}&dateFrom=${desde}`;
+          `${baseTransacoes}?accountId=${c.id}&dateFrom=${desde}`;
 
         while (proxima) {
           const pg = await get(proxima, apiKey);
@@ -186,9 +193,10 @@ Deno.serve(async (req) => {
             count === 1 ? criadas++ : atualizadas++;
           }
 
-          // `next` já é a URL completa da próxima página (ou null/undefined
-          // no fim) — usar direto, sem recompor com PLUGGY como prefixo.
-          proxima = pg.next || null;
+          // new URL(next, base) resolve tanto next absoluto quanto relativo
+          // (só query string) — ver comentário acima sobre a inconsistência
+          // entre conectores.
+          proxima = pg.next ? new URL(pg.next, baseTransacoes).href : null;
         }
       }
     }
