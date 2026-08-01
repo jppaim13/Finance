@@ -79,6 +79,8 @@ Everything lives in a single global `state` object, rebuilt by `loadData()` on e
 
 The "Sincronização" page (`renderSincronizacao`/`sincronizarPluggy`/`carregarPluggyContas`/`atualizarMapeamentoPluggy` in `index.html`) calls the function, then reads `pluggy_contas` directly (subject to the same RLS as everything else) and shows saldo real (Pluggy) vs. saldo calculado (app) per account/card, with a dropdown to map each Pluggy account to a `contas`/`caixinhas`/`cartoes` name — that mapping (`conta_nome`/`cartao_nome`/`ignorar` columns) is written straight from the browser, everything else in `pluggy_contas` only from the sync function.
 
+**Debugging `pluggy_transacoes`/`pluggy_contas` in chat: aggregate queries only, never raw rows.** `pluggy_transacoes.descricao` routinely contains real counterparty names (transfer recipients, merchants) and `valor`/`saldo` are real money amounts — this data should never be pasted into a Claude conversation as raw `select *`-style rows. When verifying the date-timezone heuristic or the credit-card sign convention (see Decisões below), write queries that return **counts/booleans per bank**, not individual transactions — e.g. `count(*) filter (where ...)` for mismatches, not the mismatching rows themselves. This is a standing instruction, not a one-off for this session.
+
 ## Decisões
 
 Registro de escolhas não óbvias a partir do código — principalmente as que foram cogitadas e rejeitadas, pra não serem re-tentadas sem o contexto do porquê.
