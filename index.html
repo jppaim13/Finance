@@ -1027,6 +1027,10 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
         Metas
       </button>
+      <button class="sidebar-item" data-page="sincronizacao">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        Sincronização
+      </button>
       <button class="sidebar-item" data-page="config">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
         Configurações
@@ -1203,6 +1207,21 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
       </div>
       <div class="tx-list" id="transferencias-list">
         <div class="empty-state"><div class="emoji">🔁</div><p>Nenhuma transferência encontrada</p></div>
+      </div>
+    </div>
+
+    <!-- ── SINCRONIZAÇÃO (PLUGGY — FASE 1, SOMENTE LEITURA) ────────────── -->
+    <div class="page" id="page-sincronizacao">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Sincronização</div>
+          <div class="page-subtitle">Saldo real (banco) vs. calculado pelo app — não altera nenhum lançamento</div>
+        </div>
+        <button class="btn-secondary" id="btnSincronizarPluggy" onclick="sincronizarPluggy()">🔄 Sincronizar</button>
+      </div>
+      <div class="text-xs text-3" id="pluggySyncStatus" style="margin-bottom:12px"></div>
+      <div id="pluggy-contas-list">
+        <div class="empty-state"><div class="emoji">🔄</div><p>Nenhuma conta sincronizada ainda</p></div>
       </div>
     </div>
 
@@ -1450,6 +1469,12 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
       </div>
       Repasses
+    </button>
+    <button class="nav-item" data-page="sincronizacao">
+      <div class="nav-icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+      </div>
+      Sincro
     </button>
     <button class="nav-item" data-page="config">
       <div class="nav-icon-wrap">
@@ -2100,6 +2125,7 @@ const PAGES = {
   config:         renderConfig,
   repasses:       renderRepasses,
   transferencias: renderTransferencias,
+  sincronizacao:  renderSincronizacao,
 };
 
 function paginaAtiva() {
@@ -4636,6 +4662,142 @@ async function deletarTransferencia(id) {
   const ok = await sbDelete('transferencias', id);
   if (ok) { showToast('Excluído! ✅'); await loadData(); }
   else showToast('Erro ao excluir ❌');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SINCRONIZAÇÃO (PLUGGY) — Fase 1, espelho somente-leitura.
+// Esta seção NUNCA escreve em extrato/lancamentos/transferencias/contas/
+// cartoes — só lê pluggy_contas/pluggy_items pra comparar com o saldo já
+// calculado pelo app, e escreve apenas o mapeamento manual em pluggy_contas.
+// ════════════════════════════════════════════════════════════════════════════
+async function sincronizarPluggy() {
+  if (!_sb) { showToast('Sem conexão com Supabase ❌'); return; }
+  const btn      = document.getElementById('btnSincronizarPluggy');
+  const statusEl = document.getElementById('pluggySyncStatus');
+  btn.disabled = true;
+  statusEl.textContent = 'Sincronizando...';
+
+  try {
+    const { data: { session } } = await _sb.auth.getSession();
+    if (!session) throw new Error('sem sessão ativa');
+
+    const res = await fetch(`${state.supabaseUrl}/functions/v1/pluggy-sync`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ apelido: 'jp' }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.ok === false) {
+      statusEl.textContent = `Erro: ${json.erro || res.statusText}`;
+    } else {
+      statusEl.textContent = `Sincronizado ✅ — ${json.criadas} nova(s), ${json.atualizadas} atualizada(s)`;
+      await carregarPluggyContas();
+    }
+  } catch (e) {
+    statusEl.textContent = `Erro: ${e.message}`;
+  }
+  btn.disabled = false;
+}
+
+async function carregarPluggyContas() {
+  const el = document.getElementById('pluggy-contas-list');
+  if (!el || !_sb) return;
+
+  const [{ data: contas, error }, { data: items }] = await Promise.all([
+    _sb.from('pluggy_contas').select('*').order('nome'),
+    _sb.from('pluggy_items').select('*'),
+  ]);
+
+  if (error) {
+    el.innerHTML = '<div class="empty-state"><p>Erro ao carregar dados da Pluggy</p></div>';
+    return;
+  }
+  if (!contas || !contas.length) {
+    el.innerHTML = '<div class="empty-state"><div class="emoji">🔄</div><p>Nenhuma conta sincronizada ainda</p></div>';
+    return;
+  }
+
+  const bancoMap = {};
+  (items || []).forEach(i => { bancoMap[i.pluggy_item_id] = i.banco; });
+
+  el.innerHTML = contas.map(c => {
+    const banco = bancoMap[c.pluggy_item_id] || '';
+    let saldoCalc = null, diff = null;
+
+    if (!c.ignorar && c.conta_nome) {
+      const contaApp = [...(state.contas || []), ...(state.caixinhas || [])].find(x => x.nome === c.conta_nome);
+      if (contaApp) { saldoCalc = contaApp.saldo; diff = Number(c.saldo || 0) - saldoCalc; }
+    } else if (!c.ignorar && c.cartao_nome) {
+      // Fatura do mês atual como proxy do "quanto devo" no cartão — sinal da
+      // Pluggy pra cartão ainda não verificado contra os 5 conectores reais,
+      // não normalizar aqui (ver Decisões no CLAUDE.md).
+      const faturaAtual = (state.resumo[state.currentMonth] || {}).faturas?.[c.cartao_nome] || 0;
+      saldoCalc = -faturaAtual;
+      diff = Number(c.saldo || 0) - saldoCalc;
+    }
+
+    const optConta = x => `<option value="conta:${x.nome}" ${c.conta_nome === x.nome ? 'selected' : ''}>${x.nome}</option>`;
+    const optCartao = x => `<option value="cartao:${x.nome}" ${c.cartao_nome === x.nome ? 'selected' : ''}>${x.nome}</option>`;
+    const mapOpts = `
+      <option value="">— selecionar —</option>
+      ${(state.contas || []).length ? `<optgroup label="Contas">${(state.contas || []).map(optConta).join('')}</optgroup>` : ''}
+      ${(state.caixinhas || []).length ? `<optgroup label="Caixinhas">${(state.caixinhas || []).map(optConta).join('')}</optgroup>` : ''}
+      ${(state.cartoes || []).length ? `<optgroup label="Cartões">${(state.cartoes || []).map(optCartao).join('')}</optgroup>` : ''}
+      <option value="ignorar" ${c.ignorar ? 'selected' : ''}>Ignorar</option>
+    `;
+
+    const diffColor = diff === null ? 'var(--text-3)' : Math.abs(diff) < 0.01 ? 'var(--green)' : 'var(--red)';
+
+    return `
+      <div class="card" style="padding:14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:500">${c.nome}</div>
+            <div class="text-xs text-3">${banco}${c.numero ? ' · ' + c.numero : ''}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="text-xs text-3">Saldo real (banco)</div>
+            <div class="font-mono font-500">${fmt(c.saldo || 0)}</div>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:10px;margin-bottom:0">
+          <label class="form-label">Mapeamento</label>
+          <select class="form-select" onchange="atualizarMapeamentoPluggy('${c.id}', this.value)">${mapOpts}</select>
+        </div>
+        ${saldoCalc !== null ? `
+          <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px">
+            <span class="text-2">Saldo calculado (app)</span>
+            <span class="font-mono">${fmt(saldoCalc)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:13px">
+            <span class="text-2">Diferença</span>
+            <span class="font-mono" style="color:${diffColor}">${fmt(diff)}</span>
+          </div>
+        ` : c.ignorar
+          ? '<div class="text-xs text-3" style="margin-top:8px">Ignorada</div>'
+          : '<div class="text-xs text-3" style="margin-top:8px">Sem mapeamento — selecione uma conta ou cartão acima</div>'}
+      </div>
+    `;
+  }).join('');
+}
+
+async function atualizarMapeamentoPluggy(id, value) {
+  const changes = { conta_nome: null, cartao_nome: null, ignorar: false };
+  if (value === 'ignorar') changes.ignorar = true;
+  else if (value.startsWith('conta:')) changes.conta_nome = value.slice(6);
+  else if (value.startsWith('cartao:')) changes.cartao_nome = value.slice(7);
+
+  const { error } = await _sb.from('pluggy_contas').update(changes).eq('id', id);
+  if (error) { showToast('Erro ao salvar mapeamento ❌'); return; }
+  showToast('Mapeamento salvo ✅');
+  await carregarPluggyContas();
+}
+
+function renderSincronizacao() {
+  carregarPluggyContas();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
