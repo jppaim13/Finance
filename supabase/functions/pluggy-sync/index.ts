@@ -143,8 +143,14 @@ Deno.serve(async (req) => {
             .toISOString().slice(0, 10)
           : new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
 
+        // /transactions (sem v2) foi descontinuado pela Pluggy (HTTP 410) em
+        // favor de /v2/transactions com paginação por cursor. O parâmetro de
+        // data também mudou de `from` para `dateFrom`. A resposta traz `next`
+        // como URL COMPLETA e pronta pra usar (confirmado no SDK oficial:
+        // pluggy-node client.ts, fetchAllTransactions faz `new URL(next, ...)`
+        // direto) — não precisa recompor com PLUGGY como base.
         let proxima: string | null =
-          `${PLUGGY}/transactions?accountId=${c.id}&from=${desde}&pageSize=500`;
+          `${PLUGGY}/v2/transactions?accountId=${c.id}&dateFrom=${desde}&pageSize=500`;
 
         while (proxima) {
           const pg = await get(proxima, apiKey);
@@ -178,8 +184,9 @@ Deno.serve(async (req) => {
             count === 1 ? criadas++ : atualizadas++;
           }
 
-          // paginação por cursor: `next` já vem com o after embutido
-          proxima = pg.next ? `${PLUGGY}/transactions${pg.next}` : null;
+          // `next` já é a URL completa da próxima página (ou null/undefined
+          // no fim) — usar direto, sem recompor com PLUGGY como prefixo.
+          proxima = pg.next || null;
         }
       }
     }
