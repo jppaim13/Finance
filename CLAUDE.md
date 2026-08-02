@@ -153,6 +153,12 @@ Registrado depois da Fase 1 rodar contra os 5 bancos reais e a coluna de diferen
 
 - **Staging com aprovação transação-a-transação foi REJEITADO.** Motivo: é a mesma tarefa manual que já não é feita por falta de tempo, só com roupa nova — morreria pelo mesmo motivo, depois de todo o trabalho de construção. Não reintroduzir achando que é "mais cuidadoso".
 
+- **Peças que faltam no modelo pra Fase 2 — anotadas aqui, ainda NÃO implementadas (nenhuma migration criada ainda; primeiro vêm as 3 verificações de competência do cartão, ver abaixo).**
+  - `extrato.origem_dado` (`'manual' | 'pluggy'`) — sem isso, depois da primeira importação não dá mais pra saber o que veio de onde, nem desfazer.
+  - `pluggy_transacoes.transacao_id` — vínculo de volta pro `extrato.id` que aquela transação da Pluggy gerou, preenchido no momento da importação.
+  - `conciliacao_faturas` (cartão, competência, decisão, data) — guarda a decisão já tomada por fatura/mês, pra tela de conciliação não perguntar de novo o que já foi resolvido.
+  - **Antes de desenhar a migration**, três verificações agregadas sobre `pluggy_transacoes` (cobertura de histórico por cartão, existência do campo `billForecastDate` da Pluggy — que indica a competência segundo o próprio banco — e concordância dele contra `getVencimentoIdx`/`calcularDataVencimento`). Se as fronteiras de competência divergirem entre Pluggy e app, a coluna de diferença da Fase 1 estaria comparando grandezas com limites de mês diferentes — precisa saber isso antes de confiar em qualquer totalização por competência na Fase 2.
+
 - **Critério de projeto da Fase 2: se o app não for aberto por três semanas, os saldos ainda têm que estar certos quando for.** Categorização é enriquecimento opcional, nunca portão de entrada — uma transação importada entra com categoria "não classificado" e saldo já correto, sem esperar o usuário categorizar antes de contar.
 
 - **Marco zero, não reconciliação retroativa.** Ajustar `saldo_inicial` de cada conta pro saldo real reportado pela Pluggy numa data de corte; **não** reconciliar os meses de defasagem anteriores (trabalho grande, sem retorno, alta chance de abandono no meio); importar só transações posteriores ao corte — o que também elimina o risco de duplicação contra lançamentos manuais já existentes antes do corte.
