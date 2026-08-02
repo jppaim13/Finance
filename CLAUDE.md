@@ -26,7 +26,7 @@ Nothing to build or lint. To work on the app, open `index.html` directly in a br
 Code changes to `index.html`/`date-utils.js`/etc. get committed and pushed automatically. Changes that touch the Supabase schema or RLS policies do **not** follow that flow:
 1. Export a fresh backup first (Configurações → Backup → "Exportar tudo (JSON)").
 2. Write the change as a new numbered file in `migrations/` plus a matching `_rollback.sql`.
-3. The migration is applied **manually** by the user in the Supabase SQL Editor, announced explicitly — never bundled into an unrelated commit, never applied by Claude directly (no DB connection is available in-session).
+3. The migration is applied **manually** by the user in the Supabase SQL Editor, announced explicitly — never bundled into an unrelated commit, never applied by Claude directly. This is not a technical limitation (`supabase db query --linked` does work in-session, and is used freely for read-only investigation/diagnostics) — it's deliberate: schema/RLS changes are much harder to walk back than a code revert, so the one manual step stays as a forced checkpoint the user sees before it takes effect, rather than something that already happened by the time it's mentioned.
 4. One structural change at a time, each verified independently before moving to the next.
 
 ## Repository / deployment topology
