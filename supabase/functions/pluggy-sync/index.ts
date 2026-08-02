@@ -253,6 +253,53 @@ Deno.serve(async (req) => {
             // entre conectores.
             proxima = pg.next ? new URL(pg.next, baseTransacoes).href : null;
           }
+
+          // --- 4. faturas reais do emissor (Fase 1.6, só contas de cartão) --
+          // GET /bills?accountId=...&page=N — paginação por número de página
+          // (campos page/total/totalPages/results), diferente da paginação
+          // por cursor de /v2/transactions. Endpoint novo, contrato ainda não
+          // testado nos 5 conectores — ver Decisões no CLAUDE.md ("não
+          // assumir que testar um conector garante os outros 4").
+          //
+          // `status` não vem pronto da Pluggy — calculado aqui a partir de
+          // `billClosingDate` (passado = fechada, futuro/ausente = aberta).
+          // Isso é uma primeira hipótese, não um fato confirmado: é
+          // justamente a verificação 2 (aberta vs. fechada) da Fase 1.6 que
+          // vai confirmar ou corrigir essa lógica com dado real.
+          if (c.type === "CREDIT") {
+            const hoje = new Date().toISOString().slice(0, 10);
+            let paginaFatura = 1;
+            let totalPaginasFatura = 1;
+            do {
+              const pg = await get(
+                `${PLUGGY}/bills?accountId=${c.id}&page=${paginaFatura}`, apiKey);
+
+              const loteFaturas = (pg.results ?? []).map((b: any) => {
+                const closing = b.billClosingDate ? String(b.billClosingDate).slice(0, 10) : null;
+                return {
+                  bill_id: b.id,
+                  pluggy_account_id: c.id,
+                  due_date: b.dueDate ? String(b.dueDate).slice(0, 10) : null,
+                  closing_date: closing,
+                  total_amount: b.totalAmount,
+                  minimum_amount: b.minimumPaymentAmount,
+                  status: closing && closing <= hoje ? "fechada" : "aberta",
+                  payments: b.payments ?? [],
+                  sincronizado_em: new Date().toISOString(),
+                };
+              });
+
+              if (loteFaturas.length) {
+                const { error } = await admin
+                  .from("pluggy_faturas")
+                  .upsert(loteFaturas, { onConflict: "bill_id" });
+                if (error) throw error;
+              }
+
+              totalPaginasFatura = pg.totalPages ?? 1;
+              paginaFatura++;
+            } while (paginaFatura <= totalPaginasFatura);
+          }
         } catch (eConta) {
           // Não relança: registra e segue pras próximas contas. Uma conta
           // que falhou fica com o histórico que já tinha antes deste run —
