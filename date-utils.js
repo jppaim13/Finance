@@ -76,14 +76,33 @@ function getInstVencIdx(lan, offset, fec, ven) {
 
 // Calcula saldo atual de uma conta com base em todos os dados históricos.
 // Pura: recebe os arrays já carregados, não busca nada sozinha.
-function calcularSaldo(conta, lancamentos, extrato, transferencias) {
+//
+// conta.data_inicial ('YYYY-MM-DD' ou null/undefined): corte de marco zero.
+// Quando presente, saldo_inicial já embute tudo que aconteceu até essa data
+// — então nenhuma ocorrência (lançamento recorrente, linha de extrato,
+// transferência) anterior a ela pode ser somada de novo, ou o saldo conta
+// tudo duas vezes. O corte é aplicado na OCORRÊNCIA, não no registro: um
+// lançamento fixo/parcelado/receita começado antes do corte continua válido
+// e ativo — só os meses/parcelas anteriores ao corte é que não entram; os
+// posteriores (inclusive futuros) continuam contando normal. Com
+// data_inicial nulo (conta sem marco zero aplicado), o comportamento é
+// idêntico ao de antes desse parâmetro existir — coberto em tests.html.
+//
+// `hoje` é parâmetro opcional só pra permitir teste determinístico de
+// lançamentos recorrentes sem depender da data real do relógio; em
+// produção o app nunca passa esse argumento (sempre usa o default).
+function calcularSaldo(conta, lancamentos, extrato, transferencias, hoje = new Date()) {
   let saldo = Number(conta.saldo_inicial || 0);
   const nome = conta.nome;
 
-  const hoje     = new Date();
   const anoHoje  = hoje.getFullYear();
   const mesHoje  = hoje.getMonth() + 1;
   const nowIdx   = anoHoje * 12 + mesHoje;
+
+  const dataInicial = conta.data_inicial || null;
+  const cutoffIdx = dataInicial
+    ? (() => { const [ay, am] = String(dataInicial).split('-').map(Number); return ay * 12 + am; })()
+    : -Infinity;
 
   for (const lan of lancamentos) {
     if (lan.conta_nome !== nome || !lan.ativo) continue;
@@ -95,30 +114,36 @@ function calcularSaldo(conta, lancamentos, extrato, transferencias) {
     const valor = Number(lan.valor || 0);
 
     if (tipo === 'receita única' || tipo === 'receita unica') {
-      saldo += valor;
+      if (startIdx >= cutoffIdx) saldo += valor;
     } else if (tipo === 'receita') {
       const anoFim = lan.ano_fim ? Number(lan.ano_fim) : anoHoje;
       const mesFim = lan.mes_fim ? Number(lan.mes_fim) : mesHoje;
       const endIdx = Math.min(anoFim * 12 + mesFim, nowIdx);
-      saldo += valor * Math.max(0, endIdx - startIdx + 1);
+      const efetivoInicio = Math.max(startIdx, cutoffIdx);
+      saldo += valor * Math.max(0, endIdx - efetivoInicio + 1);
     } else if (tipo === 'fixo' || tipo === 'variável' || tipo === 'variavel') {
       const anoFim = lan.ano_fim ? Number(lan.ano_fim) : anoHoje;
       const mesFim = lan.mes_fim ? Number(lan.mes_fim) : mesHoje;
       const endIdx = Math.min(anoFim * 12 + mesFim, nowIdx);
-      saldo -= valor * Math.max(0, endIdx - startIdx + 1);
+      const efetivoInicio = Math.max(startIdx, cutoffIdx);
+      saldo -= valor * Math.max(0, endIdx - efetivoInicio + 1);
     } else if (tipo === 'parcelado') {
       const parcelas = Number(lan.parcelas || 1);
-      const count    = Math.min(parcelas, Math.max(0, nowIdx - startIdx + 1));
-      saldo -= valor * count;
+      const ultimaParcelaIdx = startIdx + parcelas - 1;
+      const efetivoInicio = Math.max(startIdx, cutoffIdx);
+      const efetivoFim    = Math.min(ultimaParcelaIdx, nowIdx);
+      saldo -= valor * Math.max(0, efetivoFim - efetivoInicio + 1);
     }
   }
 
   for (const tx of extrato) {
     if (tx.conta_nome !== nome) continue;
+    if (dataInicial && tx.data < dataInicial) continue;
     saldo += tx.tipo === 'receita' ? Number(tx.valor || 0) : -Number(tx.valor || 0);
   }
 
   for (const tr of transferencias) {
+    if (dataInicial && tr.data < dataInicial) continue;
     const v = Number(tr.valor || 0);
     if (tr.conta_dest   === nome) saldo += v;
     if (tr.conta_origem === nome) saldo -= v;

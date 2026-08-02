@@ -74,6 +74,84 @@ assertEqual(formatarData(parseData('2028-02-29')), '2028-02-29', 'round-trip: 29
   assertEqual(saldo, 770, 'calcularSaldo: fixture completa (compra de cartão não afeta, fatura afeta)');
 }
 
+// ─── calcularSaldo: marco zero (conta.data_inicial) ────────────────────────
+// Critério de aceitação: com data_inicial nulo, byte-idêntico ao
+// comportamento de antes dessa mudança existir. `hoje` é injetado pra não
+// depender da data real do relógio (só usado em teste, nunca em produção).
+{
+  const hoje = new Date(2026, 7, 15); // 15/ago/2026 (mês 0-based: 7 = agosto)
+  const conta = { nome: 'Conta Corte', saldo_inicial: 1000, data_inicial: '2026-08-01' };
+  const lancamentos = [
+    // fixo iniciado em jan/2026, sem fim — só a ocorrência de agosto (o mês
+    // de "hoje") cai depois do corte de 01/08; jan-jul não podem contar de
+    // novo, já estão embutidos no saldo_inicial vindo da Pluggy.
+    { conta_nome: 'Conta Corte', ativo: true, tipo: 'Fixo', valor: 10, mes_ini: 1, ano_ini: 2026 },
+  ];
+  const extrato = [
+    { conta_nome: 'Conta Corte', data: '2026-07-15', tipo: 'despesa', valor: 50 }, // antes do corte: ignorado
+    { conta_nome: 'Conta Corte', data: '2026-08-05', tipo: 'despesa', valor: 30 }, // depois do corte: conta
+  ];
+  const transferencias = [];
+  // 1000 - 10 (fixo, só a ocorrência de agosto) - 30 (extrato de 05/08) = 960
+  // extrato de 15/07 fica de fora
+  const saldo = calcularSaldo(conta, lancamentos, extrato, transferencias, hoje);
+  assertEqual(saldo, 960, 'calcularSaldo: marco zero corta extrato antigo e limita fixo à ocorrência pós-corte');
+}
+{
+  // MESMA fixture, sem data_inicial: tem que reproduzir o comportamento de
+  // antes do corte existir — extrato antigo conta, fixo soma jan-ago inteiro.
+  const hoje = new Date(2026, 7, 15);
+  const conta = { nome: 'Conta Corte', saldo_inicial: 1000 }; // sem data_inicial
+  const lancamentos = [
+    { conta_nome: 'Conta Corte', ativo: true, tipo: 'Fixo', valor: 10, mes_ini: 1, ano_ini: 2026 },
+  ];
+  const extrato = [
+    { conta_nome: 'Conta Corte', data: '2026-07-15', tipo: 'despesa', valor: 50 },
+    { conta_nome: 'Conta Corte', data: '2026-08-05', tipo: 'despesa', valor: 30 },
+  ];
+  const transferencias = [];
+  // 1000 - 50 - 30 (extrato, os dois contam) - 10*8 (fixo jan-ago = 8 meses) = 840
+  const saldo = calcularSaldo(conta, lancamentos, extrato, transferencias, hoje);
+  assertEqual(saldo, 840, 'calcularSaldo: sem data_inicial, comportamento idêntico ao anterior à mudança (regressão)');
+}
+{
+  // Parcelado tem a mesma estrutura que Fixo — corte na ocorrência (parcela),
+  // não no registro. 10 parcelas a partir de jan/2026; corte em ago/2026;
+  // "hoje" = ago/2026 → só a parcela de agosto (a 8ª) passa do corte.
+  const hoje = new Date(2026, 7, 15);
+  const comCorte = calcularSaldo(
+    { nome: 'C', saldo_inicial: 0, data_inicial: '2026-08-01' },
+    [{ conta_nome: 'C', ativo: true, tipo: 'Parcelado', valor: 5, parcelas: 10, mes_ini: 1, ano_ini: 2026 }],
+    [], [], hoje
+  );
+  assertEqual(comCorte, -5, 'calcularSaldo: parcelado com corte conta só a parcela pós-corte (agosto)');
+
+  const semCorte = calcularSaldo(
+    { nome: 'C', saldo_inicial: 0 },
+    [{ conta_nome: 'C', ativo: true, tipo: 'Parcelado', valor: 5, parcelas: 10, mes_ini: 1, ano_ini: 2026 }],
+    [], [], hoje
+  );
+  assertEqual(semCorte, -40, 'calcularSaldo: parcelado sem corte conta jan-ago (8 de 10 parcelas) — regressão');
+}
+{
+  // receita única: ocorre uma vez só, no mês de mes_ini/ano_ini — antes do
+  // corte não pode contar (já embutida no saldo_inicial), depois conta.
+  const hoje = new Date(2026, 7, 15);
+  const antesDoCorte = calcularSaldo(
+    { nome: 'C', saldo_inicial: 0, data_inicial: '2026-08-01' },
+    [{ conta_nome: 'C', ativo: true, tipo: 'Receita única', valor: 100, mes_ini: 6, ano_ini: 2026 }],
+    [], [], hoje
+  );
+  assertEqual(antesDoCorte, 0, 'calcularSaldo: receita única antes do corte não soma (já embutida no saldo_inicial)');
+
+  const depoisDoCorte = calcularSaldo(
+    { nome: 'C', saldo_inicial: 0, data_inicial: '2026-08-01' },
+    [{ conta_nome: 'C', ativo: true, tipo: 'Receita única', valor: 100, mes_ini: 8, ano_ini: 2026 }],
+    [], [], hoje
+  );
+  assertEqual(depoisDoCorte, 100, 'calcularSaldo: receita única depois do corte soma normal');
+}
+
 // ─── getVencimentoIdx: competência/vencimento de cartão ────────────────────
 assertEqual(getVencimentoIdx('2026-06-10', 10, 20), 2026 * 12 + 6,
   'vencimento: compra NO dia do fechamento fecha no mesmo mês (dia <= fechamento)');
