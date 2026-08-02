@@ -188,7 +188,7 @@ Aberta depois da Fase 1 mostrar que a coluna de Diferença de cartão não tinha
 
 - **Fora de escopo da Fase 1.6**: tela de aprovação/staging transação-a-transação (já rejeitada, ver Fase 2), substituição de fatura calculada pela real no restante do app, marco zero dos saldos (esse último segue independente, pode andar em paralelo). A ativação da coluna de Diferença na tela de Sincronização (pra faturas vencidas) **está dentro do escopo** — é o que a Fase 1.6 foi feita pra destravar.
 
-### Pluggy — Fase 1.7 (relatório de casamento transação-a-transação, somente leitura, ainda não implementada)
+### Pluggy — Fase 1.7 (relatório de casamento transação-a-transação, somente leitura, rodado)
 
 - **REVERSÃO: a ideia de decidir por fatura entre "manter a manual" ou "substituir pela Pluggy" (com corte de 5% de diferença) foi abandonada.** Motivo: "substituir" descarta as categorias que o usuário já classificou manualmente — o único enriquecimento que o plano gratuito da Pluggy não repõe sozinho. O modelo correto é **completar**, não substituir: casar transação a transação dentro de cada fatura, preservar as linhas do app que já têm categoria, importar só as que faltam. O critério de 5% some junto com a escolha binária — deixou de fazer sentido.
 
@@ -200,8 +200,21 @@ Aberta depois da Fase 1 mostrar que a coluna de Diferença de cartão não tinha
   - **Saída do relatório**: por cartão × competência, só contagens e somas — nunca linha crua (mesma regra permanente de sempre pra dado Pluggy em chat).
   - **Pergunta que o relatório responde**: quanto de categorização já feita está em jogo. Se maio/2026 em diante estiver praticamente vazio no app (ver Fase 1.6 — usuário confirmou lacuna real de lançamento manual a partir de maio), não há o que preservar ali e o caminho é importação direta pros meses recentes. Se houver volume classificado em meses anteriores, o casamento vale o esforço. **Os números decidem o desenho da etapa seguinte — não decidir antes de ver o relatório.**
   - **Começar pelo Inter**: maior volume de transações (444), maior valor de fatura, e o conector mais pobre em metadado (sem `billForecastDate`, sem `billClosingDate`, sem `payments`). Se o casamento funciona nele, funciona nos outros quatro.
+  - **RODADO — Inter primeiro, depois os 5 cartões sincronizados, competências de março a julho/2026 (a janela que o app rastreia até hoje).** Resultado por cartão, agregado (nunca linha crua):
 
-- **Efeito colateral que vale registrar desde já**: as transações que casarem formam pares "descrição da Pluggy ↔ categoria escolhida pelo usuário" — conjunto de treino pronto pra regras de categorização automática numa fase futura. As categorias já existentes não só sobrevivem à importação, passam a classificar o que vier depois. É o que evita que a Fase 2 vire trabalho manual permanente.
+    | Cartão | Casou 1:1 (n / soma) | Só Pluggy (n / soma) | Só app (n / soma) | Ambíguo (n / soma) |
+    |---|---|---|---|---|
+    | C6 Carbon | 13 / R$1.651,93 | 15 / R$1.955,63 | 0 / R$0 | 0 |
+    | Inter Prime | 82 / R$5.009,09 | 126 / R$13.853,87 | 5 / R$1.083,20 | 2 / R$20,00 |
+    | Mercado Pago | 13 / R$1.021,91 | 18 / R$2.028,20 | 0 / R$0 | 0 |
+    | Nubank JP | 8 / R$271,55 | 52 / R$1.071,64 | 4 / R$128,18 | 0 |
+    | XP Visa | 52 / R$4.701,58 | 161 / R$13.961,57 | 5 / R$794,14 | 2 / R$40,00 |
+    | **Total (5 cartões)** | **168 / R$12.656,06** | **372 / R$32.870,91** | **14 / R$2.005,52** | **4 / R$60,00** |
+
+    **Leitura**: casamento vale o esforço — R$12.656,06 já classificados manualmente seriam preservados (não descartados) se a importação for feita por casamento em vez de substituição. "Só app tem" é pequeno (R$2.005,52, 14 linhas) e concentrado em Inter/XP/Nubank — candidatos a investigação individual (não em massa), não indício de problema sistêmico. Ambíguos são poucos (4 casos, R$60,00 no total) — o critério valor+±3 dias não está gerando volume de ambiguidade preocupante.
+    **Confirma com número exato o que a Fase 1.6 já tinha revelado por outro ângulo**: o casamento se concentra em março–maio/2026; a partir de **junho** os 5 cartões caem para ~100% "só Pluggy tem" (nenhum "casou" em nenhum cartão a partir de junho) — a lacuna de lançamento manual começou em junho, não maio como a leitura inicial (baseada só na Diferença agregada da Fase 1.6) sugeria.
+    **Achado à parte, não decidido ainda**: a taxa de casamento do Nubank JP é bem mais baixa que os outros 4 mesmo nos meses "em dia" (8 casaram contra 52 só-Pluggy, ~13%, contra >75% nos outros cartões em abril/maio) — pode ser convenção de lançamento diferente pra esse cartão especificamente (ex: lançado agregado, não compra a compra) ou de fato lançamento mais esparso. Não investigado a fundo, só sinalizado aqui pra não se perder.
+  - **Limitação de método, registrada explicitamente**: o casamento comparou só contra `extrato` (`origem='cartao'`), conforme pedido. Compras parceladas que o usuário lança via `lancamentos` (tabela separada, mecanismo de parcela do app) **não entram nesse relatório** — uma parcela genuinamente já registrada ali apareceria como "só Pluggy tem" por esse método, não porque falta de verdade. Os números acima podem estar super-representando "só Pluggy" nessa medida; não foi quantificado quanto.: as transações que casarem formam pares "descrição da Pluggy ↔ categoria escolhida pelo usuário" — conjunto de treino pronto pra regras de categorização automática numa fase futura. As categorias já existentes não só sobrevivem à importação, passam a classificar o que vier depois. É o que evita que a Fase 2 vire trabalho manual permanente.
 
 - **Fora de escopo desta etapa**: `extrato.origem_dado`, gravação de `pluggy_transacoes.transacao_id`, importação de fato das não-casadas, tela de conciliação. Tudo isso depende do que o relatório mostrar — vem depois, não junto.
 
