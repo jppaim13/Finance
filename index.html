@@ -1219,6 +1219,16 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
         </div>
         <button class="btn-secondary" id="btnSincronizarPluggy" onclick="sincronizarPluggy()">🔄 Sincronizar agora</button>
       </div>
+      <div class="month-selector" style="margin-bottom:12px">
+        <button class="month-nav-btn" onclick="changeMonth(-1,'S')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <span id="currentMonthLabelS">Mar/2026</span>
+        <button class="month-nav-btn" onclick="changeMonth(1,'S')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      </div>
+      <div class="text-xs text-2" style="margin-bottom:8px">A "Diferença" do cartão compara a competência selecionada acima contra a fatura real vencida (só faturas já vencidas entram — ver CLAUDE.md).</div>
       <div class="text-xs text-3" id="pluggySyncStatus" style="margin-bottom:12px"></div>
       <div id="pluggy-contas-list">
         <div class="empty-state"><div class="emoji">🔄</div><p>Nenhuma conta sincronizada ainda</p></div>
@@ -2160,7 +2170,7 @@ function changeMonth(dir, ctx) {
 }
 function updateMonthLabels() {
   const m = MESES[state.currentMonth];
-  ['currentMonthLabel','currentMonthLabelE','currentMonthLabelF','currentMonthLabelR'].forEach(id => {
+  ['currentMonthLabel','currentMonthLabelE','currentMonthLabelF','currentMonthLabelR','currentMonthLabelS'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = m;
   });
