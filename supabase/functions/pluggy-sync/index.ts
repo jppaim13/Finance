@@ -231,6 +231,14 @@ Deno.serve(async (req) => {
                 merchant: t.merchant ?? null,
                 category: t.category ?? null,
                 operationType: t.operationType ?? null,
+                // currencyCode/amountInAccountCurrency: campos que a Pluggy
+                // documenta pra transação internacional (amount pode vir na
+                // moeda original, amountInAccountCurrency já convertido pro
+                // BRL da conta) — não eram capturados antes. Só detector, não
+                // conversão nossa: gravado cru, sem decidir qual valor usar
+                // aqui. Ver Decisões no CLAUDE.md (achado do Nubank/ChatGPT).
+                currencyCode: t.currencyCode ?? null,
+                amountInAccountCurrency: t.amountInAccountCurrency ?? null,
               },
               sincronizado_em: new Date().toISOString(),
             }));
