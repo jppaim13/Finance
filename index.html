@@ -4707,10 +4707,11 @@ async function carregarPluggyContas() {
   const el = document.getElementById('pluggy-contas-list');
   if (!el || !_sb) return;
 
-  const [{ data: contas, error }, { data: items }, { data: ultimoLog }] = await Promise.all([
+  const [{ data: contas, error }, { data: items }, { data: ultimoLog }, { data: faturas }] = await Promise.all([
     _sb.from('pluggy_contas').select('*').order('nome'),
     _sb.from('pluggy_items').select('*'),
     _sb.from('pluggy_sync_log').select('*').order('iniciado_em', { ascending: false }).limit(1).maybeSingle(),
+    _sb.from('pluggy_faturas').select('*'),
   ]);
 
   const statusEl = document.getElementById('pluggySyncStatus');
@@ -4758,17 +4759,29 @@ async function carregarPluggyContas() {
       const contaApp = [...(state.contas || []), ...(state.caixinhas || [])].find(x => x.nome === c.conta_nome);
       if (contaApp) { saldoCalc = contaApp.saldo; diff = Number(c.saldo || 0) - saldoCalc; }
     } else if (!c.ignorar && c.cartao_nome) {
-      // O saldo que a Pluggy devolve pra uma conta CREDIT é a fatura em
-      // ABERTO agora (inclui compras do ciclo corrente ainda não fechado).
-      // A "fatura do mês selecionado" do app é uma competência FECHADA —
-      // são grandezas diferentes por definição, não por erro de cálculo.
-      // Mostrar como "diferença" ensinaria a ignorar a coluna (que é o
-      // produto inteiro da Fase 1) também pras contas, onde ela é
-      // confiável. Comparação de verdade pra cartão depende de
-      // pagamentos_fatura + billForecastDate — fica pra Fase 2.
+      // Fase 1.6: comparação de cartão passa a ser definível filtrando
+      // faturas já VENCIDAS (due_date < hoje ⇒ fechada, fato de calendário,
+      // não heurística de conector — ver Decisões no CLAUDE.md). O saldo
+      // que a Pluggy devolve na conta CREDIT (`c.saldo`) continua sendo a
+      // fatura em ABERTO agora — por isso a comparação usa a fatura real de
+      // `pluggy_faturas` pra essa competência, não `c.saldo`.
       const faturaAtual = (state.resumo[state.currentMonth] || {}).faturas?.[c.cartao_nome] || 0;
-      saldoCalc = -faturaAtual;
-      diffIndefinida = true;
+      saldoCalc = faturaAtual;
+
+      const [anoComp, mesComp] = mesNomeToAnoMes(MESES_NOMES[state.currentMonth]);
+      const hojeStr = formatarData(new Date());
+      const faturaReal = (faturas || []).find(f => {
+        if (f.pluggy_account_id !== c.pluggy_account_id) return false;
+        if (!f.due_date || f.due_date >= hojeStr) return false; // ainda aberta, não conciliável
+        const [ay, am] = f.due_date.split('-').map(Number);
+        return ay === anoComp && am === mesComp;
+      });
+
+      if (faturaReal) {
+        diff = Number(faturaReal.total_amount || 0) - faturaAtual;
+      } else {
+        diffIndefinida = true; // sem fatura vencida da Pluggy pra essa competência ainda
+      }
     }
 
     const optConta = x => `<option value="conta:${x.nome}" ${c.conta_nome === x.nome ? 'selected' : ''}>${x.nome}</option>`;
@@ -4781,7 +4794,7 @@ async function carregarPluggyContas() {
     `;
 
     const diffColor = diff === null ? 'var(--text-3)' : Math.abs(diff) < 0.01 ? 'var(--green)' : 'var(--red)';
-    const rotuloSaldoCalc = diffIndefinida ? 'Fatura do mês (app)' : 'Saldo calculado (app)';
+    const rotuloSaldoCalc = c.cartao_nome ? 'Fatura do mês (app)' : 'Saldo calculado (app)';
     const meta = [banco, c.tipo, c.numero].filter(Boolean).join(' · ');
 
     return `
@@ -4812,7 +4825,7 @@ async function carregarPluggyContas() {
           <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:13px">
             <span class="text-2">Diferença</span>
             ${diffIndefinida
-              ? '<span class="text-xs text-3" style="text-align:right">— comparação não definida<br>(fatura em aberto ≠ competência fechada)</span>'
+              ? '<span class="text-xs text-3" style="text-align:right">— sem fatura vencida da Pluggy<br>pra essa competência ainda</span>'
               : `<span class="font-mono" style="color:${diffColor}">${fmt(diff)}</span>`}
           </div>
         ` : c.ignorar
