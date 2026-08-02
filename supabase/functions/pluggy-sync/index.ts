@@ -198,8 +198,14 @@ Deno.serve(async (req) => {
         let proxima: string | null =
           `${baseTransacoes}?accountId=${c.id}&dateFrom=${desde}`;
 
+        let pagina = 0;
         while (proxima) {
+          pagina++;
           const pg = await get(proxima, apiKey);
+          // Diagnóstico temporário: suspeita de truncamento em contas que
+          // batem exatamente no tamanho de página (500) — ver Decisões no
+          // CLAUDE.md. Remover depois de confirmar/corrigir.
+          console.log(`[pluggy-sync] conta=${c.id} pagina=${pagina} resultados=${(pg.results ?? []).length} total=${pg.total ?? "?"} totalPages=${pg.totalPages ?? "?"} next=${pg.next ? "sim" : "nao"}`);
 
           // Upsert em LOTE (uma chamada por página, não uma por transação).
           // Antes eram ~1.858 round-trips numa sincronização só (5 bancos) —
