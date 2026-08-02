@@ -4725,6 +4725,10 @@ async function carregarPluggyContas() {
         statusEl.textContent = `Última sincronização: ${quandoFmt} — erro: ${ultimoLog.erro || '?'}`;
       } else if (!ultimoLog.terminado_em) {
         statusEl.textContent = `Sincronizando desde ${quandoFmt}...`;
+      } else if (ultimoLog.status === 'parcial') {
+        // algumas contas sincronizaram, outras falharam nesse run — não é
+        // erro total nem sucesso total, ver Decisões no CLAUDE.md
+        statusEl.textContent = `Última sincronização: ${quandoFmt} — ${ultimoLog.criadas || 0} transação(ões) processada(s), com falhas: ${ultimoLog.erro || '?'}`;
       } else {
         // ultimoLog.criadas guarda o total processado (insert+update juntos,
         // ver Decisões no CLAUDE.md sobre por que não distinguimos os dois)

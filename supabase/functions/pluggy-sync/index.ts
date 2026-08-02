@@ -137,13 +137,14 @@ Deno.serve(async (req) => {
   // compatibilidade com o schema existente (ver Decisões no CLAUDE.md).
   let processadas = 0;
   const atualizadas = 0;
+  const errosPorConta: string[] = [];
 
   try {
     const apiKey = await pluggyAuth(clientId, clientSecret);
 
     // --- 2. items vêm da NOSSA base ---------------------------------------
     // A Pluggy não oferece endpoint para listar items ("por razões de
-    // segurança"); cada cliente guarda os itemId. Foram copiados à mão do
+    // segurança"); cada cliente guarda o itemId. Foram copiados à mão do
     // Dashboard para pluggy_items.
     const { data: items } = await admin
       .from("pluggy_items").select("*").eq("app_id", app.id);
@@ -153,112 +154,122 @@ Deno.serve(async (req) => {
         `${PLUGGY}/accounts?itemId=${item.pluggy_item_id}`, apiKey);
 
       for (const c of contas.results ?? []) {
-        // preserva o mapeamento manual (conta_nome/cartao_nome/ignorar):
-        // onConflict atualiza só os campos vindos da Pluggy.
-        await admin.from("pluggy_contas").upsert({
-          app_id: app.id,
-          pluggy_account_id: c.id,
-          pluggy_item_id: item.pluggy_item_id,
-          nome: c.name,
-          tipo: c.type,
-          subtipo: c.subtype,
-          numero: c.number,
-          saldo: c.balance,
-          saldo_atualizado_em: new Date().toISOString(),
-        }, { onConflict: "pluggy_account_id" });
-
-        // --- 3. transações, incremental por data ---------------------------
-        const { data: ultima } = await admin
-          .from("pluggy_transacoes")
-          .select("data").eq("pluggy_account_id", c.id)
-          .order("data", { ascending: false }).limit(1).maybeSingle();
-
-        // 30 dias de sobreposição: PENDING vira POSTED e valores mudam
-        // retroativamente. Sem essa folga, transação atualizada nunca é revista.
-        const desde = ultima
-          ? new Date(new Date(ultima.data).getTime() - 30 * 864e5)
-            .toISOString().slice(0, 10)
-          : new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
-
-        // /transactions (sem v2) foi descontinuado pela Pluggy (HTTP 410) em
-        // favor de /v2/transactions com paginação por cursor. O parâmetro de
-        // data também mudou de `from` para `dateFrom`. `pageSize` não é
-        // aceito no v2 (400 "property pageSize should not exist") — o
-        // tamanho de página parece ser fixo (500) do lado da Pluggy agora.
-        //
-        // `next` é INCONSISTENTE entre conectores: no Nubank veio como URL
-        // completa; em outro (XP/Mercado Pago/Inter, ainda não isolado qual)
-        // veio só como fragmento de query ("?accountId=...&after=..."), o
-        // que quebrava com "Invalid URL" ao tentar usar direto como URL.
-        // O próprio SDK oficial (pluggy-node) já lida com essa ambiguidade
-        // via `new URL(next, baseUrl)`, que resolve tanto absoluta quanto
-        // relativa — mesma solução aqui, usando o endpoint como base pra
-        // preservar o path (`/v2/transactions`) quando next é só a query.
-        const baseTransacoes = `${PLUGGY}/v2/transactions`;
-        let proxima: string | null =
-          `${baseTransacoes}?accountId=${c.id}&dateFrom=${desde}`;
-
-        let pagina = 0;
-        while (proxima) {
-          pagina++;
-          const pg = await get(proxima, apiKey);
-          // Diagnóstico temporário: suspeita de truncamento em contas que
-          // batem exatamente no tamanho de página (500) — ver Decisões no
-          // CLAUDE.md. Remover depois de confirmar/corrigir.
-          console.log(`[pluggy-sync] conta=${c.id} pagina=${pagina} resultados=${(pg.results ?? []).length} total=${pg.total ?? "?"} totalPages=${pg.totalPages ?? "?"} next=${pg.next ? "sim" : "nao"}`);
-
-          // Upsert em LOTE (uma chamada por página, não uma por transação).
-          // Antes eram ~1.858 round-trips numa sincronização só (5 bancos) —
-          // motivo mais provável do timeout que deixava pluggy_sync_log com
-          // status null. Agora são ~10 (uma por página de resultados).
-          const lote = (pg.results ?? []).map((t: any) => ({
-            pluggy_id: t.id,
-            pluggy_account_id: c.id,
+        // Cada conta é isolada num try/catch próprio: uma falha de paginação
+        // numa conta não pode impedir as demais contas da lista de serem
+        // processadas no mesmo run. Antes disso, um erro no meio da conta N
+        // abortava o loop inteiro e as contas N+1..fim nem chegavam a ser
+        // tentadas naquele run — sintoma real já visto ("carregou alguns e
+        // outros não"). Ver Decisões no CLAUDE.md (truncamento do XP Visa).
+        try {
+          // preserva o mapeamento manual (conta_nome/cartao_nome/ignorar):
+          // onConflict atualiza só os campos vindos da Pluggy.
+          await admin.from("pluggy_contas").upsert({
             app_id: app.id,
-            data: paraDataLocal(t.date),
-            data_utc: t.date,
-            descricao: t.description,
-            descricao_raw: t.descriptionRaw,
-            valor: t.amount, // convenção crua da Pluggy — não normalizar
-            tipo: t.type,
-            status: t.status,
-            metadata: {
-              creditCardMetadata: t.creditCardMetadata ?? null,
-              paymentData: t.paymentData ?? null,
-              merchant: t.merchant ?? null,
-              category: t.category ?? null,
-              operationType: t.operationType ?? null,
-            },
-            sincronizado_em: new Date().toISOString(),
-          }));
+            pluggy_account_id: c.id,
+            pluggy_item_id: item.pluggy_item_id,
+            nome: c.name,
+            tipo: c.type,
+            subtipo: c.subtype,
+            numero: c.number,
+            saldo: c.balance,
+            saldo_atualizado_em: new Date().toISOString(),
+          }, { onConflict: "pluggy_account_id" });
 
-          if (lote.length) {
-            const { error } = await admin
-              .from("pluggy_transacoes")
-              .upsert(lote, { onConflict: "pluggy_id" });
-            if (error) throw error;
-            // upsert sempre "afeta" 1 linha por registro, seja insert ou
-            // update — count===1 não distingue os dois (bug real: fazia
-            // `atualizadas` nunca incrementar). Sem o truque de xmax não dá
-            // pra separar barato via PostgREST, então só contamos o total
-            // processado — ver Decisões no CLAUDE.md.
-            processadas += lote.length;
+          // --- 3. transações, incremental por data -------------------------
+          const { data: ultima } = await admin
+            .from("pluggy_transacoes")
+            .select("data").eq("pluggy_account_id", c.id)
+            .order("data", { ascending: false }).limit(1).maybeSingle();
+
+          // 30 dias de sobreposição: PENDING vira POSTED e valores mudam
+          // retroativamente. Sem essa folga, transação atualizada nunca é revista.
+          const desde = ultima
+            ? new Date(new Date(ultima.data).getTime() - 30 * 864e5)
+              .toISOString().slice(0, 10)
+            : new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
+
+          // /transactions (sem v2) foi descontinuado pela Pluggy (HTTP 410) em
+          // favor de /v2/transactions com paginação por cursor. O parâmetro de
+          // data também mudou de `from` para `dateFrom`. `pageSize` não é
+          // aceito no v2 (400 "property pageSize should not exist") — o
+          // tamanho de página é fixo em 500 do lado da Pluggy (confirmado:
+          // ver Decisões no CLAUDE.md).
+          //
+          // `next` é INCONSISTENTE entre conectores: no Nubank veio como URL
+          // completa; em outros veio só como fragmento de query
+          // ("?accountId=...&after=..."), o que quebrava com "Invalid URL"
+          // ao tentar usar direto como URL. O próprio SDK oficial
+          // (pluggy-node) já lida com essa ambiguidade via
+          // `new URL(next, baseUrl)`, que resolve tanto absoluta quanto
+          // relativa — mesma solução aqui, usando o endpoint como base pra
+          // preservar o path (`/v2/transactions`) quando next é só a query.
+          const baseTransacoes = `${PLUGGY}/v2/transactions`;
+          let proxima: string | null =
+            `${baseTransacoes}?accountId=${c.id}&dateFrom=${desde}`;
+
+          while (proxima) {
+            const pg = await get(proxima, apiKey);
+
+            // Upsert em LOTE (uma chamada por página, não uma por transação).
+            // Antes eram ~1.858 round-trips numa sincronização só (5 bancos) —
+            // motivo mais provável do timeout que deixava pluggy_sync_log com
+            // status null. Agora são ~10 (uma por página de resultados).
+            const lote = (pg.results ?? []).map((t: any) => ({
+              pluggy_id: t.id,
+              pluggy_account_id: c.id,
+              app_id: app.id,
+              data: paraDataLocal(t.date),
+              data_utc: t.date,
+              descricao: t.description,
+              descricao_raw: t.descriptionRaw,
+              valor: t.amount, // convenção crua da Pluggy — não normalizar
+              tipo: t.type,
+              status: t.status,
+              metadata: {
+                creditCardMetadata: t.creditCardMetadata ?? null,
+                paymentData: t.paymentData ?? null,
+                merchant: t.merchant ?? null,
+                category: t.category ?? null,
+                operationType: t.operationType ?? null,
+              },
+              sincronizado_em: new Date().toISOString(),
+            }));
+
+            if (lote.length) {
+              const { error } = await admin
+                .from("pluggy_transacoes")
+                .upsert(lote, { onConflict: "pluggy_id" });
+              if (error) throw error;
+              // upsert sempre "afeta" 1 linha por registro, seja insert ou
+              // update — count===1 não distingue os dois (bug real: fazia
+              // `atualizadas` nunca incrementar). Sem o truque de xmax não dá
+              // pra separar barato via PostgREST, então só contamos o total
+              // processado — ver Decisões no CLAUDE.md.
+              processadas += lote.length;
+            }
+
+            // new URL(next, base) resolve tanto next absoluto quanto relativo
+            // (só query string) — ver comentário acima sobre a inconsistência
+            // entre conectores.
+            proxima = pg.next ? new URL(pg.next, baseTransacoes).href : null;
           }
-
-          // new URL(next, base) resolve tanto next absoluto quanto relativo
-          // (só query string) — ver comentário acima sobre a inconsistência
-          // entre conectores.
-          proxima = pg.next ? new URL(pg.next, baseTransacoes).href : null;
+        } catch (eConta) {
+          // Não relança: registra e segue pras próximas contas. Uma conta
+          // que falhou fica com o histórico que já tinha antes deste run —
+          // não parcialmente truncada por um erro em outra conta.
+          errosPorConta.push(`conta=${c.id} (${c.name}): ${String(eConta)}`);
         }
       }
     }
 
+    const status = errosPorConta.length ? "parcial" : "ok";
     await admin.from("pluggy_sync_log").update({
       terminado_em: new Date().toISOString(),
-      status: "ok", criadas: processadas, atualizadas,
+      status, criadas: processadas, atualizadas,
+      erro: errosPorConta.length ? errosPorConta.join(" | ") : null,
     }).eq("id", log!.id);
 
-    return new Response(JSON.stringify({ ok: true, processadas }), {
+    return new Response(JSON.stringify({ ok: true, processadas, erros: errosPorConta }), {
       headers: { ...cors, "Content-Type": "application/json" },
     });
 
