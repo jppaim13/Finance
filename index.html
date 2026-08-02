@@ -4693,7 +4693,7 @@ async function sincronizarPluggy() {
     if (!res.ok || json.ok === false) {
       showToast(`Erro na sincronização ❌ ${json.erro || res.statusText}`);
     } else {
-      showToast(`Sincronizado ✅ — ${json.criadas} nova(s), ${json.atualizadas} atualizada(s)`);
+      showToast(`Sincronizado ✅ — ${json.processadas} transação(ões) processada(s)`);
     }
   } catch (e) {
     showToast(`Erro na sincronização ❌ ${e.message}`);
@@ -4726,7 +4726,9 @@ async function carregarPluggyContas() {
       } else if (!ultimoLog.terminado_em) {
         statusEl.textContent = `Sincronizando desde ${quandoFmt}...`;
       } else {
-        statusEl.textContent = `Última sincronização: ${quandoFmt} — ${ultimoLog.criadas || 0} nova(s), ${ultimoLog.atualizadas || 0} atualizada(s)`;
+        // ultimoLog.criadas guarda o total processado (insert+update juntos,
+        // ver Decisões no CLAUDE.md sobre por que não distinguimos os dois)
+        statusEl.textContent = `Última sincronização: ${quandoFmt} — ${ultimoLog.criadas || 0} transação(ões) processada(s)`;
       }
     }
   }
@@ -4746,18 +4748,23 @@ async function carregarPluggyContas() {
 
   el.innerHTML = contas.map(c => {
     const banco = bancoMap[c.pluggy_item_id] || '';
-    let saldoCalc = null, diff = null;
+    let saldoCalc = null, diff = null, diffIndefinida = false;
 
     if (!c.ignorar && c.conta_nome) {
       const contaApp = [...(state.contas || []), ...(state.caixinhas || [])].find(x => x.nome === c.conta_nome);
       if (contaApp) { saldoCalc = contaApp.saldo; diff = Number(c.saldo || 0) - saldoCalc; }
     } else if (!c.ignorar && c.cartao_nome) {
-      // Fatura do mês atual como proxy do "quanto devo" no cartão — sinal da
-      // Pluggy pra cartão ainda não verificado contra os 5 conectores reais,
-      // não normalizar aqui (ver Decisões no CLAUDE.md).
+      // O saldo que a Pluggy devolve pra uma conta CREDIT é a fatura em
+      // ABERTO agora (inclui compras do ciclo corrente ainda não fechado).
+      // A "fatura do mês selecionado" do app é uma competência FECHADA —
+      // são grandezas diferentes por definição, não por erro de cálculo.
+      // Mostrar como "diferença" ensinaria a ignorar a coluna (que é o
+      // produto inteiro da Fase 1) também pras contas, onde ela é
+      // confiável. Comparação de verdade pra cartão depende de
+      // pagamentos_fatura + billForecastDate — fica pra Fase 2.
       const faturaAtual = (state.resumo[state.currentMonth] || {}).faturas?.[c.cartao_nome] || 0;
       saldoCalc = -faturaAtual;
-      diff = Number(c.saldo || 0) - saldoCalc;
+      diffIndefinida = true;
     }
 
     const optConta = x => `<option value="conta:${x.nome}" ${c.conta_nome === x.nome ? 'selected' : ''}>${x.nome}</option>`;
@@ -4770,6 +4777,7 @@ async function carregarPluggyContas() {
     `;
 
     const diffColor = diff === null ? 'var(--text-3)' : Math.abs(diff) < 0.01 ? 'var(--green)' : 'var(--red)';
+    const rotuloSaldoCalc = diffIndefinida ? 'Fatura do mês (app)' : 'Saldo calculado (app)';
     const meta = [banco, c.tipo, c.numero].filter(Boolean).join(' · ');
 
     return `
@@ -4794,12 +4802,14 @@ async function carregarPluggyContas() {
         </label>
         ${saldoCalc !== null ? `
           <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px">
-            <span class="text-2">Saldo calculado (app)</span>
+            <span class="text-2">${rotuloSaldoCalc}</span>
             <span class="font-mono">${fmt(saldoCalc)}</span>
           </div>
           <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:13px">
             <span class="text-2">Diferença</span>
-            <span class="font-mono" style="color:${diffColor}">${fmt(diff)}</span>
+            ${diffIndefinida
+              ? '<span class="text-xs text-3" style="text-align:right">— comparação não definida<br>(fatura em aberto ≠ competência fechada)</span>'
+              : `<span class="font-mono" style="color:${diffColor}">${fmt(diff)}</span>`}
           </div>
         ` : c.ignorar
           ? ''

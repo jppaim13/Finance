@@ -27,17 +27,26 @@ const cors = {
 //
 // Regra adotada: se a hora for exatamente 00:00:00.000Z, trata-se como
 // data pura e usamos o YYYY-MM-DD cru. Caso contrário, é instante real e
-// convertemos para GMT-3.
+// convertemos para o horário de Brasília usando a timezone NOMEADA
+// ('America/Sao_Paulo'), não um deslocamento fixo de -3h. O Brasil não tem
+// horário de verão desde 2019, então hoje os dois dão o mesmo resultado —
+// mas um -3h fixo quebraria silenciosamente (transação no dia errado) se
+// o horário de verão voltar; a timezone nomeada segue a regra vigente
+// automaticamente. Confirmado nos 5 bancos que os dois métodos batem
+// (ver Decisões no CLAUDE.md).
 //
 // Guardamos SEMPRE o valor original em data_utc — se a heurística estiver
 // errada para algum conector, dá para recalcular tudo sem re-sincronizar.
-// VERIFICAR contra os dados reais dos 5 bancos na primeira sincronização.
 // ---------------------------------------------------------------------------
+const _formatadorDataBR = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Sao_Paulo",
+  year: "numeric", month: "2-digit", day: "2-digit",
+});
+
 function paraDataLocal(iso: string): string {
   if (/T00:00:00(\.000)?Z$/.test(iso)) return iso.slice(0, 10);
-  const d = new Date(new Date(iso).getTime() - 3 * 60 * 60 * 1000);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+  // locale en-CA formata datas como YYYY-MM-DD nativamente
+  return _formatadorDataBR.format(new Date(iso));
 }
 
 async function pluggyAuth(clientId: string, clientSecret: string) {
@@ -99,7 +108,13 @@ Deno.serve(async (req) => {
   const { data: log } = await admin
     .from("pluggy_sync_log").insert({ app_id: app.id }).select().single();
 
-  let criadas = 0, atualizadas = 0;
+  // `atualizadas` fica sempre 0 de propósito (ver comentário mais abaixo,
+  // onde `processadas` é somado) — não dá pra distinguir insert de update
+  // via upsert em lote sem o truque de xmax, então não fingimos que
+  // distinguimos. `processadas` é gravado na coluna `criadas` do log por
+  // compatibilidade com o schema existente (ver Decisões no CLAUDE.md).
+  let processadas = 0;
+  const atualizadas = 0;
 
   try {
     const apiKey = await pluggyAuth(clientId, clientSecret);
@@ -164,33 +179,42 @@ Deno.serve(async (req) => {
         while (proxima) {
           const pg = await get(proxima, apiKey);
 
-          for (const t of pg.results ?? []) {
-            const linha = {
-              pluggy_id: t.id,
-              pluggy_account_id: c.id,
-              app_id: app.id,
-              data: paraDataLocal(t.date),
-              data_utc: t.date,
-              descricao: t.description,
-              descricao_raw: t.descriptionRaw,
-              valor: t.amount, // convenção crua da Pluggy — não normalizar
-              tipo: t.type,
-              status: t.status,
-              metadata: {
-                creditCardMetadata: t.creditCardMetadata ?? null,
-                paymentData: t.paymentData ?? null,
-                merchant: t.merchant ?? null,
-                category: t.category ?? null,
-                operationType: t.operationType ?? null,
-              },
-              sincronizado_em: new Date().toISOString(),
-            };
+          // Upsert em LOTE (uma chamada por página, não uma por transação).
+          // Antes eram ~1.858 round-trips numa sincronização só (5 bancos) —
+          // motivo mais provável do timeout que deixava pluggy_sync_log com
+          // status null. Agora são ~10 (uma por página de resultados).
+          const lote = (pg.results ?? []).map((t: any) => ({
+            pluggy_id: t.id,
+            pluggy_account_id: c.id,
+            app_id: app.id,
+            data: paraDataLocal(t.date),
+            data_utc: t.date,
+            descricao: t.description,
+            descricao_raw: t.descriptionRaw,
+            valor: t.amount, // convenção crua da Pluggy — não normalizar
+            tipo: t.type,
+            status: t.status,
+            metadata: {
+              creditCardMetadata: t.creditCardMetadata ?? null,
+              paymentData: t.paymentData ?? null,
+              merchant: t.merchant ?? null,
+              category: t.category ?? null,
+              operationType: t.operationType ?? null,
+            },
+            sincronizado_em: new Date().toISOString(),
+          }));
 
-            const { error, count } = await admin
+          if (lote.length) {
+            const { error } = await admin
               .from("pluggy_transacoes")
-              .upsert(linha, { onConflict: "pluggy_id", count: "exact" });
+              .upsert(lote, { onConflict: "pluggy_id" });
             if (error) throw error;
-            count === 1 ? criadas++ : atualizadas++;
+            // upsert sempre "afeta" 1 linha por registro, seja insert ou
+            // update — count===1 não distingue os dois (bug real: fazia
+            // `atualizadas` nunca incrementar). Sem o truque de xmax não dá
+            // pra separar barato via PostgREST, então só contamos o total
+            // processado — ver Decisões no CLAUDE.md.
+            processadas += lote.length;
           }
 
           // new URL(next, base) resolve tanto next absoluto quanto relativo
@@ -203,17 +227,17 @@ Deno.serve(async (req) => {
 
     await admin.from("pluggy_sync_log").update({
       terminado_em: new Date().toISOString(),
-      status: "ok", criadas, atualizadas,
+      status: "ok", criadas: processadas, atualizadas,
     }).eq("id", log!.id);
 
-    return new Response(JSON.stringify({ ok: true, criadas, atualizadas }), {
+    return new Response(JSON.stringify({ ok: true, processadas }), {
       headers: { ...cors, "Content-Type": "application/json" },
     });
 
   } catch (e) {
     await admin.from("pluggy_sync_log").update({
       terminado_em: new Date().toISOString(),
-      status: "erro", erro: String(e), criadas, atualizadas,
+      status: "erro", erro: String(e), criadas: processadas, atualizadas,
     }).eq("id", log!.id);
 
     return new Response(JSON.stringify({ ok: false, erro: String(e) }), {
