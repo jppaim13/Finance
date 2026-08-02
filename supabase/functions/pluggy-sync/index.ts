@@ -105,6 +105,28 @@ Deno.serve(async (req) => {
     );
   }
 
+  // Guarda contra sincronizações sobrepostas. O botão no front já fica
+  // desabilitado durante a chamada, mas isso só cobre clique duplo na MESMA
+  // aba — reload de página ou aba duplicada durante uma sincronização em
+  // andamento não passa por ali. Recusa iniciar se já existir um log sem
+  // status (em andamento) recente pra esse app; 5 min de janela porque uma
+  // execução que travou de verdade (crash, deploy no meio) não deve travar
+  // sincronizações futuras pra sempre.
+  const { data: emAndamento } = await admin
+    .from("pluggy_sync_log")
+    .select("id, iniciado_em")
+    .eq("app_id", app.id)
+    .is("status", null)
+    .gte("iniciado_em", new Date(Date.now() - 5 * 60 * 1000).toISOString())
+    .limit(1)
+    .maybeSingle();
+  if (emAndamento) {
+    return new Response(
+      JSON.stringify({ erro: `já existe uma sincronização em andamento desde ${emAndamento.iniciado_em}` }),
+      { status: 409, headers: { ...cors, "Content-Type": "application/json" } },
+    );
+  }
+
   const { data: log } = await admin
     .from("pluggy_sync_log").insert({ app_id: app.id }).select().single();
 
