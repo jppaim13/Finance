@@ -1,138 +1,181 @@
-# Guia de implantação da Pluggy — dificuldades e soluções
+# Guia de implantação da Pluggy
 
-Documento derivado da integração real da Pluggy num app financeiro pessoal (Supabase + Deno Edge Function). Cobre da Fase 1 (espelho somente-leitura) até conciliação de fatura e ajuste de saldo. Escrito pra ser reaproveitado em outro projeto — os nomes de tabela do projeto original (`pluggy_contas`, `extrato`, `lancamentos`) aparecem só como exemplo concreto.
+Guia focado na **API da Pluggy em si** — autenticação, endpoints, armadilhas reais de contrato, arquitetura de sincronização — extraído de uma integração real testada contra 5 conectores bancários brasileiros. Escrito pra ser reaproveitado num projeto de tipo diferente do original (era um app de finanças pessoais); por isso a parte de "como comparar contra o meu modelo de dado" foi deixada resumida no fim — isso muda por projeto, o resto deste documento não muda.
 
-## 1. Arquitetura recomendada: espelho antes de escrever
+**Escopo do que este guia cobre**: uma integração que já parte de um Item existente (conexão banco↔Pluggy criada manualmente pelo Dashboard da Pluggy) e sincroniza contas/transações/faturas periodicamente pra um espelho de leitura. **Não cobre**: o fluxo de vincular uma conta nova via Connect Widget, criação de Item via API (`POST /items`), MFA, nem webhooks — nada disso foi usado ou testado neste projeto. Se seu caso precisa que o usuário final conecte a própria conta pelo seu app (não pelo Dashboard da Pluggy), pesquise esses fluxos separadamente antes de desenhar.
 
-Não tente ligar a Pluggy direto no modelo de produção do seu app. O padrão que funcionou:
+## 1. Conceitos
 
-1. **Fase 1 — espelho somente-leitura.** Tabelas próprias (`pluggy_contas`, `pluggy_transacoes`, `pluggy_sync_log`, etc.) que só recebem dados da Pluggy. Nenhuma escrita nas tabelas reais do app nessa fase. Isso separa "a sincronização funciona" de "os dados batem com o que o app já tem" — dois problemas diferentes, resolvidos em ordem.
-2. **Fase de conciliação.** Só depois do espelho validado: comparar dado da Pluggy contra dado do app, relatório agregado primeiro, linha a linha depois, só se o agregado justificar o esforço.
-3. **Importação/escrita**, por último, e só depois dos dois passos acima.
+- **Connector**: a ponte pra uma instituição financeira específica (ex: "Nubank", "Itaú"). `GET /connectors` lista os disponíveis e o que cada um exige pra autenticar.
+- **Item**: uma conexão autenticada e persistente entre um usuário e um Connector. É o Item que dá acesso às contas/transações daquele banco. **A Pluggy não tem endpoint de listagem de Items** por razões de segurança deles — não tem como perguntar "quais conexões esse cliente já tem". Cada `itemId` precisa ser copiado manualmente do Dashboard da Pluggy (ou capturado no momento da criação, se você implementar o fluxo de conexão via API/Widget) e guardado no seu próprio banco. Sem essa lista própria, a sincronização não sabe quais bancos consultar — ela sincroniza silenciosamente zero contas, sem erro nenhum.
+- **App/aplicação Pluggy**: o Dashboard da Pluggy organiza credenciais (`clientId`/`clientSecret`) por aplicação. Se o produto final precisa suportar múltiplos titulares com contas separadas (ver seção 8), cada titular tem sua própria aplicação Pluggy, suas próprias credenciais, seus próprios Items.
+- **Connect Widget vs. API direta**: a Pluggy oferece um componente de front-end pronto (Connect Widget) pra coletar credenciais/MFA do usuário final e criar o Item. A alternativa é orquestrar `POST /items` + `GET /items/{id}` (poll de `executionStatus`) + `POST /items/{id}/mfa` você mesmo. Os dois terminam no mesmo lugar: um `itemId` utilizável. Este projeto usou Items já criados manualmente pelo Dashboard — nenhum dos dois fluxos foi implementado em código.
 
-Pular direto pra "importar tudo automaticamente" é o erro mais caro possível — qualquer bug de sincronização ou de casamento de dado vira corrupção silenciosa de dado financeiro real.
+## 2. Autenticação
 
-### Modelo de tabelas do espelho
+`POST /auth` com `{ clientId, clientSecret }` no corpo devolve um `apiKey`. Esse `apiKey`:
+- **Expira em ~2 horas.** Não persista — gere um novo a cada execução da sua rotina de sincronização (não é caro, é uma chamada só).
+- Vai no header `X-API-KEY` em toda chamada subsequente à API.
+- É por aplicação Pluggy (um `clientId`/`clientSecret` por titular, se for o caso — ver seção 8). Convenção que funcionou bem: nomear os secrets com sufixo do titular (`PLUGGY_CLIENT_ID_<APELIDO>`, `PLUGGY_CLIENT_SECRET_<APELIDO>`), com o "apelido" como parâmetro de entrada da função de sincronização — dá pra rodar a mesma função pra titulares diferentes sem duplicar código.
 
-- Uma tabela de "apps"/titulares (permite múltiplos titulares/CPFs no mesmo banco — famílias/casais têm contas separadas, ver seção 7).
-- Uma tabela de "items" (conexões banco↔Pluggy) — **a Pluggy não tem endpoint de listagem de items** por razões de segurança deles. Cada `itemId` é copiado manualmente do Dashboard da Pluggy e cadastrado à mão. Sem essa lista, a sincronização não sabe quais bancos consultar.
-- Uma tabela de contas espelhadas, com colunas de **mapeamento manual** (a que conta/cartão do seu app aquilo corresponde) que a sincronização nunca sobrescreve — só grava as colunas que vêm da Pluggy, então um `upsert` com `onConflict` preserva o mapeamento automaticamente.
-- Uma tabela de transações espelhadas.
-- Uma tabela de log de sincronização (status, contagem, erro) — essencial pra debugar sem re-rodar.
+## 3. Descobrir o que sincronizar
 
-### RLS / segurança
+Com os `itemId`s guardados (seção 1), pra cada um:
 
-Row Level Security igual ao resto do banco. A Edge Function usa a **service role key** (ignora RLS) pra escrever; o front-end usa a chave anônima normal pra ler e pra editar só as colunas de mapeamento manual.
+`GET /accounts?itemId=<id>` devolve as contas daquele Item — cada conta tem `id`, `type` (`BANK` ou `CREDIT`), `subtype`, `name`, `number`, `balance`. É esse `id` de conta (não o `itemId`) que identifica cada conta/cartão nas chamadas seguintes de transações e faturas.
 
-## 2. Armadilhas reais da API (Pluggy), uma por uma
+Não existe endpoint de "saldo numa data passada" pra conta bancária — `balance` é sempre o saldo **atual**, no momento da chamada. Se seu caso precisa de saldo histórico numa data de corte específica, ver a nota na seção 9.
 
-Todas encontradas testando contra 5 conectores bancários reais — **não assuma que testar um conector garante o comportamento dos outros**. Cada achado abaixo só apareceu num subconjunto dos bancos.
+## 4. Transações — `GET /v2/transactions`
 
-### `/transactions` foi descontinuado (HTTP 410)
-Use `GET /v2/transactions`. O parâmetro de data mudou de `from` para `dateFrom`.
+A parte com mais armadilhas reais de contrato de API, todas encontradas testando contra 5 conectores — **não assuma que testar um conector garante o comportamento dos outros 4**. Cada achado abaixo apareceu num subconjunto dos bancos usados, não em todos.
+
+### Endpoint depreciado
+`/transactions` (sem `v2`) foi descontinuado — `HTTP 410`. Use `GET /v2/transactions`. O parâmetro de filtro de data também mudou de `from` para `dateFrom`.
 
 ### `pageSize` não é aceito no v2
-`400 "property pageSize should not exist"`. O tamanho de página é fixo (confirmado: 500) do lado da Pluggy — não dá pra pedir menos nem mais.
+`400 "property pageSize should not exist"`. O tamanho de página é fixo do lado da Pluggy — **confirmado: 500** — não dá pra pedir menos nem mais.
 
 ### Paginação por cursor (`next`) é inconsistente entre conectores
-Em alguns bancos `next` vem como URL absoluta; em outros, só como fragmento de query (`?accountId=...&after=...`), quebrando com `Invalid URL` se você tentar usar direto. Resolver com `new URL(next, baseUrl).href` — resolve os dois formatos. É a mesma técnica que o SDK oficial (`pluggy-node`) usa por precaução, então não é peculiaridade do seu conector, é conhecido.
+A resposta paginada vem como `{ page, total, totalPages, results, next }`. Em alguns bancos `next` veio como URL absoluta; em outros, só como fragmento de query (`?accountId=...&after=...`), quebrando com `TypeError: Invalid URL` se você tentar usar direto como URL. Resolver com:
 
-### Truncamento silencioso quando a paginação falha no meio
-Se a página 1 (500 linhas) upserta com sucesso e a página 2 falha (por exemplo, o bug do `next` acima, antes de corrigido), você fica com exatamente 500 linhas — número redondo, fácil de não notar, e nenhuma sincronização incremental futura vai reprocessar esse histórico (incremental só olha pra frente a partir da última transação salva). **Sintoma pra vigiar**: qualquer conta cujo total de transações bate exatamente no tamanho de página é suspeita de truncamento — vale conferir.
-**Correção estrutural, não só do dado**: isole erros por conta num `try/catch` individual, não um só pra sincronização inteira. Sem isso, um erro na conta N aborta o loop e as contas N+1 em diante nem chegam a ser tentadas naquele run — sintoma: "sincronizou algumas contas, outras não", sem padrão aparente.
+```js
+proxima = pg.next ? new URL(pg.next, baseUrl).href : null;
+```
 
-### Metadado incompleto varia por conector — não é falta de dado, é o conector mesmo
-Nos testes reais: um conector não trouxe `billForecastDate` em nenhuma transação (0% de cobertura, os outros 4 tinham entre 85% e 100%); outro não trouxe `billClosingDate` em quase nenhuma fatura; outro não trouxe `payments` nenhum. **Não desenhe nenhuma lógica que dependa de um campo estar sempre presente** sem checar a cobertura real por conector primeiro (`count(*) filter (where campo is not null)` agrupado por banco).
+`new URL(relativo, base)` resolve os dois formatos. É a mesma técnica que o SDK oficial (`pluggy-node`) usa por precaução — não é peculiaridade de um conector seu, é conhecido o bastante pra já estar tratado lá.
 
-### Sobreposição de 30 dias é necessária na busca incremental
-Transações `PENDING` viram `POSTED` (e o valor pode mudar) dias depois de aparecerem pela primeira vez. Buscar incrementalmente a partir de "última transação salva − 30 dias", não da data exata — o `upsert` idempotente (por `pluggy_id`/id externo) torna esse reprocessamento barato.
+### Truncamento silencioso quando a paginação falha no meio da história
+Se a página 1 (500 linhas) upserta com sucesso no seu banco e a página 2 falha (por exemplo, o bug do `next` acima, antes de corrigido), você fica com exatamente 500 linhas — número redondo, fácil de não notar — e **nenhuma sincronização incremental futura vai reprocessar esse histórico**, porque busca incremental só olha pra frente a partir da última transação já salva (ver próxima seção). O erro fica permanentemente escondido até alguém notar.
 
-### Sincronizações sobrepostas
-Um botão desabilitado no front-end só cobre clique duplo na mesma aba — reload de página ou aba duplicada não passa por ali. Proteção real fica no servidor: a função recusa (HTTP 409) começar se já existir um log "em andamento" recente (com uma janela de alguns minutos, pra uma execução que travou de verdade não travar sincronizações futuras pra sempre).
+**Sintoma pra vigiar**: qualquer conta cujo total de transações bate exatamente no tamanho de página é candidata a truncamento — vale conferir manualmente (forçar um resync completo daquela conta e comparar o total antes/depois).
 
-### `GET /bills` é um endpoint separado e melhor que somar transações
-Pra cartão de crédito, existe `GET /bills?accountId=...` — devolve a fatura **real do emissor**: `id`, `dueDate`, `billClosingDate`, `totalAmount`, `minimumPaymentAmount`, `payments[]`, `financeCharges[]`. Isso é estritamente melhor que reconstruir o total da fatura somando transações — é o número que o banco/emissor já calculou, líquido de pagamentos. Só descoberto depois de já ter tentado a abordagem de somar transações; pesquisar a documentação oficial antes de reimplementar algo que a API já resolve.
+**Correção estrutural, não só do dado**: isole erros por conta num `try/catch` individual, não um só pra sincronização inteira:
 
-Fatura **fechada vs. aberta**: não confie em `closing_date`/`status` pra decidir isso — em conectores reais esse campo veio nulo em 100% das faturas de um banco e em quase todas de outro. Use um **fato de calendário**: `due_date < hoje` ⇒ fatura conciliável (vencimento passado é necessariamente fechado, não importa o que o campo de status diga). Verificar antes de adotar: `due_date` precisa estar presente em ~100% das faturas nos conectores usados — sem isso a regra não funciona.
+```js
+for (const conta of contas) {
+  try {
+    // paginação + upsert desta conta
+  } catch (erroContaEspecifica) {
+    // registra e segue pra próxima conta
+  }
+}
+```
 
-### `installmentNumber`/`totalInstallments` — use pra casar parcela, não infira por valor+data
-Transações de cartão com metadado de cartão de crédito trazem esses dois campos quando fazem parte de um parcelamento. **Casar parcelas contra o seu modelo pelo número de parcela e valor exato é muito mais confiável que casar por valor+data** — data de compra e data de lançamento manual divergem com frequência (às vezes por semanas, se o usuário lança retroativamente), mas o valor de cada parcela e sua posição na sequência não mudam.
+Sem esse isolamento, um erro na conta N aborta o loop inteiro e as contas N+1 em diante nem chegam a ser tentadas naquele run — sintoma característico: "sincronizou algumas contas, outras não", sem padrão óbvio até você olhar o log com atenção.
 
-### `billId` como chave de junção — cobertura real importa mais que teoria
-`billId` (dentro do metadado de cartão) referencia a fatura de origem de cada transação. Testado: presença de 100% nas transações de cartão nos 5 bancos usados, inclusive no conector mais pobre em outros metadados. Com essa cobertura, `billId` é uma chave de junção confiável entre transação e fatura (`/bills`), não só um cross-check auxiliar — mas **meça a cobertura real no seu caso antes de decidir**, não assuma.
+### Sobreposição de ~30 dias é necessária na busca incremental
+Transações `status: PENDING` viram `POSTED` (e o `amount` pode mudar) dias depois de aparecerem pela primeira vez. Se você buscar incrementalmente a partir da data exata da última transação salva, uma transação que mudou de status/valor depois da primeira sincronização nunca é revisitada. Buscar a partir de "última transação salva − 30 dias" em vez da data exata; o `upsert` idempotente (por `id` da transação) torna esse reprocessamento barato — a maioria vem igual e só sobrescreve com o mesmo valor.
 
-### `currencyCode`/`amountInAccountCurrency` — no nível raiz da transação, fácil de esquecer de capturar
-A Pluggy documenta esses dois campos **no nível raiz do objeto de transação**, não dentro do metadado de cartão de crédito. `amount` pode vir na moeda original da compra (ex: USD pra assinatura internacional); `amountInAccountCurrency` já vem convertido pra moeda da conta. **Se você só captura os campos "óbvios" (metadado de cartão, categoria, merchant), value vai silenciosamente ficar na moeda errada pra compra internacional** — sem erro, sem transação faltando, só um valor 4-6x menor que o real, com `status: POSTED` (não é atraso de sincronização, é o valor final mesmo). Capture os dois campos desde o início; se não puder validar todo o histórico retroativamente (a busca incremental não revisita meses antigos), pelo menos capture daqui pra frente.
-**Detector direto**: `currencyCode != 'BRL'` (ou a moeda local do seu caso). Quando marcado, prefira `amountInAccountCurrency` a `amount` se ele existir; se não existir mesmo com moeda estrangeira marcada, trate como suspeito e não confie no valor sem revisão.
+### Campos de metadado variam de cobertura por conector — não é falta de dado, é o conector mesmo
+Testado com dado real: um conector não trouxe `billForecastDate` em **nenhuma** transação de cartão (0% de cobertura), enquanto os outros 4 tinham entre 85% e 100%. Outro não trouxe `payments` nenhum em nenhuma fatura. **Nunca desenhe lógica que dependa de um campo estar sempre presente sem medir a cobertura real por conector primeiro** — uma query de contagem agrupada por banco (`count(*) filter (where campo is not null) group by banco`) leva minutos e evita desenhar em cima de um campo que só existe hipoteticamente.
 
-### `purchaseDate` — data estável da compra original, igual em todas as parcelas
-Diferente de `date` (a data de cada cobrança individual), `purchaseDate` é a mesma em todas as parcelas de uma mesma compra parcelada. Útil pra: (1) confirmar que duas transações "candidatas" são de fato parcelas da mesma compra; (2) ancorar comparação quando o usuário lançou parcelas com data de revisão em vez de data real de cobrança (padrão comum quando alguém digita retroativamente).
+### `installmentNumber`/`totalInstallments` — parcelamento estruturado
+Transações de cartão que fazem parte de um parcelamento trazem esses dois campos dentro do metadado de cartão de crédito (`creditCardMetadata`). Junto com `purchaseDate` (próxima seção), dá pra reconstruir a estrutura completa de uma compra parcelada sem inferir nada por valor ou data de cobrança.
 
-## 3. Padrões de engenharia que valeram a pena
+### `purchaseDate` — data estável da compra original
+Diferente de `date` (a data de cada cobrança individual — uma por mês, se for parcelado), `purchaseDate` é a **mesma em todas as parcelas de uma mesma compra**. É o campo certo pra confirmar que duas transações "candidatas" são parcelas da mesma compra, e pra ancorar qualquer comparação contra dado inserido manualmente por um usuário (que tende a registrar a data que ele *revisou* a compra, não a data real de cada cobrança — diferença observada de até 23 dias num caso real).
 
-- **Upsert em lote por página, não por linha.** Centenas/milhares de round-trips individuais ao banco numa sincronização só é o jeito mais provável de estourar o tempo de execução de uma function serverless — o sintoma é o log de sincronização ficando com status "em andamento" pra sempre, mesmo com os dados já tendo chegado corretamente. Trocar por um upsert por página resolve.
-- **Contador de "criadas vs. atualizadas" via `count` de upsert não funciona.** Um `upsert` sempre "afeta" 1 linha por registro, seja inserindo ou atualizando — não dá pra distinguir os dois casos por aí sem o truque de `xmax` do Postgres (que exige um `select` extra). Não finja que distingue; um contador só de "processadas" é mais honesto que um "criadas"/"atualizadas" que mente com confiança.
-- **Nunca normalizar/inverter sinal na ingestão.** Se um conector devolver valor com sinal diferente do esperado, registre isso como uma decisão documentada, não corrija silenciosamente na função de sincronização — esconder a inversão tira informação que uma fase futura (reconciliação, importação) pode precisar.
-- **Debug de dado real da Pluggy: só query agregada, nunca linha crua**, em qualquer lugar que persista texto (chat com IA, ticket, log público). Descrição de transação e valor são dado financeiro real de pessoa real. Sempre que precisar verificar um padrão (sinal, fuso, moeda), desenhe a verificação como contagem/booleano por banco, não como amostra de linhas.
+### `currencyCode`/`amountInAccountCurrency` — no nível raiz da transação, fácil de esquecer
+A Pluggy documenta oficialmente estes dois campos **no nível raiz do objeto de transação** (não dentro de `creditCardMetadata`, `paymentData` nem nenhum dos objetos aninhados "óbvios"):
 
-## 4. Fuso horário
+| Campo | O que é |
+|---|---|
+| `amount` | Valor da transação — pode vir na **moeda original** da compra, não necessariamente na moeda da conta |
+| `currencyCode` | Código ISO da moeda da transação (`BRL`, `USD`, etc.) |
+| `amountInAccountCurrency` | Valor já convertido pra moeda da conta, presente quando a transação é internacional |
 
-A Pluggy devolve toda data em ISO8601 UTC. Transações de cartão costumam vir como `"...T00:00:00.000Z"` — isso é um **marcador de dia**, não um instante real (a Pluggy não sabe a hora exata da compra). Converter isso direto pro fuso local sem cuidado desloca o dia (ex: meia-noite UTC vira 21h do dia anterior em GMT-3).
+**Se sua ingestão só captura os campos "óbvios" (metadado de cartão, categoria, merchant) e esquece esses dois, uma compra internacional entra com o valor na moeda errada — silenciosamente, sem erro, sem transação faltando.** Achado real: uma assinatura mensal em dólar ficou registrada com **1/5 do valor real** por vários meses seguidos, sempre com `status: POSTED` (não era atraso de sincronização — era o valor final mesmo, só que sem conversão). A razão entre o valor errado e o valor real batia com a cotação USD/local do período, o que confirmou a causa.
 
-Regra: hora exatamente `00:00:00.000Z` → usa a data crua (`YYYY-MM-DD`) direto, sem conversão. Qualquer outra hora → é instante real, converter usando **fuso nomeado** (`Intl.DateTimeFormat` com `timeZone`, tipo `"America/Sao_Paulo"`), não um deslocamento fixo tipo `-3h` — um offset fixo quebra silenciosamente se o país voltar a ter horário de verão. Guarde sempre o valor original intocado numa coluna separada (`data_utc` ou similar) — se essa heurística estiver errada pra algum conector, dá pra recalcular sem re-sincronizar.
+Capture os dois campos desde o primeiro dia de implementação, mesmo que sua ingestão inicial não vá usá-los — não custa nada capturar, e busca incremental **não revisita meses antigos automaticamente**, então um campo esquecido no começo fica faltando no histórico até alguém forçar um resync completo daquela conta especificamente.
 
-## 5. Reconciliação: comparar dado do seu app contra a Pluggy
+**Detector direto pra revisão**: `currencyCode` diferente da moeda local. Quando marcado, prefira `amountInAccountCurrency` a `amount` cru se ele existir; se não existir mesmo com moeda estrangeira marcada, trate como suspeito e não confie no valor sem revisão humana — não tente estimar a conversão você mesmo (a cotação usada pelo emissor no momento da compra é desconhecida; estimar produz um segundo erro em cima do primeiro).
 
-Esta foi a parte mais cara em retrabalho da integração inteira — quatro rodadas de relatório até o método ficar certo.
+## 5. Faturas de cartão — `GET /bills`
 
-### O erro raiz: assumir que seu app guarda dado num lugar só
-Se o seu modelo de dado espalha informação parecida em mais de uma tabela (no projeto original: compras avulsas numa tabela, compras parceladas/recorrentes em outra), **qualquer comparação que olhe só uma delas produz "só na Pluggy" inflado e "só no app" incompleto** — porque metade do que o app já sabe fica invisível pro relatório. Isso se repetiu quatro vezes na mesma sessão antes de virar regra: sempre que for comparar "o que o app sabe" contra uma fonte externa, levante **todas** as tabelas que podem conter aquele tipo de dado, não só a mais óbvia.
+Endpoint separado de `/v2/transactions`, fácil de não descobrir se você for direto pra "vou somar as transações do mês pra calcular o total da fatura". `GET /bills?accountId=<id da conta CREDIT>` devolve a fatura **real do emissor**, paginada por número de página (`page`, `total`, `totalPages`, `results` — paginação diferente da de transações, que é por cursor):
 
-### Valor + data não é chave, é coincidência quando há parcelamento envolvido
-Comparar transações por valor exato + janela de data (ex: ±3 dias) funciona bem pra compra avulsa. Mas quando há parcelamento no jogo, duas armadilhas simétricas aparecem:
+| Campo | O que é |
+|---|---|
+| `id` | Identificador da fatura |
+| `dueDate` | Vencimento — data real informada pelo emissor |
+| `billClosingDate` | Fechamento — data real informada pelo emissor (nem sempre presente, ver abaixo) |
+| `totalAmount` | Total da fatura |
+| `minimumPaymentAmount` | Mínimo pagável |
+| `allowsInstallments` | Se aceita parcelamento da fatura |
+| `financeCharges[]` | Juros/multas aplicados |
+| `payments[]` | Pagamentos já registrados pelo emissor (`amount`, `paymentDate`, `paymentMode`, `valueType`) |
 
-1. **Falso positivo**: uma parcela pode coincidir por valor+data com uma linha completamente não relacionada. Consequência real, não teórica: se uma importação automática tivesse rodado em cima desse casamento errado, a transação de verdade teria sido marcada como "já registrada" e **nunca importada** — perda silenciosa, pior que duplicata (duplicata pelo menos aparece pra alguém notar).
-2. **Falso negativo**: se o usuário lança parcelas avulsas diretamente na tabela "principal" (sem usar o mecanismo de recorrência do app), a data que ele lança é a data em que **revisou/lançou** a compra, não a data real de cada cobrança — diferença observada de até 23 dias num caso real. Casar só por essa data janela perde o match.
+Isso é **estritamente melhor** que reconstruir o total somando transações — é o número que o emissor já calculou, líquido de pagamentos, direto da fonte. Vale pesquisar a documentação oficial da API inteira antes de reimplementar algo que ela já resolve pronto (este endpoint só foi descoberto depois de já ter uma implementação funcionando por soma de transações).
 
-**Correção**: separe o pool de comparação por estrutura (`installmentNumber` presente vs. ausente) pra evitar o falso positivo — mas depois **compare cada lado do seu app contra os dois pools da Pluggy** (não só um), porque o usuário pode ter lançado uma parcela na tabela "errada" do ponto de vista do seu modelo. Quando o casamento por data falhar mas o valor bater com uma parcela real, trate como candidato de método antes de contar como divergência genuína — e cheque `purchaseDate` (mesma em todas as parcelas de uma compra) pra confirmar.
+### Fatura aberta vs. fechada: não confie em `status`/`billClosingDate`
+Testado com dado real: `billClosingDate` veio nulo em **100% das faturas** de um conector (mesmo em faturas de meses claramente encerrados) e em quase todas de outro. Não é um proxy confiável de "está fechada".
 
-### Ordem de trabalho que valeu a pena
-1. **Relatório agregado primeiro** (contagem e soma por categoria de conta/competência) — responde "vale o esforço de casar linha a linha, ou é melhor importar direto?" antes de gastar tempo linha a linha.
-2. Se valer o esforço: casamento automático com os critérios acima, saída ainda agregada (nunca linha crua em chat/log).
-3. Só o que sobrar sem casar automaticamente vira revisão manual — e mesmo aí, cheque campos estruturados (tipo `purchaseDate`) antes de assumir que é divergência real. Na prática: de um lote de 18 linhas "sem match automático", só 3 eram divergência real depois da revisão — o resto era o método de comparação não olhando o lugar certo.
-4. Regra dura, desde o início: **dado que existe só no app nunca é apagado automaticamente** por um relatório de comparação. "A Pluggy não viu isso" é informação (pode ser lacuna do conector, duplicata, erro de lançamento) — não é autorização pra deletar. Sinalize, não apague.
+**Use um fato de calendário em vez de heurística**: `dueDate < hoje` ⇒ fatura conciliável/fechada. Um vencimento que já passou está necessariamente fechado, não importa o que o conector diga sobre `status`/`billClosingDate`. Efeito colateral útil: faturas *futuras* (parcelamentos já projetados por compras já feitas, com `dueDate` no futuro) caem fora desse filtro automaticamente — e o `totalAmount` delas costuma ser parcial por construção (só as parcelas já conhecidas), então nem deveriam entrar mesmo que entrassem por engano.
 
-## 6. Ajuste de saldo inicial ("marco zero")
+**Antes de adotar essa regra, meça**: `dueDate` precisa estar presente em ~100% das faturas dos conectores que você usa. Um segundo sinal de corroboração (não como regra sozinha): nenhuma fatura com `payments` preenchido deveria ter `dueDate` no futuro — se aparecer um caso desses, a leitura de datas tem algo mal entendido, vale investigar antes de confiar de novo.
 
-Se o objetivo final é usar a Pluggy como fonte de verdade do saldo (em vez de reconciliar todo o histórico manual, o que costuma ser trabalho grande e sem retorno — melhor não tentar), o padrão que funcionou foi: ajustar o saldo inicial de cada conta pro saldo real reportado numa data de corte, sem reconciliar os meses anteriores, e passar a confiar na Pluggy dali em diante.
+### `billId` como chave de junção entre transação e fatura
+Cada transação de cartão parcelada carrega um `billId` (dentro de `creditCardMetadata`) referenciando a fatura de origem. **Meça a cobertura real** (`count(*) filter (where billId is not null) group by banco`) antes de decidir se ele é confiável como chave primária de junção ou só um cross-check auxiliar — no caso testado, cobertura de 100% em todos os conectores usados, inclusive no mais pobre em outros metadados, o que tornou seguro usar como chave, não só verificação.
 
-### O bloqueio que quase gerou saldo duplicado
-Se a sua função de cálculo de saldo soma **todo** o histórico de lançamentos sem nenhum conceito de "ponto de partida" (ex: `saldo = saldo_inicial + soma de tudo que já foi lançado, sem filtro de data`), simplesmente atualizar `saldo_inicial` pro valor novo da Pluggy **conta cada lançamento manual anterior à data de corte duas vezes** — uma vez embutido no novo saldo inicial (que já reflete tudo até aquela data), outra vez somado de novo pela função. Isso é bug garantido, silencioso, no dia seguinte à mudança. **Verifique explicitamente se sua função de saldo tem esse conceito de corte antes de escrever qualquer migration** — não assuma que existe só porque "faz sentido que exista".
+## 6. Fuso horário
 
-### O corte tem que ser na ocorrência, não no registro
-Lançamentos recorrentes (assinatura mensal, parcelamento) não são uma linha histórica — são uma regra que gera ocorrências (uma por mês, ou uma por parcela). Um lançamento recorrente começado **antes** da data de corte continua válido e ativo; só as ocorrências **anteriores** ao corte é que não podem somar de novo (já estão embutidas no novo saldo inicial). As ocorrências posteriores ao corte — inclusive futuras — continuam contando normal. Filtrar o **registro inteiro** por data de início erraria isso: perderia a recorrência inteira, inclusive os meses futuros que ainda precisam contar.
+A Pluggy devolve toda data em ISO8601 UTC. Transações de cartão costumam vir como `"...T00:00:00.000Z"` — isso é um **marcador de dia**, não um instante real (a Pluggy não sabe a hora exata da compra, só o dia). Converter isso direto pro fuso local sem cuidado desloca o dia — meia-noite UTC vira ~21h do dia anterior em GMT-3, por exemplo.
 
-### Checagem de fronteira, não suposição
-A API pode só devolver o saldo **atual** de uma conta bancária (sem endpoint de "saldo numa data passada"). Antes de assumir que "saldo atual" equivale ao "saldo de fechamento do dia anterior" (a data de corte pretendida), **confira se existe alguma transação já processada entre a data de corte e agora** — se não existir nenhuma, os dois saldos coincidem na prática; se existir, é preciso descontar. Essa checagem expira: se a migration demorar dias pra ser aplicada, refaça antes de aplicar.
+**Regra que funcionou**: hora exatamente `00:00:00.000Z` → usa a data crua (`YYYY-MM-DD`) direto, sem nenhuma conversão de fuso. Qualquer outra hora → é instante real, converter usando **fuso nomeado** (`Intl.DateTimeFormat` com `timeZone: "America/Sao_Paulo"` ou equivalente), nunca um deslocamento fixo tipo `-3h` — um offset fixo quebra silenciosamente se o país voltar a ter horário de verão (não é hipotético: o Brasil já teve e removeu). Guarde sempre o valor original UTC intocado numa coluna separada — se essa heurística estiver errada pra algum conector específico, dá pra recalcular a data local sem precisar re-sincronizar nada.
 
-### Separar em passos por risco, não em um só
-Divida em (A) mudança de schema aditiva e sem efeito (coluna nova, nullable, sem preencher), (B) mudança de código que passa a respeitar essa coluna — com critério de aceitação explícito de "nenhum comportamento muda enquanto a coluna estiver vazia" (teste de regressão comparando explicitamente o resultado com e sem o corte, não só o caso novo), (C) preencher os valores de verdade, só depois de (B) validado. Se (B) tiver bug, nada mudou ainda porque (C) não rodou. Rollback de (C) precisa ter os valores antigos **gravados literalmente** no próprio arquivo de rollback (levantados antes de aplicar) — um rollback genérico (voltar tudo pra zero/null) não desfaz um ajuste de valor real.
+## 7. Arquitetura de sincronização
 
-## 7. Múltiplos titulares / fronteira de CPF
+Padrão que funcionou bem numa Edge Function (Deno/Supabase, mas o padrão é genérico):
 
-Planos gratuitos de open finance geralmente cobrem só contas nominais do próprio titular que criou a aplicação/API key. Se o app é usado por um casal/família com contas separadas, **contas da segunda pessoa não vão aparecer nunca, e isso não é bug nem setup incompleto** — é a fronteira do plano. Desenhe o modelo de app_id/titular desde o início pra suportar múltiplas aplicações Pluggy (uma por pessoa, com seu próprio conjunto de secrets/itemIds) mesmo que só uma esteja em uso — evita ter que redesenhar depois.
+```
+1. POST /auth → apiKey (gerar a cada execução, não persistir)
+2. Ler a lista própria de Items (itemId + titular)
+3. Para cada Item:
+   Para cada conta (GET /accounts?itemId=):
+     try {
+       upsert conta (preservando qualquer campo de mapeamento manual seu)
+       calcular "desde" = última transação salva − 30 dias (ou início de janela, se for a primeira vez)
+       paginar GET /v2/transactions?accountId=&dateFrom=
+         upsert em LOTE por página (não por linha, ver abaixo)
+       se for conta CREDIT: paginar GET /bills?accountId=
+         upsert em lote
+     } catch (erroDestaConta) {
+       registrar erro, seguir pra próxima conta — não abortar o run inteiro
+     }
+4. Gravar log da execução (status, quantidade processada, erro se houver)
+```
 
-**Consequência pra qualquer critério de automação** ("confiar no saldo sem precisar abrir o app"): esse critério só vale pra contas efetivamente cobertas pela integração. Aplicar automação silenciosa numa conta não coberta produz saldo confiante e errado — pior que visivelmente desatualizado, porque não há sinal nenhum de que está errado. Registre essa exceção **antes** de implementar qualquer automação, não depois de alguém notar o saldo errado.
+Pontos que custaram retrabalho até acertar:
 
-**Como saber o que está coberto**: reuse a tabela de mapeamento manual (seção 1) como fonte única da verdade — não crie uma coluna redundante tipo `coberto_por_integracao` em outro lugar só pra "ser mais rápido de checar". Duas fontes da mesma informação dessincronizam (alguém mapeia numa tela e esquece de marcar a outra, ou vice-versa); uma fonte só não tem como dessincronizar de si mesma.
+- **Upsert em lote por página, não por linha.** Centenas ou milhares de round-trips individuais ao seu banco numa sincronização só é o jeito mais fácil de estourar o tempo de execução de uma function serverless. Sintoma: o log de sincronização fica marcado como "em andamento" pra sempre, mesmo com os dados já tendo chegado corretamente no banco — parece um bug de dado quando é um bug de timeout. Trocar por um `upsert` (com `onConflict` no id externo da Pluggy) por página inteira, não por transação individual, resolve.
+- **Guard contra sincronizações sobrepostas fica no servidor, não só desabilitando o botão do front-end.** Um botão desabilitado só cobre clique duplo na mesma aba já carregada — reload de página ou aba duplicada não passa por ali. Proteção real: a função recusa (HTTP 409) começar se já existir um log de execução "em andamento" recente pro mesmo titular (com uma janela de alguns minutos de tolerância, pra uma execução que travou de verdade não bloquear sincronizações futuras pra sempre).
+- **Contador de "criadas vs. atualizadas" via `count` de upsert não funciona.** Um `upsert` sempre "afeta" 1 linha por registro, seja inserindo ou atualizando — não dá pra distinguir os dois casos por aí sem o truque de `xmax` do Postgres (que exige um `select` extra por linha, caro demais pra valer a pena aqui). Não finja que distingue; um contador só de "processadas" (inserido + atualizado junto) é mais honesto que um par "criadas"/"atualizadas" que mente com confiança em todo log.
+- **Nunca normalizar ou inverter sinal de valor na ingestão.** Se um tipo de transação (`DEBIT`/`CREDIT`) vier com o sinal que "parece errado" pro seu modelo, registre isso como decisão documentada e ajuste na leitura, não corrija silenciosamente dentro da função de sincronização — esconder a inversão tira informação que uma fase futura (reconciliação, importação, auditoria) pode precisar pra entender um caso estranho.
+- **Debug de dado real da Pluggy: só query agregada, nunca linha crua**, em qualquer lugar que persista texto (chat com IA, ticket de suporte, log público, PR description). Descrição de transação e valor são dado financeiro real de pessoa real. Sempre que precisar verificar um padrão (sinal, fuso, moeda, cobertura de campo), desenhe a verificação como contagem/booleano agrupado por banco, nunca como amostra de linhas.
 
-## 8. Disciplina de verificação (a lição mais cara)
+## 8. Múltiplos titulares / fronteira de CPF
 
-A maior fonte de retrabalho nesta integração não foi a API da Pluggy — foi tratar **descrição de comportamento de código como fato antes de verificar**. Isso aconteceu pelo menos duas vezes: uma especificação de contrato de API escrita "de memória" (custou uma rodada inteira de debug até bater com a documentação oficial), e uma suposição de que uma função de cálculo de saldo já tinha um conceito de "data de corte" que na verdade não existia no código.
+Planos de open finance (inclusive o gratuito) geralmente cobrem só contas nominais do titular que criou a aplicação Pluggy/API key — não é possível, no plano básico, uma única aplicação enxergar contas de duas pessoas diferentes (ex: casal, sócios) mesmo que ambas usem o mesmo produto final. **Contas da segunda pessoa não vão aparecer nunca via essa aplicação, e isso não é bug nem setup incompleto — é a fronteira do plano.**
 
-Prática que reduziu isso a zero depois de adotada: **antes de implementar em cima de qualquer alegação sobre como o código ou a API se comporta — sua ou de outra pessoa/IA — grep o código de verdade ou teste a chamada de verdade.** "Provavelmente funciona assim" não é a mesma coisa que "confirmei que funciona assim". Isso vale em dobro pra dinheiro.
+Desenhe o modelo de dado desde o início assumindo múltiplos titulares (um registro de "aplicação Pluggy" por titular, cada um com seu próprio conjunto de credenciais/Items), mesmo que só um esteja em uso no começo — evita redesenhar depois. Se/quando o segundo titular quiser integrar: aplicação própria dele no Dashboard da Pluggy, `itemId`s dele, um novo conjunto de secrets (mesma convenção de nome com sufixo do titular da seção 2), uma linha nova na sua tabela de "aplicações" — nenhuma mudança de código deveria ser necessária além disso, se o "titular" já for um parâmetro de entrada da sua função de sincronização desde o início.
 
-Outras práticas de verificação que compensaram o custo:
-- Rodar aggregate diagnostics (contagem/booleano por conector) antes de confiar que um campo está sempre presente.
-- Depois de qualquer correção de bug de sincronização, re-sincronizar e conferir o número final contra o que o usuário vê no app/extrato oficial do banco — validação agregada (total bate) **não substitui** validação de linha (um erro pequeno se esconde dentro de um total que ainda bate).
-- Quando um teste de função pura depende de "hoje" (data atual), injete a data como parâmetro opcional em vez de deixar a função ler o relógio real — sem isso o teste é não-determinístico e vai quebrar sozinho mês que vem.
+**Consequência prática pra qualquer lógica que decida confiar automaticamente no dado sincronizado** (por exemplo, "não precisa mais lançar manual, o saldo vem sozinho"): essa lógica só pode valer pra contas efetivamente cobertas por uma integração. Aplicar isso a uma conta não coberta produz confiança falsa — pior que um dado visivelmente desatualizado, porque não sobra nenhum sinal de que está errado. Registre essa exceção **antes** de implementar qualquer automação, não depois de alguém notar o problema.
+
+## 9. O que muda por projeto (fora do escopo deste guia)
+
+Duas coisas dependem inteiramente do seu modelo de dado, não da Pluggy — resumidas aqui só pra você saber que existem, sem o detalhe específico do projeto original:
+
+- **Comparar/casar o que a Pluggy trouxe contra o que seu app já tinha antes da integração.** Se seu app guarda dado parecido em mais de um lugar (ex: lançamento avulso numa tabela, lançamento recorrente/parcelado em outra), qualquer comparação que olhe só um dos lugares vai superestimar "não encontrado". `purchaseDate` + `installmentNumber`/`totalInstallments` (seção 4) ajudam bastante a casar parcelas contra parcelamentos manuais existentes, se for o caso do seu domínio. Regra que vale em qualquer domínio: **nunca apague dado existente automaticamente** só porque a Pluggy não trouxe correspondência — ausência é informação (lacuna do conector, duplicata, erro de lançamento), não autorização pra deletar.
+- **Ajustar um saldo/total calculado internamente pra bater com o valor real reportado pela Pluggy numa data de corte**, sem reconciliar retroativamente todo o histórico anterior. Se seu app calcula esse total somando histórico sem nenhum conceito de "ponto de partida com data", simplesmente trocar o valor base sem também cortar a soma por data conta tudo duas vezes — bug silencioso. Se esse for o seu caso, trate como mudança de código (testável) separada da mudança de dado, nessa ordem: schema aditivo sem efeito → código que respeita o corte, com teste de regressão provando que nada muda enquanto o corte não for preenchido → só então preencher os valores reais.
+
+## 10. Disciplina de verificação (a lição mais cara)
+
+A maior fonte de retrabalho nesta integração não foi a API da Pluggy em si — foi tratar **descrição de comportamento de API ou de código como fato antes de verificar**. Um contrato de endpoint foi especificado de memória (`/transactions` em vez de `/v2/transactions`, `from` em vez de `dateFrom`, `pageSize` que não existe no v2) e custou uma rodada inteira de debug até bater com a documentação oficial de verdade.
+
+Prática que eliminou isso depois de virar hábito: **antes de implementar em cima de qualquer alegação sobre como uma API ou um código se comporta — sua, de outra pessoa ou de uma IA — confira a documentação oficial atual ou teste a chamada de verdade.** "Provavelmente funciona assim" não é a mesma coisa que "confirmei que funciona assim", e a diferença custa uma rodada de debug toda vez que aparece.
+
+Outras práticas de verificação que compensaram o custo, específicas de trabalhar com a Pluggy:
+- Rodar diagnóstico agregado (contagem/booleano por conector) antes de confiar que um campo vem sempre presente — cobertura real varia por banco, sempre.
+- Depois de qualquer correção de bug de sincronização, re-sincronizar e conferir o número final contra a fonte oficial (extrato/fatura real do banco) — validação agregada (o total bate) **não substitui** validação de linha (um erro pequeno se esconde dentro de um total que ainda bate, se for pequeno o suficiente em relação ao todo).
+- Nunca assumir que testar um conector garante o comportamento dos outros — cada achado de contrato/metadado deste guia apareceu só num subconjunto dos 5 bancos testados.
