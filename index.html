@@ -1215,10 +1215,14 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
       <div class="page-header">
         <div>
           <div class="page-title">Sincronização</div>
-          <div class="page-subtitle">Saldo real (banco) vs. calculado pelo app — não altera nenhum lançamento</div>
+          <div class="page-subtitle">Saldo real (banco) vs. calculado pelo app</div>
         </div>
-        <button class="btn-secondary" id="btnSincronizarPluggy" onclick="sincronizarPluggy()">🔄 Sincronizar agora</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn-secondary" id="btnSincronizarPluggy" onclick="sincronizarPluggy()">🔄 Sincronizar agora</button>
+          <button class="btn-secondary" id="btnImportarPendentes" onclick="importarPendentes(['Nubank JP','Conta Nubank JP'])" title="Só Nubank por enquanto — primeira rodada da importação, ver Decisões no CLAUDE.md">📥 Importar pendentes (Nubank)</button>
+        </div>
       </div>
+      <div class="text-xs text-2" style="margin-bottom:12px">"Sincronizar agora" só espelha dado da Pluggy, não altera nenhum lançamento. "Importar pendentes" grava no extrato (categoria "Não classificado") — só transações a partir da data de corte de cada conta/cartão, e só o que ainda não existe no app.</div>
       <div class="month-selector" style="margin-bottom:12px">
         <button class="month-nav-btn" onclick="changeMonth(-1,'S')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 18l-6-6 6-6"/></svg>
@@ -1898,6 +1902,7 @@ const CATS_DESPESA = [
   {id:'pets',        emoji:'🐾', nome:'Pets'},
   {id:'comunicacao', emoji:'📱', nome:'Comunicação'},
   {id:'outros',      emoji:'📦', nome:'Outros'},
+  {id:'nao_classificado', emoji:'🏷️', nome:'Não classificado'},
 ];
 const CATS_RECEITA = [
   {id:'salario',      emoji:'💼', nome:'Salário'},
@@ -1905,6 +1910,7 @@ const CATS_RECEITA = [
   {id:'bonus',        emoji:'🎁', nome:'Bônus'},
   {id:'investimento', emoji:'📈', nome:'Investimento'},
   {id:'outros',       emoji:'📦', nome:'Outros'},
+  {id:'nao_classificado', emoji:'🏷️', nome:'Não classificado'},
 ];
 
 const CAT_COLORS = ['#5b7fff','#22c55e','#f59e0b','#ef4444','#8b5cf6',
@@ -4676,9 +4682,16 @@ async function deletarTransferencia(id) {
 
 // ════════════════════════════════════════════════════════════════════════════
 // SINCRONIZAÇÃO (PLUGGY) — Fase 1, espelho somente-leitura.
-// Esta seção NUNCA escreve em extrato/lancamentos/transferencias/contas/
-// cartoes — só lê pluggy_contas/pluggy_items pra comparar com o saldo já
-// calculado pelo app, e escreve apenas o mapeamento manual em pluggy_contas.
+// sincronizarPluggy()/carregarPluggyContas() NUNCA escrevem em extrato/
+// lancamentos/transferencias/contas/cartoes — só leem pluggy_contas/
+// pluggy_items pra comparar com o saldo já calculado pelo app, e escrevem
+// apenas o mapeamento manual em pluggy_contas.
+//
+// importarPendentes(), mais abaixo, é a ÚNICA exceção deliberada — Fase 2
+// (importação manual a partir do marco zero, ver Decisões no CLAUDE.md):
+// escreve em extrato, gatilho manual (nunca automático), só pra
+// contas/cartões com data_inicial preenchida (marco zero) e dentro dos 3
+// filtros obrigatórios lá documentados.
 // ════════════════════════════════════════════════════════════════════════════
 async function sincronizarPluggy() {
   if (!_sb) { showToast('Sem conexão com Supabase ❌'); return; }
@@ -4711,6 +4724,194 @@ async function sincronizarPluggy() {
   btn.disabled = false;
   // recarrega mesmo em erro, pra refletir o log mais recente (inclusive falhas)
   await carregarPluggyContas();
+}
+
+// ─── Importação (Fase 2) ─────────────────────────────────────────────────
+// Resolve o valor real de uma transação Pluggy, tratando moeda estrangeira.
+// Retorna null quando a transação é suspeita e NÃO deve ser importada
+// (moeda != BRL sem amountInAccountCurrency) — ver achado do ChatGPT/Nubank
+// no CLAUDE.md. Nunca estima conversão própria.
+function _pluggyValorReal(pt) {
+  const moeda = pt.metadata?.currencyCode;
+  if (moeda && moeda !== 'BRL') {
+    const conv = pt.metadata?.amountInAccountCurrency;
+    if (conv === null || conv === undefined) return null;
+    return Math.abs(Number(conv));
+  }
+  return Math.abs(Number(pt.valor));
+}
+
+function _diffDias(dataStr1, dataStr2) {
+  return Math.abs((parseData(dataStr1) - parseData(dataStr2)) / 86400000);
+}
+
+function _valorIgual(a, b) {
+  return Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
+}
+
+// Casamento como rede de segurança antes de importar — mesma regra da Fase
+// 1.7 (relatório de conciliação): comparar contra EXTRATO À VISTA e contra
+// LANCAMENTOS (Parcelado e Fixo), nunca só um dos dois, porque o usuário às
+// vezes lança parcela avulsa direto no extrato. Retorna { fonte, id } se já
+// existe, ou null se é candidata real a importação.
+function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
+  const extratoRows = cache.extrato.get(nome) || [];
+  const matchAvista = extratoRows.find(e => _valorIgual(e.valor, valor) && _diffDias(e.data, pt.data) <= 3);
+  if (matchAvista) return { fonte: 'extrato', id: matchAvista.id };
+
+  const lancRows = cache.lancamentos.get(nome) || [];
+  const cc = pt.metadata?.creditCardMetadata;
+  const instNum = cc?.installmentNumber ? Number(cc.installmentNumber) : null;
+  const instTot = cc?.totalInstallments ? Number(cc.totalInstallments) : null;
+  const billId  = cc?.billId;
+
+  // Parcelado: casar pela estrutura (installmentNumber/totalInstallments +
+  // competência via billId → pluggy_faturas.due_date), não por valor+data —
+  // mesma correção registrada na Fase 1.7 (valor+data não é chave quando há
+  // parcelamento envolvido).
+  if (ehCartao && instNum && instTot && billId) {
+    const fatura = cache.faturas.get(billId);
+    if (fatura?.due_date) {
+      const [ay, am] = fatura.due_date.split('-').map(Number);
+      const venidxReal = ay * 12 + am;
+      const cartaoObj = state.cartoes.find(c => c.nome === nome);
+      for (const lan of lancRows) {
+        if ((lan.tipo || '').toLowerCase() !== 'parcelado') continue;
+        if (Number(lan.parcelas) !== instTot) continue;
+        if (!_valorIgual(lan.valor, valor)) continue;
+        const venidxLan = getInstVencIdx(lan, instNum - 1, cartaoObj?.fechamento, cartaoObj?.vencimento);
+        if (venidxLan === venidxReal) return { fonte: 'lancamentos', id: lan.id };
+      }
+    }
+  }
+
+  // Fixo: ocorrência mensal esperada (dia_ini no mês da transação) perto da
+  // data real da cobrança.
+  const [ay, am] = pt.data.split('-').map(Number);
+  const ultimoDia = new Date(ay, am, 0).getDate();
+  for (const lan of lancRows) {
+    if ((lan.tipo || '').toLowerCase() !== 'fixo') continue;
+    if (!_valorIgual(lan.valor, valor)) continue;
+    const dia = Math.min(Number(lan.dia_ini) || 1, ultimoDia);
+    const dataEsperada = `${ay}-${String(am).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+    if (_diffDias(dataEsperada, pt.data) <= 3) return { fonte: 'lancamentos', id: lan.id };
+  }
+
+  return null;
+}
+
+// Importação manual (gatilho explícito, nunca automático — ver Decisões no
+// CLAUDE.md, Fase 2). `filtroNomes`: null importa todas as contas/cartões
+// cobertos; um array de nomes restringe a rollout (ex: só Nubank no início).
+async function importarPendentes(filtroNomes = null) {
+  if (!_sb) { showToast('Sem conexão com Supabase ❌'); return; }
+  if (!confirm('Importar transações pendentes da Pluggy pro extrato?\n\nEntram só a partir da data de corte de cada conta/cartão, com categoria "Não classificado".')) return;
+
+  const btn = document.getElementById('btnImportarPendentes');
+  if (btn) btn.disabled = true;
+  showToast('Importando...');
+
+  try {
+    const { data: mapeamentos } = await _sb.from('pluggy_contas').select('*').eq('ignorar', false);
+    const alvos = (mapeamentos || []).filter(m => {
+      const nome = m.cartao_nome || m.conta_nome;
+      if (!nome) return false;
+      if (filtroNomes && !filtroNomes.includes(nome)) return false;
+      return true;
+    });
+
+    let importadas = 0, casadas = 0, suspeitas = 0;
+    const avisos = [];
+
+    for (const m of alvos) {
+      const ehCartao = !!m.cartao_nome;
+      const nome = ehCartao ? m.cartao_nome : m.conta_nome;
+      const origemObj = ehCartao
+        ? state.cartoes.find(c => c.nome === nome)
+        : [...(state.contas || []), ...(state.caixinhas || [])].find(c => c.nome === nome);
+      const dataInicial = origemObj?.data_inicial;
+      // Sem data_inicial preenchida, não importa nada dessa conta/cartão —
+      // é o sinal de que o marco zero ainda não foi aplicado ali. Nunca cai
+      // pra uma data constante no código (ver Decisões no CLAUDE.md).
+      if (!dataInicial) continue;
+
+      const { data: pendentes } = await _sb.from('pluggy_transacoes')
+        .select('*')
+        .eq('pluggy_account_id', m.pluggy_account_id)
+        .gte('data', dataInicial)
+        .is('transacao_id', null);
+      if (!pendentes || !pendentes.length) continue;
+
+      const [{ data: extratoRows }, { data: lancRows }] = await Promise.all([
+        _sb.from('extrato').select('*').eq(ehCartao ? 'cartao_nome' : 'conta_nome', nome),
+        _sb.from('lancamentos').select('*').eq('conta_nome', nome).eq('ativo', true).eq('origem', ehCartao ? 'cartao' : 'conta'),
+      ]);
+      const billIds = [...new Set(pendentes.map(p => p.metadata?.creditCardMetadata?.billId).filter(Boolean))];
+      const faturasMap = new Map();
+      if (billIds.length) {
+        const { data: faturas } = await _sb.from('pluggy_faturas').select('*').in('bill_id', billIds);
+        (faturas || []).forEach(f => faturasMap.set(f.bill_id, f));
+      }
+      const cache = {
+        extrato: new Map([[nome, extratoRows || []]]),
+        lancamentos: new Map([[nome, lancRows || []]]),
+        faturas: faturasMap,
+      };
+
+      for (const pt of pendentes) {
+        // Cartão: só compra (DEBIT) — pagamento/estorno (CREDIT) não é
+        // "gasto" a importar. Conta: os dois — DEBIT = despesa, CREDIT =
+        // receita (sinal oposto ao de cartão, conferido antes de escrever
+        // este código, ver Decisões no CLAUDE.md).
+        if (ehCartao && pt.tipo !== 'DEBIT') continue;
+        if (!ehCartao && pt.tipo !== 'DEBIT' && pt.tipo !== 'CREDIT') continue;
+
+        const valor = _pluggyValorReal(pt);
+        if (valor === null) {
+          suspeitas++;
+          avisos.push(`${nome}: "${pt.descricao}" (${pt.data}) — moeda estrangeira sem valor convertido, não importada`);
+          continue;
+        }
+
+        const match = _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache);
+        if (match) {
+          await _sb.from('pluggy_transacoes')
+            .update({ transacao_id: match.id, transacao_fonte: match.fonte })
+            .eq('pluggy_id', pt.pluggy_id);
+          casadas++;
+          continue;
+        }
+
+        const linha = ehCartao ? {
+          data: pt.data, descricao: pt.descricao, categoria: 'nao_classificado',
+          valor, tipo: 'despesa', conta_nome: '', origem: 'cartao', cartao_nome: nome,
+          origem_dado: 'pluggy',
+        } : {
+          data: pt.data, descricao: pt.descricao, categoria: 'nao_classificado',
+          valor, tipo: pt.tipo === 'CREDIT' ? 'receita' : 'despesa',
+          conta_nome: nome, origem: 'conta', cartao_nome: '',
+          origem_dado: 'pluggy',
+        };
+
+        const inserida = await sbInsert('extrato', linha);
+        if (inserida) {
+          await _sb.from('pluggy_transacoes')
+            .update({ transacao_id: inserida.id, transacao_fonte: 'extrato' })
+            .eq('pluggy_id', pt.pluggy_id);
+          importadas++;
+          cache.extrato.get(nome).push(inserida); // evita duplicar dentro do mesmo run
+        }
+      }
+    }
+
+    showToast(`Importação concluída ✅ — ${importadas} nova(s), ${casadas} já existiam, ${suspeitas} pendente(s) de revisão`);
+    if (avisos.length) console.warn('[importarPendentes] pendentes de revisão manual:', avisos);
+    await loadData();
+  } catch (e) {
+    console.error('importarPendentes', e);
+    showToast(`Erro na importação ❌ ${e.message}`);
+  }
+  if (btn) btn.disabled = false;
 }
 
 async function carregarPluggyContas() {
