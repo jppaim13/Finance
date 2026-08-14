@@ -1219,7 +1219,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn-secondary" id="btnSincronizarPluggy" onclick="sincronizarPluggy()">🔄 Sincronizar agora</button>
-          <button class="btn-secondary" id="btnImportarPendentes" onclick="importarPendentes(['Nubank JP','Conta Nubank JP'])" title="Só Nubank por enquanto — primeira rodada da importação, ver Decisões no CLAUDE.md">📥 Importar pendentes (Nubank)</button>
+          <button class="btn-secondary" id="btnImportarPendentes" onclick="importarPendentes()" title="Todas as contas/cartões cobertos pela Pluggy — Nubank testado e aprovado primeiro, ver Decisões no CLAUDE.md">📥 Importar pendentes</button>
         </div>
       </div>
       <div class="text-xs text-2" style="margin-bottom:12px">"Sincronizar agora" só espelha dado da Pluggy, não altera nenhum lançamento. "Importar pendentes" grava no extrato (categoria "Não classificado") — só transações a partir da data de corte de cada conta/cartão, e só o que ainda não existe no app.</div>
