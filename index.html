@@ -1916,7 +1916,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-09g';
+const APP_VERSION = '2026-09-09h';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -5011,7 +5011,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
       return true;
     });
 
-    let importadas = 0, casadas = 0, suspeitas = 0, planejadas = 0;
+    let importadas = 0, casadas = 0, suspeitas = 0, planejadas = 0, transferidas = 0;
     const avisos = [];
 
     for (const m of alvos) {
@@ -5187,6 +5187,13 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
       }
     }
 
+    // Roda depois de importar tudo, não durante — precisa dos DOIS lados já
+    // em `extrato` (podem ter vindo de contas diferentes processadas em
+    // momentos diferentes deste mesmo loop) pra ter par pra casar. Também
+    // limpa qualquer pendência antiga que já estava na fila de Categorização
+    // antes desta função existir, não só o que este run acabou de importar.
+    transferidas = await autoDetectarTransferencias();
+
     if (logId) {
       await _sb.from('pluggy_sync_log')
         .update({ terminado_em: new Date().toISOString(), status: 'ok', criadas: importadas })
@@ -5201,6 +5208,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
     const partes = [];
     if (importadas > 0) partes.push(`${importadas} nova(s)`);
     if (casadas > 0) partes.push(`${casadas} já existia(m)`);
+    if (transferidas > 0) partes.push(`${transferidas} transferência(s) identificada(s)`);
     if (planejadas > 0) partes.push(`${planejadas} parcelamento(s) planejado(s)`);
     const base = partes.length ? partes.join(', ') : 'nenhuma novidade';
     const avisoSuspeitas = suspeitas > 0 ? ` — ⚠️ ${suspeitas} pendente(s) de revisão (moeda estrangeira)` : '';
@@ -5556,11 +5564,41 @@ async function categorizarGrupo(idsJson, categoria) {
   await renderCategorizacao();
 }
 
-// Converte uma transação de CONTA importada da Pluggy (nunca cartão — compra
-// de cartão não é transferência) em uma linha de `transferencias` de verdade,
-// em vez de deixá-la contando como despesa/receita comum. Direção: despesa
-// nesta conta = dinheiro SAINDO (conta_origem = a própria, conta_dest = a
-// escolhida); receita = dinheiro ENTRANDO (o contrário).
+// Converte uma transação de CONTA (já carregada) em uma linha de
+// `transferencias` de verdade — usado tanto pelo botão manual
+// (marcarComoTransferencia) quanto pela detecção automática por nome
+// (autoDetectarTransferencias). `contraparte`, quando informada, é a linha
+// do OUTRO lado da mesma transferência (já casada pelo chamador) — os dois
+// lados são apagados de `extrato` juntos, nunca só um, senão o par sobraria
+// meio convertido.
+//
+// pluggy_transacoes.transacao_id É REAPONTADO pra nova linha de
+// `transferencias` (nunca zerado) — senão a próxima sincronização veria
+// `transacao_id is null` de novo e reimportaria a mesma transação pro
+// extrato, desfazendo a conversão silenciosamente.
+async function _converterExtratoEmTransferencia(tx, contaOrigem, contaDest, contraparte) {
+  const nova = await sbInsert('transferencias', {
+    data: tx.data,
+    descricao: tx.descricao || 'Transferência',
+    valor: tx.valor,
+    conta_origem: contaOrigem,
+    conta_dest: contaDest,
+  });
+  if (!nova) return false;
+
+  const idsExtrato = contraparte ? [tx.id, contraparte.id] : [tx.id];
+  await _sb.from('pluggy_transacoes')
+    .update({ transacao_id: nova.id, transacao_fonte: 'transferencias' })
+    .in('transacao_id', idsExtrato);
+  await _sb.from('extrato').delete().in('id', idsExtrato);
+  return true;
+}
+
+// Transação de CONTA importada da Pluggy (nunca cartão — compra de cartão
+// não é transferência), convertida em `transferencias` a partir da conta
+// escolhida à mão. Direção: despesa nesta conta = dinheiro SAINDO
+// (conta_origem = a própria, conta_dest = a escolhida); receita = dinheiro
+// ENTRANDO (o contrário).
 //
 // Rede de segurança: se a OUTRA conta também for coberta pela Pluggy, o
 // outro lado da mesma transferência pode já estar pendente de categorizar
@@ -5568,11 +5606,6 @@ async function categorizarGrupo(idsJson, categoria) {
 // lado separadamente criaria DUAS linhas em `transferencias` pro mesmo
 // evento, duplicando o efeito no saldo. Quando acha o par, funde os dois
 // numa transferência só.
-//
-// pluggy_transacoes.transacao_id É REAPONTADO pra nova linha de
-// `transferencias` (nunca zerado) — senão a próxima sincronização veria
-// `transacao_id is null` de novo e reimportaria a mesma transação pro
-// extrato, desfazendo a conversão silenciosamente.
 async function marcarComoTransferencia(extratoId, outraConta) {
   if (!outraConta) { showToast('Selecione a conta de origem/destino'); return; }
 
@@ -5593,23 +5626,80 @@ async function marcarComoTransferencia(extratoId, outraConta) {
   const contraparte = (candidatos || []).find(c =>
     c.tipo !== tx.tipo && _valorIgual(c.valor, tx.valor) && _diffDias(c.data, tx.data) <= 3);
 
-  const nova = await sbInsert('transferencias', {
-    data: tx.data,
-    descricao: tx.descricao || 'Transferência',
-    valor: tx.valor,
-    conta_origem: contaOrigem,
-    conta_dest: contaDest,
-  });
-  if (!nova) { showToast('Erro ao criar transferência ❌'); return; }
-
-  const idsExtrato = contraparte ? [tx.id, contraparte.id] : [tx.id];
-  await _sb.from('pluggy_transacoes')
-    .update({ transacao_id: nova.id, transacao_fonte: 'transferencias' })
-    .in('transacao_id', idsExtrato);
-  await _sb.from('extrato').delete().in('id', idsExtrato);
+  const ok = await _converterExtratoEmTransferencia(tx, contaOrigem, contaDest, contraparte);
+  if (!ok) { showToast('Erro ao criar transferência ❌'); return; }
 
   showToast(contraparte ? 'Transferência criada — os dois lados foram casados ✅' : 'Transferência criada ✅');
   await loadData(); // muda saldo/resumo, não só a lista de pendentes — recarrega tudo
+}
+
+// Nome do titular da conta Pluggy — só o João tem integração própria (ver
+// "fronteira de CPF" nas Decisões: contas da esposa ficam de fora). Usado só
+// como SINAL adicional de "isso é PIX/TED entre as próprias contas", nunca
+// sozinho — o casamento de verdade continua sendo valor igual + tipo oposto
+// + conta diferente + data próxima, o mesmo critério que marcarComoTransferencia()
+// já usava por clique manual. Primeiro+último nome (não o nome completo com
+// "DE FARIA" no meio) porque o texto de PIX/TED varia entre bancos e às
+// vezes trunca o nome do meio — comparação sem acento/maiúscula pelo mesmo
+// motivo.
+const NOME_TITULAR_PLUGGY = 'JOAO PAULO';
+const SOBRENOME_TITULAR_PLUGGY = 'PAIM';
+
+function _normalizarTexto(s) {
+  // Remove marcas de acentuação (NFD separa a letra base da marca combinante,
+  // faixa hex 0x0300-0x036F do Unicode) sem usar escape de regex — mais
+  // seguro contra mangling de caractere que \u literal sofreu ao escrever
+  // este trecho.
+  return (s || '').normalize('NFD').split('').filter(ch => {
+    const code = ch.codePointAt(0);
+    return code < 0x0300 || code > 0x036f;
+  }).join('').toUpperCase();
+}
+
+function _pareceTransferenciaPropria(descricao) {
+  const norm = _normalizarTexto(descricao);
+  return norm.includes(NOME_TITULAR_PLUGGY) && norm.includes(SOBRENOME_TITULAR_PLUGGY);
+}
+
+// Detecta e converte automaticamente transferências entre as próprias contas
+// cobertas — chamada no fim de importarPendentes(), disparo manual OU
+// automático (ver "automação ligada"). Critério (os DOIS precisam bater,
+// nome sozinho nunca é suficiente): (1) descrição menciona o titular
+// (_pareceTransferenciaPropria) — sinal de que é PIX/TED pra si mesmo, não
+// coincidência de valor com um terceiro; (2) existe outra pendente,
+// EM CONTA DIFERENTE, mesmo valor, tipo oposto, ±3 dias — mesmo critério de
+// sempre (marcarComoTransferencia). Sem o nome, duas contas próprias podem
+// ter uma despesa e uma receita de valor igual por pura coincidência (ex:
+// dois débitos de R$50 no mesmo dia sem relação nenhuma) — o nome é o que
+// evita casar esse tipo de coincidência sozinho.
+async function autoDetectarTransferencias() {
+  const { data: pendentes } = await _sb.from('extrato')
+    .select('*')
+    .eq('origem_dado', 'pluggy')
+    .eq('origem', 'conta')
+    .eq('categoria', 'nao_classificado');
+  if (!pendentes || pendentes.length < 2) return 0;
+
+  const candidatos = pendentes.filter(tx => _pareceTransferenciaPropria(tx.descricao));
+  const usados = new Set();
+  let criadas = 0;
+
+  for (const tx of candidatos) {
+    if (usados.has(tx.id)) continue;
+    const par = candidatos.find(c =>
+      c.id !== tx.id && !usados.has(c.id) &&
+      c.conta_nome !== tx.conta_nome &&
+      c.tipo !== tx.tipo &&
+      _valorIgual(c.valor, tx.valor) &&
+      _diffDias(c.data, tx.data) <= 3);
+    if (!par) continue;
+
+    const contaOrigem = tx.tipo === 'receita' ? par.conta_nome : tx.conta_nome;
+    const contaDest   = tx.tipo === 'receita' ? tx.conta_nome : par.conta_nome;
+    const ok = await _converterExtratoEmTransferencia(tx, contaOrigem, contaDest, par);
+    if (ok) { usados.add(tx.id); usados.add(par.id); criadas++; }
+  }
+  return criadas;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
