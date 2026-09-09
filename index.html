@@ -1916,7 +1916,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-09c';
+const APP_VERSION = '2026-09-09d';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -4878,8 +4878,31 @@ function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
     } else {
       venidxReal = getVencimentoIdx(pt.data, cartaoObj?.fechamento, cartaoObj?.vencimento);
     }
+    const purchaseDate = cc.purchaseDate;
     for (const lan of lancRows) {
       if ((lan.tipo || '').toLowerCase() !== 'parcelado') continue;
+
+      // Lançamento criado pela própria Pluggy (importarPendentes, "lançar
+      // despesa futura"): `parcelas` guarda só as parcelas RESTANTES no
+      // momento da criação, não o total real da compra — casar por
+      // `parcelas === totalInstallments` (regra de baixo) nunca bateria
+      // aqui. Casa por IDENTIDADE DA COMPRA (purchaseDate + total real,
+      // gravados à parte por _pluggyJaExisteNoApp/importarPendentes só pra
+      // isso) — desenho revisado a pedido do Opus pra não depender de
+      // calcularResumo() saber cortar por data (ver Decisões no CLAUDE.md).
+      if (lan.pluggy_data_compra) {
+        if (lan.pluggy_data_compra !== purchaseDate) continue;
+        if (Number(lan.pluggy_parcelas_totais) !== instTot) continue;
+        const parcelaInicial = Number(lan.pluggy_parcelas_totais) - Number(lan.parcelas) + 1;
+        const offset = instNum - parcelaInicial;
+        if (offset < 0 || offset >= Number(lan.parcelas)) continue;
+        const venidxLan = getInstVencIdx(lan, offset, cartaoObj?.fechamento, cartaoObj?.vencimento);
+        if (venidxLan === venidxReal) return { fonte: 'lancamentos', id: lan.id };
+        continue;
+      }
+
+      // Lançamento manual de sempre: usuário tracked a compra inteira, casa
+      // pelo total real igual ao `parcelas` cadastrado.
       if (Number(lan.parcelas) !== instTot) continue;
       if (!_valorIgual(lan.valor, valor)) continue;
       const venidxLan = getInstVencIdx(lan, instNum - 1, cartaoObj?.fechamento, cartaoObj?.vencimento);
@@ -4959,7 +4982,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
       return true;
     });
 
-    let importadas = 0, casadas = 0, suspeitas = 0;
+    let importadas = 0, casadas = 0, suspeitas = 0, planejadas = 0;
     const avisos = [];
 
     for (const m of alvos) {
@@ -5007,6 +5030,16 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
         faturas: faturasMap,
       };
 
+      // Rastreia, por compra parcelada (purchaseDate+totalInstallments), a
+      // maior parcela vista nesta rodada — usado depois do loop pra criar o
+      // lançamento das parcelas AINDA NÃO cobradas (ver mais abaixo). Usar a
+      // MAIOR, não a primeira encontrada: um backlog inicial pode trazer
+      // várias parcelas já ocorridas da mesma compra numa rodada só, e
+      // começar do meio delas contaria fatura em dobro pras que já foram
+      // importadas como extrato nesta mesma rodada (armadilha apontada pelo
+      // Opus — ver Decisões no CLAUDE.md).
+      const gruposParcelado = new Map();
+
       for (const pt of pendentes) {
         // Cartão: só compra (DEBIT) — pagamento/estorno (CREDIT) não é
         // "gasto" a importar. Conta: os dois — DEBIT = despesa, CREDIT =
@@ -5020,6 +5053,19 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
           suspeitas++;
           avisos.push(`${nome}: "${pt.descricao}" (${pt.data}) — moeda estrangeira sem valor convertido, não importada`);
           continue;
+        }
+
+        const ccPt = pt.metadata?.creditCardMetadata;
+        const instNumPt = ccPt?.installmentNumber ? Number(ccPt.installmentNumber) : null;
+        const instTotPt = ccPt?.totalInstallments ? Number(ccPt.totalInstallments) : null;
+        if (ehCartao && instNumPt && instTotPt && ccPt.purchaseDate) {
+          const chave = `${ccPt.purchaseDate}|${instTotPt}`;
+          const g = gruposParcelado.get(chave) || {
+            purchaseDate: ccPt.purchaseDate, instTot: instTotPt, maxInstNum: 0,
+            valor, ultimaData: pt.data, descricaoBase: pt.descricao,
+          };
+          if (instNumPt > g.maxInstNum) { g.maxInstNum = instNumPt; g.ultimaData = pt.data; g.valor = valor; }
+          gruposParcelado.set(chave, g);
         }
 
         const match = _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache);
@@ -5062,6 +5108,52 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
           cache.extrato.get(nome).push(inserida); // evita duplicar dentro do mesmo run
         }
       }
+
+      // "Lançar despesa futura": pra cada compra parcelada com parcelas
+      // ainda não cobradas (maxInstNum < instTot), cria um `lancamentos`
+      // Parcelado cobrindo só o que falta — nunca reconstrói o passado
+      // (mes_ini começa no mês SEGUINTE à última parcela vista, nunca no mês
+      // atual nem antes). `parcelas` aqui guarda a contagem restante, não o
+      // total real da compra — o total real fica em `pluggy_parcelas_totais`
+      // só pra _pluggyJaExisteNoApp() casar as parcelas futuras quando
+      // sincronizarem depois, sem duplicar. calcularResumo()/calcularSaldo()
+      // não precisam saber de nada disso: como mes_ini nunca é anterior a
+      // hoje, o lançamento nunca alcança fatura já fechada — ver Decisões no
+      // CLAUDE.md (desenho revisado pelo Opus).
+      for (const g of gruposParcelado.values()) {
+        if (g.maxInstNum >= g.instTot) continue; // última parcela já ocorreu, nada restando
+        // "Já tracked" cobre DOIS casos, não só o lançamento criado pela
+        // própria Pluggy: um lançamento MANUAL que já tracked a compra
+        // inteira (mesmo critério do casamento estrutural de sempre —
+        // `parcelas === totalInstallments` + valor igual) também já cobre
+        // os meses futuros sozinho. Sem checar esse caso, uma compra que o
+        // usuário já lançou manualmente por completo ganharia um SEGUNDO
+        // lançamento cobrindo os mesmos meses futuros, contando fatura em
+        // dobro daqui pra frente.
+        const jaTracked = (cache.lancamentos.get(nome) || []).some(l => {
+          if ((l.tipo || '').toLowerCase() !== 'parcelado') return false;
+          if (l.pluggy_data_compra === g.purchaseDate && Number(l.pluggy_parcelas_totais) === g.instTot) return true;
+          return Number(l.parcelas) === g.instTot && _valorIgual(l.valor, g.valor);
+        });
+        if (jaTracked) continue;
+
+        const [ay, am, ad] = g.ultimaData.split('-').map(Number);
+        let mesIni = am + 1, anoIni = ay;
+        if (mesIni > 12) { mesIni = 1; anoIni++; }
+
+        const novoLan = {
+          descricao: g.descricaoBase, categoria: 'nao_classificado', tipo: 'parcelado',
+          valor: g.valor, parcelas: g.instTot - g.maxInstNum,
+          mes_ini: mesIni, ano_ini: anoIni, dia_ini: ad,
+          conta_nome: nome, origem: 'cartao', ativo: true,
+          origem_dado: 'pluggy', pluggy_data_compra: g.purchaseDate, pluggy_parcelas_totais: g.instTot,
+        };
+        const criado = await sbInsert('lancamentos', novoLan);
+        if (criado) {
+          cache.lancamentos.get(nome).push(criado); // evita duplicar dentro do mesmo run
+          planejadas++;
+        }
+      }
     }
 
     if (logId) {
@@ -5078,6 +5170,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
     const partes = [];
     if (importadas > 0) partes.push(`${importadas} nova(s)`);
     if (casadas > 0) partes.push(`${casadas} já existia(m)`);
+    if (planejadas > 0) partes.push(`${planejadas} parcelamento(s) planejado(s)`);
     const base = partes.length ? partes.join(', ') : 'nenhuma novidade';
     const avisoSuspeitas = suspeitas > 0 ? ` — ⚠️ ${suspeitas} pendente(s) de revisão (moeda estrangeira)` : '';
     showToast(silencioso
@@ -5340,11 +5433,12 @@ async function renderCategorizacao() {
   });
   const gruposOrdenados = [...grupos.entries()].sort((a, b) => b[1].length - a[1].length);
 
-  el.innerHTML = gruposOrdenados.map(([descricaoBase, itens]) => {
+  el.innerHTML = gruposOrdenados.map(([descricaoBase, itens], idx) => {
     const tipo = itens[0].tipo;
     const total = itens.reduce((s, i) => s + Number(i.valor || 0), 0);
     const sugestao = sugestoes.get(descricaoBase);
     const idsGrupo = JSON.stringify(itens.map(i => i.id)).replace(/'/g, "\\'");
+    const selIdGrupo = `catgrupo-${idx}`;
     return `
       <div class="card" style="padding:14px;margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
@@ -5352,20 +5446,27 @@ async function renderCategorizacao() {
             <div style="font-weight:500">${descricaoBase}</div>
             <div class="text-xs text-3">${itens.length} transação(ões) · total ${fmt(total)}${sugestao ? ` · sugestão: ${sugestao}` : ''}</div>
           </div>
-          <select class="form-select" style="max-width:220px" onchange="categorizarGrupo('${idsGrupo}', this.value)">
-            ${_optsCategoria(tipo, sugestao)}
-          </select>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="${selIdGrupo}" class="form-select" style="max-width:220px" onchange="categorizarGrupo('${idsGrupo}', this.value)">
+              ${_optsCategoria(tipo, sugestao)}
+            </select>
+            <button class="btn-primary" style="padding:6px 14px;font-size:12px;white-space:nowrap" onclick="categorizarGrupo('${idsGrupo}', document.getElementById('${selIdGrupo}').value)">OK</button>
+          </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:2px">
-          ${itens.map(i => `
+          ${itens.map(i => {
+            const selIdLinha = `catlinha-${i.id}`;
+            return `
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid var(--border)">
               <span class="text-2" style="flex:1">${_fmtDataBR(i.data)} · ${i.cartao_nome || i.conta_nome || ''}${i.descricao !== descricaoBase ? ` · ${i.descricao.slice(descricaoBase.length).trim()}` : ''}</span>
               <span class="font-mono">${fmt(i.valor)}</span>
-              <select class="form-select" style="max-width:170px;font-size:12px" onchange="categorizarLinha('${i.id}', this.value)">
+              <select id="${selIdLinha}" class="form-select" style="max-width:170px;font-size:12px" onchange="categorizarLinha('${i.id}', this.value)">
                 ${_optsCategoria(tipo, '')}
               </select>
+              <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="categorizarLinha('${i.id}', document.getElementById('${selIdLinha}').value)">OK</button>
             </div>
-          `).join('')}
+          `;
+          }).join('')}
         </div>
       </div>
     `;
