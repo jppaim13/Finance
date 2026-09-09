@@ -1800,6 +1800,21 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
   </div>
 </div>
 
+<!-- ── MODAL PAGAR FATURA ────────────────────────────────────────── -->
+<div class="modal-overlay" id="modalPagarFatura" onclick="closeIfOverlay(event,'modalPagarFatura')">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Pagar Fatura</div>
+    <p class="text-sm text-2" style="margin-bottom:16px">Cartão: <b id="pagf-cartao-label"></b> · <span id="pagf-valor-label" class="font-mono"></span></p>
+    <div class="form-group">
+      <label class="form-label">Conta pagadora</label>
+      <select class="form-select" id="pagfContaSelect"></select>
+      <p class="text-xs text-3" style="margin-top:6px">A conta do cartão é só uma sugestão — escolha de onde o pagamento realmente saiu neste mês (pode variar mês a mês).</p>
+    </div>
+    <button class="btn-primary" onclick="confirmarPagarFatura()">Confirmar Pagamento</button>
+  </div>
+</div>
+
 <!-- ── MODAL META ────────────────────────────────────────────────── -->
 <div class="modal-overlay" id="modalMeta" onclick="closeIfOverlay(event,'modalMeta')">
   <div class="modal">
@@ -1916,7 +1931,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-09i';
+const APP_VERSION = '2026-09-09j';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -3275,7 +3290,7 @@ function renderFaturas() {
         ${itensList}
         ${!pago && valor > 0 ? `
         <button class="btn-primary" style="margin-top:12px;padding:10px;font-size:13px;${vencida ? 'background:var(--red)' : ''}"
-          onclick="confirmarPagarFatura('${c.nome}','${c.conta}',${valor},'${dueISO}')">
+          onclick="abrirModalPagarFatura('${c.nome}','${c.conta}',${valor},'${dueISO}')">
           ${vencida ? '⚠ Pagar Fatura Vencida' : 'Pagar Fatura'} · ${fmt(valor)}
         </button>` : ''}
       </div>
@@ -3283,22 +3298,42 @@ function renderFaturas() {
   }).join('');
 }
 
-async function confirmarPagarFatura(cartaoNome, contaNome, valor, dataVencimento) {
-  if (!confirm(`Pagar fatura de ${cartaoNome} (${fmt(valor)}) debitando de "${contaNome}"?`)) return;
+// `cartoes.conta_nome` é só uma SUGESTÃO de conta pagadora, não a fonte da
+// verdade — a conta de onde a fatura realmente saiu só se sabe no momento do
+// pagamento, e varia mês a mês (ex: às vezes Pix direto do banco do cartão,
+// às vezes de uma conta intermediária). Corrigido a pedido do usuário/Opus
+// depois de achar pagamentos reais (via Pluggy) batendo em contas diferentes
+// da configurada no cartão — ver Decisões no CLAUDE.md. O modal below deixa
+// a conta sugerida pré-selecionada mas sempre trocável.
+let _pagfCartaoNome = '', _pagfValor = 0, _pagfDataVencimento = '';
+
+function abrirModalPagarFatura(cartaoNome, contaSugerida, valor, dataVencimento) {
+  _pagfCartaoNome = cartaoNome;
+  _pagfValor = valor;
+  _pagfDataVencimento = dataVencimento;
+  document.getElementById('pagf-cartao-label').textContent = cartaoNome;
+  document.getElementById('pagf-valor-label').textContent = fmt(valor);
+  const sel = document.getElementById('pagfContaSelect');
+  sel.innerHTML = _optsContasTransferencia(null); // nenhuma exclusão — qualquer conta/caixinha pode ter pago
+  sel.value = contaSugerida || '';
+  document.getElementById('modalPagarFatura').classList.add('open');
+}
+
+async function confirmarPagarFatura() {
+  const contaNome = document.getElementById('pagfContaSelect').value;
+  if (!contaNome) { showToast('Selecione a conta pagadora'); return; }
+  closeModal('modalPagarFatura');
   showToast('Registrando pagamento...');
-  // dataVencimento sempre vem preenchida do único call site (botão "Pagar Fatura"),
-  // que já calcula a data de vencimento antes de chamar esta função.
-  const data = dataVencimento;
-  const key = `${cartaoNome}-${MESES_NOMES[state.currentMonth]}`;
+  const key = `${_pagfCartaoNome}-${MESES_NOMES[state.currentMonth]}`;
   const saved = await sbInsert('extrato', {
-    data,
-    descricao:   `Fatura ${cartaoNome}`,
+    data:        _pagfDataVencimento,
+    descricao:   `Fatura ${_pagfCartaoNome}`,
     categoria:   'fatura',
-    valor,
+    valor:       _pagfValor,
     tipo:        'despesa',
     conta_nome:  contaNome,
     origem:      'conta',
-    cartao_nome: cartaoNome,
+    cartao_nome: _pagfCartaoNome,
     parcela:     key,
   });
   if (saved) {
@@ -5213,6 +5248,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
     // limpa qualquer pendência antiga que já estava na fila de Categorização
     // antes desta função existir, não só o que este run acabou de importar.
     transferidas = await autoDetectarTransferencias();
+    const faturasReconhecidas = await autoDetectarPagamentosFatura();
 
     if (logId) {
       await _sb.from('pluggy_sync_log')
@@ -5229,6 +5265,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
     if (importadas > 0) partes.push(`${importadas} nova(s)`);
     if (casadas > 0) partes.push(`${casadas} já existia(m)`);
     if (transferidas > 0) partes.push(`${transferidas} transferência(s) identificada(s)`);
+    if (faturasReconhecidas > 0) partes.push(`${faturasReconhecidas} pagamento(s) de fatura reconhecido(s)`);
     if (planejadas > 0) partes.push(`${planejadas} parcelamento(s) planejado(s)`);
     const base = partes.length ? partes.join(', ') : 'nenhuma novidade';
     const avisoSuspeitas = suspeitas > 0 ? ` — ⚠️ ${suspeitas} pendente(s) de revisão (moeda estrangeira)` : '';
@@ -5720,6 +5757,56 @@ async function autoDetectarTransferencias() {
     if (ok) { usados.add(tx.id); usados.add(par.id); criadas++; }
   }
   return criadas;
+}
+
+const _MES_ABREV = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+// Reconhece pagamento de fatura já sincronizado pela Pluggy: `cartoes.conta_nome`
+// é só uma SUGESTÃO de conta pagadora, não fonte da verdade — o pagamento
+// real pode sair de qualquer conta, varia mês a mês (achado real: XP Visa/
+// C6/Mercado Pago pagos ora do Caju, ora da Conta XP, ora direto do banco do
+// cartão — ver Decisões no CLAUDE.md, desenho revisado pelo Opus). Quando
+// uma transação de conta pendente bate (valor exato + até 5 dias) com o
+// total de uma fatura FECHADA (`due_date < hoje`, mesma regra de sempre) de
+// um cartão coberto, marca essa linha como `categoria='fatura'` com o
+// `cartao_nome` certo — a conta pagadora que fica registrada é a que a
+// Pluggy reportou de verdade, não a sugestão do cartão. Roda no fim de
+// importarPendentes(), mesmo espírito de autoDetectarTransferencias().
+async function autoDetectarPagamentosFatura() {
+  const hojeStr = formatarData(new Date());
+  const { data: faturas } = await _sb.from('pluggy_faturas').select('*').lt('due_date', hojeStr);
+  if (!faturas || !faturas.length) return 0;
+
+  const { data: mapeamentos } = await _sb.from('pluggy_contas')
+    .select('pluggy_account_id, cartao_nome').eq('ignorar', false).not('cartao_nome', 'is', null);
+  const contaParaCartao = new Map((mapeamentos || []).map(m => [m.pluggy_account_id, m.cartao_nome]));
+
+  const { data: pendentes } = await _sb.from('extrato')
+    .select('*')
+    .eq('origem_dado', 'pluggy').eq('origem', 'conta').eq('categoria', 'nao_classificado');
+  if (!pendentes || !pendentes.length) return 0;
+
+  let marcadas = 0;
+  for (const fat of faturas) {
+    const cartaoNome = contaParaCartao.get(fat.pluggy_account_id);
+    if (!cartaoNome) continue;
+
+    const idx = pendentes.findIndex(tx =>
+      tx.tipo === 'despesa' &&
+      _valorIgual(tx.valor, fat.total_amount) &&
+      _diffDias(tx.data, fat.due_date) <= 5);
+    if (idx === -1) continue;
+    const candidato = pendentes[idx];
+
+    const [ay, am] = fat.due_date.split('-').map(Number);
+    const key = `${cartaoNome}-${_MES_ABREV[am - 1]}-${ay}`;
+
+    const { error } = await _sb.from('extrato')
+      .update({ categoria: 'fatura', cartao_nome: cartaoNome, parcela: key })
+      .eq('id', candidato.id);
+    if (!error) { pendentes.splice(idx, 1); marcadas++; } // remove do pool pra não reusar no mesmo run
+  }
+  return marcadas;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
