@@ -4835,10 +4835,20 @@ async function importarPendentes(filtroNomes = null) {
       // pra uma data constante no código (ver Decisões no CLAUDE.md).
       if (!dataInicial) continue;
 
+      // Limite superior = hoje: a Pluggy reporta parcelas FUTURAS já
+      // conhecidas de um parcelamento em aberto (ex: 12x de uma assinatura,
+      // com installmentNumber 2, 3, 4... datadas meses à frente) — isso não
+      // é "transação já ocorrida", é agenda. Sem esse limite, importar
+      // criava linha de despesa em extrato pra cobrança que ainda nem
+      // aconteceu (achado real: 6 parcelas de uma assinatura de R$20
+      // importadas com data até 02/2027). extrato é histórico realizado,
+      // não agenda — parcela futura fica pendente até a data dela chegar.
+      const hojeStr = formatarData(new Date());
       const { data: pendentes } = await _sb.from('pluggy_transacoes')
         .select('*')
         .eq('pluggy_account_id', m.pluggy_account_id)
         .gte('data', dataInicial)
+        .lte('data', hojeStr)
         .is('transacao_id', null);
       if (!pendentes || !pendentes.length) continue;
 
