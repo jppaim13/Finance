@@ -1916,7 +1916,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-09b';
+const APP_VERSION = '2026-09-09c';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -5031,12 +5031,23 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
           continue;
         }
 
+        // Deixa claro que é parcela usando a MESMA convenção que o app já usa
+        // pra lançamento parcelado manual (montarLancamentosMes): sufixo
+        // " (N/M)" dentro da própria descrição, não uma coluna separada —
+        // extrato.parcela já é usado pra outra coisa (chave de fatura paga,
+        // só em categoria='fatura'). renderCategorizacao() agrupa ignorando
+        // esse sufixo, então continua categorizando a série inteira em bloco.
+        const cc = pt.metadata?.creditCardMetadata;
+        const sufixoParcela = (ehCartao && cc?.installmentNumber && cc?.totalInstallments)
+          ? ` (${cc.installmentNumber}/${cc.totalInstallments})` : '';
+        const descricaoFinal = `${pt.descricao}${sufixoParcela}`;
+
         const linha = ehCartao ? {
-          data: pt.data, descricao: pt.descricao, categoria: 'nao_classificado',
+          data: pt.data, descricao: descricaoFinal, categoria: 'nao_classificado',
           valor, tipo: 'despesa', conta_nome: '', origem: 'cartao', cartao_nome: nome,
           origem_dado: 'pluggy',
         } : {
-          data: pt.data, descricao: pt.descricao, categoria: 'nao_classificado',
+          data: pt.data, descricao: descricaoFinal, categoria: 'nao_classificado',
           valor, tipo: pt.tipo === 'CREDIT' ? 'receita' : 'despesa',
           conta_nome: nome, origem: 'conta', cartao_nome: '',
           origem_dado: 'pluggy',
@@ -5292,51 +5303,63 @@ async function renderCategorizacao() {
   }
   if (contadorEl) contadorEl.textContent = `${pendentes.length} transação(ões) sem categoria`;
 
-  // Sugestão barata: descrição idêntica já categorizada antes (inclusive
-  // manual) — mesmo par "descrição ↔ categoria" que o casamento da Fase 1.7
-  // produz. Só sugere, nunca aplica sozinho.
-  const descricoes = [...new Set(pendentes.map(p => p.descricao).filter(Boolean))];
-  const sugestoes = new Map();
-  if (descricoes.length) {
+  // Ignora o sufixo " (N/M)" de parcela (ver adição em importarPendentes())
+  // tanto pra buscar sugestão quanto pra agrupar — sem isso, cada parcela
+  // teria descrição literal diferente e nunca acharia sugestão nem grupo.
+  const _semParcela = s => (s || '').replace(/\s\(\d+\/\d+\)$/, '');
+
+  // Sugestão barata: descrição (com ou sem sufixo de parcela) já categorizada
+  // antes (inclusive manual) — mesmo par "descrição ↔ categoria" que o
+  // casamento da Fase 1.7 produz. Só sugere, nunca aplica sozinho.
+  const descricoesBusca = new Set();
+  pendentes.forEach(p => { if (p.descricao) { descricoesBusca.add(p.descricao); descricoesBusca.add(_semParcela(p.descricao)); } });
+  const sugestoes = new Map(); // chave: descrição SEM sufixo
+  if (descricoesBusca.size) {
     const { data: historico } = await _sb.from('extrato')
       .select('descricao, categoria')
-      .in('descricao', descricoes)
+      .in('descricao', [...descricoesBusca])
       .neq('categoria', 'nao_classificado')
       .not('categoria', 'is', null);
-    (historico || []).forEach(h => { if (!sugestoes.has(h.descricao)) sugestoes.set(h.descricao, h.categoria); });
+    (historico || []).forEach(h => {
+      const chave = _semParcela(h.descricao);
+      if (!sugestoes.has(chave)) sugestoes.set(chave, h.categoria);
+    });
   }
 
   // Agrupar por descrição (assinatura, mercado, posto costumam repetir o
   // mesmo texto) — grupo maior primeiro, pra categorizar em bloco o que
-  // rende mais rápido.
+  // rende mais rápido. Ignora o sufixo " (N/M)" de parcela na CHAVE de
+  // agrupamento (senão cada parcela de uma mesma compra viraria grupo de 1,
+  // já que o texto muda por linha) — cada linha individual continua
+  // mostrando seu próprio sufixo.
   const grupos = new Map();
   pendentes.forEach(p => {
-    const chave = p.descricao || '(sem descrição)';
+    const chave = _semParcela(p.descricao) || '(sem descrição)';
     if (!grupos.has(chave)) grupos.set(chave, []);
     grupos.get(chave).push(p);
   });
   const gruposOrdenados = [...grupos.entries()].sort((a, b) => b[1].length - a[1].length);
 
-  el.innerHTML = gruposOrdenados.map(([descricao, itens]) => {
+  el.innerHTML = gruposOrdenados.map(([descricaoBase, itens]) => {
     const tipo = itens[0].tipo;
     const total = itens.reduce((s, i) => s + Number(i.valor || 0), 0);
-    const sugestao = sugestoes.get(descricao);
-    const descEsc = descricao.replace(/'/g, "\\'");
+    const sugestao = sugestoes.get(descricaoBase);
+    const idsGrupo = JSON.stringify(itens.map(i => i.id)).replace(/'/g, "\\'");
     return `
       <div class="card" style="padding:14px;margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
           <div>
-            <div style="font-weight:500">${descricao}</div>
+            <div style="font-weight:500">${descricaoBase}</div>
             <div class="text-xs text-3">${itens.length} transação(ões) · total ${fmt(total)}${sugestao ? ` · sugestão: ${sugestao}` : ''}</div>
           </div>
-          <select class="form-select" style="max-width:220px" onchange="categorizarGrupo('${descEsc}', this.value)">
+          <select class="form-select" style="max-width:220px" onchange="categorizarGrupo('${idsGrupo}', this.value)">
             ${_optsCategoria(tipo, sugestao)}
           </select>
         </div>
         <div style="display:flex;flex-direction:column;gap:2px">
           ${itens.map(i => `
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid var(--border)">
-              <span class="text-2" style="flex:1">${_fmtDataBR(i.data)} · ${i.cartao_nome || i.conta_nome || ''}</span>
+              <span class="text-2" style="flex:1">${_fmtDataBR(i.data)} · ${i.cartao_nome || i.conta_nome || ''}${i.descricao !== descricaoBase ? ` · ${i.descricao.slice(descricaoBase.length).trim()}` : ''}</span>
               <span class="font-mono">${fmt(i.valor)}</span>
               <select class="form-select" style="max-width:170px;font-size:12px" onchange="categorizarLinha('${i.id}', this.value)">
                 ${_optsCategoria(tipo, '')}
@@ -5357,16 +5380,15 @@ async function categorizarLinha(id, categoria) {
   await renderCategorizacao();
 }
 
-// Categoriza TODAS as pendentes com a mesma descrição de uma vez — o filtro
-// do update é idêntico ao usado pra montar o grupo na tela (mesma descrição
-// + ainda 'nao_classificado'), então só afeta exatamente as linhas exibidas.
-async function categorizarGrupo(descricao, categoria) {
+// Categoriza TODAS as pendentes de um grupo de uma vez, por id — não por
+// descrição (a descrição varia por linha quando há sufixo de parcela " (N/M)",
+// então casar por texto exato deixaria de pegar o grupo inteiro).
+async function categorizarGrupo(idsJson, categoria) {
   if (!categoria) return;
+  const ids = JSON.parse(idsJson);
   const { error } = await _sb.from('extrato')
     .update({ categoria })
-    .eq('origem_dado', 'pluggy')
-    .eq('categoria', 'nao_classificado')
-    .eq('descricao', descricao);
+    .in('id', ids);
   if (error) { console.error('categorizarGrupo', error); showToast('Erro ao categorizar grupo ❌'); return; }
   showToast('Grupo categorizado ✅');
   await renderCategorizacao();
