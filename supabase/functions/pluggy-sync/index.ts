@@ -163,6 +163,10 @@ Deno.serve(async (req) => {
         try {
           // preserva o mapeamento manual (conta_nome/cartao_nome/ignorar):
           // onConflict atualiza só os campos vindos da Pluggy.
+          // creditData só existe em contas CREDIT — undefined em BANK, e
+          // optional chaining aqui já dá null pro upsert nesse caso, sem
+          // precisar de um if separado (confirmado via
+          // docs.pluggy.ai/reference/accounts-list).
           await admin.from("pluggy_contas").upsert({
             app_id: app.id,
             pluggy_account_id: c.id,
@@ -173,6 +177,8 @@ Deno.serve(async (req) => {
             numero: c.number,
             saldo: c.balance,
             saldo_atualizado_em: new Date().toISOString(),
+            limite: c.creditData?.creditLimit ?? null,
+            limite_disponivel: c.creditData?.availableCreditLimit ?? null,
           }, { onConflict: "pluggy_account_id" });
 
           // --- 3. transações, incremental por data -------------------------

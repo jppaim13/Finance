@@ -1931,7 +1931,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-09j';
+const APP_VERSION = '2026-09-09k';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -5329,6 +5329,20 @@ async function carregarPluggyContas() {
   if (!contas || !contas.length) {
     el.innerHTML = '<div class="empty-state"><div class="emoji">🔄</div><p>Nenhuma conta sincronizada ainda</p></div>';
     return;
+  }
+
+  // Limite de crédito: fato objetivo do emissor (não uma decisão do usuário,
+  // diferente da conta pagadora de fatura), então sincroniza direto sem
+  // precisar de confirmação — mesmo espírito de já ler o saldo automático.
+  // Só atualiza quando a Pluggy reportou um valor (limite != null) e ele
+  // difere do cadastrado; nunca zera `cartoes.limite` de um cartão que a
+  // Pluggy não tenha esse dado (ex: connector sem creditData completo).
+  for (const c of contas) {
+    if (c.ignorar || !c.cartao_nome || c.limite == null) continue;
+    const cartaoApp = state.cartoes.find(x => x.nome === c.cartao_nome);
+    if (!cartaoApp || Number(cartaoApp.limite || 0) === Number(c.limite)) continue;
+    const ok = await sbUpdate('cartoes', cartaoApp.id, { limite: c.limite });
+    if (ok) cartaoApp.limite = Number(c.limite); // reflete na sessão sem precisar de loadData()
   }
 
   const bancoMap = {};

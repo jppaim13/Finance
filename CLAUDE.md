@@ -476,6 +476,16 @@ Usuário pediu pra verificar uma transferência específica (R$5.725,05, 01/09/2
 - **Por que isso evita o mesmo bug de novo**: qualquer transferência manual lançada ANTES de rodar a importação (o caso que causou o bug) agora é reconhecida no `_pluggyJaExisteNoApp()` independente da ordem de categorização dos dois lados — não depende mais de os dois estarem com `categoria='nao_classificado'` ao mesmo tempo.
 - **Sem migration** — só leitura de uma tabela que já existia.
 
+### Limite de crédito sincronizado da Pluggy (09/09/2026)
+
+Pedido do usuário: buscar o limite dos cartões na Pluggy e atualizar `cartoes.limite` automaticamente, em vez de depender de cadastro manual.
+
+- **Campo confirmado via documentação oficial antes de codar** (`docs.pluggy.ai/reference/accounts-list`, não assumido de memória): contas `CREDIT` trazem um objeto `creditData` com `creditLimit` (limite total) e `availableCreditLimit` (disponível) — só existe em `CREDIT`, `undefined` em `BANK` (tratado com optional chaining, vira `null` no upsert, sem precisar de `if` separado).
+- **Migration 010** (`pluggy_contas.limite`, `pluggy_contas.limite_disponivel`, ambas nullable) — aditiva, mesma exceção de sempre.
+- **Edge Function** (`pluggy-sync/index.ts`) captura os dois campos no upsert de `pluggy_contas`, junto com o resto que já vinha sendo salvo (saldo, tipo, etc.) — nenhuma chamada extra à API, o campo já vinha na resposta de `/accounts` que a função já busca.
+- **Sincronização de `cartoes.limite` é automática, sem confirmação** — diferente da decisão sobre conta pagadora de fatura (que é uma escolha do usuário, variável mês a mês), o limite de crédito é um fato objetivo do emissor, não uma decisão — mesmo espírito de já ler saldo/faturas automaticamente. Roda dentro de `carregarPluggyContas()` (chamada toda vez que a tela de Sincronização é aberta): pra cada cartão mapeado com `pluggy_contas.limite` preenchido e diferente do `cartoes.limite` atual, atualiza direto. **Nunca zera** um limite cadastrado se a Pluggy não tiver esse dado pra aquele conector (`limite == null` pula, não sobrescreve com nulo).
+- **`limite_disponivel` capturado mas não usado no app ainda** — `calcularLimiteDisponivel()` já calcula "disponível" a partir das próprias compras registradas (métrica derivada diferente, baseada no que o app sabe que foi gasto na competência); o valor da Pluggy fica guardado pra uso futuro, se fizer sentido comparar os dois.
+
 ### Lançamento Fixo não reconcilia contra a Pluggy (09/09/2026) — achado real, decisão de não mexer por enquanto
 
 Diferente de fatura, `Fixo` (`lancamentos`) nunca teve — nem antes da Pluggy — um conceito de "pagamento do mês": `calcularSaldo()` assume, todo mês dentro do range ativo, que `valor` sai de `conta_nome`, incondicionalmente, sem olhar pra transação real nenhuma. O casamento com a Pluggy (`_pluggyJaExisteNoApp`, ramo Fixo) só evita criar uma linha DUPLICADA em `extrato` quando a cobrança real bate valor+dia — não reconcilia valor nem conta contra o banco.
