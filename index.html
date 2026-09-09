@@ -1916,7 +1916,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-09f';
+const APP_VERSION = '2026-09-09g';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -5404,6 +5404,20 @@ function _optsCategoria(tipo, selecionado) {
     todas.map(c => `<option value="${c.id}" ${c.id === selecionado ? 'selected' : ''}>${c.emoji} ${c.nome}</option>`).join('');
 }
 
+// Contas/caixinhas pra escolher o "outro lado" de uma transferência — exclui
+// a própria conta da transação (não faz sentido transferir de uma conta pra
+// ela mesma). Mesmo agrupamento (Contas/Investimentos) já usado no seletor
+// de transferência do modal de lançamento.
+function _optsContasTransferencia(excluirNome) {
+  const opts = lista => (lista || [])
+    .filter(c => c.nome !== excluirNome)
+    .map(c => `<option value="${c.nome}">${c.nome}</option>`).join('');
+  const contas = opts(state.contas);
+  const caixinhas = opts(state.caixinhas);
+  return (contas ? `<optgroup label="Contas">${contas}</optgroup>` : '') +
+         (caixinhas ? `<optgroup label="Investimentos">${caixinhas}</optgroup>` : '');
+}
+
 async function renderCategorizacao() {
   const el = document.getElementById('categorizacao-list');
   const contadorEl = document.getElementById('categorizacaoContador');
@@ -5502,6 +5516,15 @@ async function renderCategorizacao() {
                 ${_optsCategoria(tipo, '')}
               </select>
               <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="categorizarLinha('${i.id}', document.getElementById('${selIdLinha}').value)">OK</button>
+              ${i.origem === 'conta' ? (() => {
+                const selIdTransf = `translinha-${i.id}`;
+                return `
+              <select id="${selIdTransf}" class="form-select" style="max-width:150px;font-size:11px">
+                <option value="">🔄 Transferência...</option>
+                ${_optsContasTransferencia(i.conta_nome)}
+              </select>
+              <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="marcarComoTransferencia('${i.id}', document.getElementById('${selIdTransf}').value)">OK</button>`;
+              })() : ''}
             </div>
           `;
           }).join('')}
@@ -5531,6 +5554,62 @@ async function categorizarGrupo(idsJson, categoria) {
   if (error) { console.error('categorizarGrupo', error); showToast('Erro ao categorizar grupo ❌'); return; }
   showToast('Grupo categorizado ✅');
   await renderCategorizacao();
+}
+
+// Converte uma transação de CONTA importada da Pluggy (nunca cartão — compra
+// de cartão não é transferência) em uma linha de `transferencias` de verdade,
+// em vez de deixá-la contando como despesa/receita comum. Direção: despesa
+// nesta conta = dinheiro SAINDO (conta_origem = a própria, conta_dest = a
+// escolhida); receita = dinheiro ENTRANDO (o contrário).
+//
+// Rede de segurança: se a OUTRA conta também for coberta pela Pluggy, o
+// outro lado da mesma transferência pode já estar pendente de categorizar
+// (mesmo valor, tipo oposto, ~mesma data) — sem casar os dois, marcar cada
+// lado separadamente criaria DUAS linhas em `transferencias` pro mesmo
+// evento, duplicando o efeito no saldo. Quando acha o par, funde os dois
+// numa transferência só.
+//
+// pluggy_transacoes.transacao_id É REAPONTADO pra nova linha de
+// `transferencias` (nunca zerado) — senão a próxima sincronização veria
+// `transacao_id is null` de novo e reimportaria a mesma transação pro
+// extrato, desfazendo a conversão silenciosamente.
+async function marcarComoTransferencia(extratoId, outraConta) {
+  if (!outraConta) { showToast('Selecione a conta de origem/destino'); return; }
+
+  const { data: tx, error: errTx } = await _sb.from('extrato').select('*').eq('id', extratoId).maybeSingle();
+  if (errTx || !tx) { showToast('Erro ao carregar transação ❌'); return; }
+  if (tx.origem !== 'conta') { showToast('Só transação de conta pode virar transferência ❌'); return; }
+
+  const contaOrigem = tx.tipo === 'receita' ? outraConta : tx.conta_nome;
+  const contaDest   = tx.tipo === 'receita' ? tx.conta_nome : outraConta;
+
+  const { data: candidatos } = await _sb.from('extrato')
+    .select('*')
+    .eq('conta_nome', outraConta)
+    .eq('origem', 'conta')
+    .eq('origem_dado', 'pluggy')
+    .eq('categoria', 'nao_classificado')
+    .neq('id', tx.id);
+  const contraparte = (candidatos || []).find(c =>
+    c.tipo !== tx.tipo && _valorIgual(c.valor, tx.valor) && _diffDias(c.data, tx.data) <= 3);
+
+  const nova = await sbInsert('transferencias', {
+    data: tx.data,
+    descricao: tx.descricao || 'Transferência',
+    valor: tx.valor,
+    conta_origem: contaOrigem,
+    conta_dest: contaDest,
+  });
+  if (!nova) { showToast('Erro ao criar transferência ❌'); return; }
+
+  const idsExtrato = contraparte ? [tx.id, contraparte.id] : [tx.id];
+  await _sb.from('pluggy_transacoes')
+    .update({ transacao_id: nova.id, transacao_fonte: 'transferencias' })
+    .in('transacao_id', idsExtrato);
+  await _sb.from('extrato').delete().in('id', idsExtrato);
+
+  showToast(contraparte ? 'Transferência criada — os dois lados foram casados ✅' : 'Transferência criada ✅');
+  await loadData(); // muda saldo/resumo, não só a lista de pendentes — recarrega tudo
 }
 
 // ════════════════════════════════════════════════════════════════════════════
