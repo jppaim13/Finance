@@ -1916,7 +1916,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-09h';
+const APP_VERSION = '2026-09-09i';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -4873,14 +4873,32 @@ function _valorIgual(a, b) {
 }
 
 // Casamento como rede de segurança antes de importar — mesma regra da Fase
-// 1.7 (relatório de conciliação): comparar contra EXTRATO À VISTA e contra
-// LANCAMENTOS (Parcelado e Fixo), nunca só um dos dois, porque o usuário às
-// vezes lança parcela avulsa direto no extrato. Retorna { fonte, id } se já
-// existe, ou null se é candidata real a importação.
+// 1.7 (relatório de conciliação): comparar contra EXTRATO À VISTA, contra
+// LANCAMENTOS (Parcelado e Fixo) e contra TRANSFERENCIAS já lançadas, nunca
+// só um subconjunto, porque o usuário às vezes lança parcela avulsa direto
+// no extrato — ou marca um lado de uma transferência antes do outro lado
+// sincronizar (ver Decisões no CLAUDE.md: achado real, R$5.725,05 de
+// 01/09/2026 — o lado do Nubank já tinha sido categorizado "salário" antes
+// do lado da XP ser marcado como transferência, então o casamento por
+// `categoria='nao_classificado'` nunca viu os dois ao mesmo tempo).
+// Retorna { fonte, id } se já existe, ou null se é candidata real a importação.
 function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
   const extratoRows = cache.extrato.get(nome) || [];
   const matchAvista = extratoRows.find(e => _valorIgual(e.valor, valor) && _diffDias(e.data, pt.data) <= 3);
   if (matchAvista) return { fonte: 'extrato', id: matchAvista.id };
+
+  // Transferência de CONTA já lançada (manual ou já convertida antes) — só
+  // faz sentido pra transação de conta, nunca de cartão. Direção: CREDIT
+  // (receita) só casa se esta conta for o destino da transferência; DEBIT
+  // (despesa) só casa se for a origem — mesma convenção de sinal já
+  // registrada (CREDIT positivo/DEBIT negativo em conta bancária).
+  if (!ehCartao) {
+    const transfRows = cache.transferencias?.get(nome) || [];
+    const direcaoOk = t => pt.tipo === 'CREDIT' ? t.conta_dest === nome : t.conta_origem === nome;
+    const matchTransf = transfRows.find(t =>
+      direcaoOk(t) && _valorIgual(t.valor, valor) && _diffDias(t.data, pt.data) <= 3);
+    if (matchTransf) return { fonte: 'transferencias', id: matchTransf.id };
+  }
 
   const lancRows = cache.lancamentos.get(nome) || [];
   const cc = pt.metadata?.creditCardMetadata;
@@ -5043,9 +5061,10 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
         .is('transacao_id', null);
       if (!pendentes || !pendentes.length) continue;
 
-      const [{ data: extratoRows }, { data: lancRows }] = await Promise.all([
+      const [{ data: extratoRows }, { data: lancRows }, transfResult] = await Promise.all([
         _sb.from('extrato').select('*').eq(ehCartao ? 'cartao_nome' : 'conta_nome', nome),
         _sb.from('lancamentos').select('*').eq('conta_nome', nome).eq('ativo', true).eq('origem', ehCartao ? 'cartao' : 'conta'),
+        ehCartao ? Promise.resolve({ data: [] }) : _sb.from('transferencias').select('*').or(`conta_origem.eq.${nome},conta_dest.eq.${nome}`),
       ]);
       const billIds = [...new Set(pendentes.map(p => p.metadata?.creditCardMetadata?.billId).filter(Boolean))];
       const faturasMap = new Map();
@@ -5056,6 +5075,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
       const cache = {
         extrato: new Map([[nome, extratoRows || []]]),
         lancamentos: new Map([[nome, lancRows || []]]),
+        transferencias: new Map([[nome, transfResult.data || []]]),
         faturas: faturasMap,
       };
 
