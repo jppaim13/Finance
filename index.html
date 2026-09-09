@@ -1909,6 +1909,14 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIG & STATE
 // ════════════════════════════════════════════════════════════════════════════
+// Bump manual a cada deploy que valha a pena distinguir numa aba já aberta
+// (ex: correções como a do bug de importação de 08-09/2026). document.
+// lastModified foi cogitado e descartado: sem garantia de refletir o
+// Last-Modified real em toda situação (Service Worker/CDN podem mascarar),
+// e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
+// constante no próprio arquivo garante que o valor vem do código que está
+// de fato rodando.
+const APP_VERSION = '2026-09-09a';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -5110,15 +5118,17 @@ async function atualizarIgnorarPluggy(id, ignorar) {
 
 function renderSincronizacao() {
   carregarPluggyContas();
-  // Indicador de versão automático (document.lastModified — o próprio
-  // navegador reporta a partir do header Last-Modified que o GitHub Pages
-  // envia pro arquivo servido, sem exigir nenhum passo manual de bump de
-  // versão). Existe pra tornar "essa aba está rodando código antigo?"
-  // verificável olhando a tela, em vez de depender de lembrar de recarregar
-  // depois de um deploy — foi exatamente essa lembrança que faltou e
-  // custou duas rodadas de limpeza de dado na retomada de 08/09/2026.
+  // Indicador de versão via constante bumpada no código (ver APP_VERSION
+  // no topo do arquivo) — document.lastModified foi tentado antes e
+  // descartado: não há garantia de refletir o Last-Modified real em toda
+  // situação (Service Worker/CDN podem mascarar), e um indicador que
+  // sempre "parece atualizado" é pior que nenhum. A constante só muda
+  // quando o código realmente rodando nesta aba foi de fato recarregado.
+  // Existe pra tornar "essa aba está desatualizada?" verificável olhando a
+  // tela — foi exatamente essa lembrança que faltou e custou duas rodadas
+  // de limpeza de dado na retomada de 08–09/09/2026.
   const buildEl = document.getElementById('appBuildInfo');
-  if (buildEl) buildEl.textContent = `Versão carregada nesta aba: ${document.lastModified}`;
+  if (buildEl) buildEl.textContent = `Versão carregada nesta aba: ${APP_VERSION}`;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
