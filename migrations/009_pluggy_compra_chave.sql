@@ -1,0 +1,32 @@
+-- ════════════════════════════════════════════════════════════════════════════
+-- 009_pluggy_compra_chave.sql
+-- Substitui lancamentos.pluggy_data_compra por lancamentos.pluggy_compra_chave
+-- ANTES de qualquer lançamento real ter sido criado com a coluna anterior
+-- (conferido: 0 linhas com pluggy_data_compra preenchido em produção) — não é
+-- migração de dado, é troca de desenho.
+--
+-- Motivo (ver Decisões no CLAUDE.md, revisão pedida pelo Opus): o Inter não
+-- preenche `purchaseDate` em NENHUMA transação parcelada (0/43 medido) — só
+-- `pluggy_data_compra` deixaria esse conector inteiramente fora da criação de
+-- lançamento futuro. Fallback por valor+totalInstallments sozinho foi
+-- rejeitado (o risco real não é na criação, é no CASAMENTO — uma colisão
+-- faria uma parcela futura real ser tratada como "já registrada" e nunca
+-- importada, silenciosamente, mesma classe do falso-positivo do XP na Fase
+-- 1.7). Medido contra dado real antes de adotar: descrição+valor+
+-- totalInstallments sozinho colide (1 grupo de 19, misturando 2 compras
+-- reais de meses diferentes); acrescentando o mês de compra DERIVADO (data da
+-- parcela − (installmentNumber−1) meses) a colisão zera nos dados reais (20
+-- grupos, nenhum com installmentNumber duplicado dentro do grupo).
+--
+-- `pluggy_compra_chave` guarda o resultado de uma função única
+-- (_pluggyCompraChave() em index.html), usada IGUAL na criação e no
+-- casamento — nunca recalculada em dois lugares (mesmo motivo de
+-- date-utils.js existir). Pra conector com purchaseDate (Mercado Pago, XP,
+-- Nubank), a chave é o próprio purchaseDate. Pro Inter, é o composto de 4
+-- campos acima.
+--
+-- Aplicar manualmente no SQL Editor do Supabase.
+-- ════════════════════════════════════════════════════════════════════════════
+
+alter table lancamentos add column if not exists pluggy_compra_chave text;
+alter table lancamentos drop column if exists pluggy_data_compra;

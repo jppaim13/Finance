@@ -1916,7 +1916,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-09d';
+const APP_VERSION = '2026-09-09e';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -4835,6 +4835,35 @@ function _pluggyValorReal(pt) {
   return Math.abs(Number(pt.valor));
 }
 
+// Identidade de uma compra parcelada — usada IGUAL na criação (importarPendentes,
+// "lançar despesa futura") e no casamento (_pluggyJaExisteNoApp), nunca
+// recalculada separadamente nos dois lugares (mesmo motivo de date-utils.js
+// existir: duas implementações da mesma regra divergem). Preferência:
+// `purchaseDate` da Pluggy quando existe (Mercado Pago/Nubank/XP, cobertura
+// 100% medida) — é o dado real do emissor, mais forte que qualquer coisa que
+// dá pra derivar. Fallback só quando falta (Inter: 0% de purchaseDate nas
+// transações parceladas, medido) — descrição + valor + totalInstallments +
+// MÊS DE COMPRA DERIVADO (data da parcela − (installmentNumber−1) meses).
+// Medido contra o dado real do Inter antes de adotar (ver Decisões no
+// CLAUDE.md): descrição+valor+totalInstallments sozinho colide (2 compras
+// reais de meses diferentes caindo na mesma chave); acrescentar o mês
+// derivado separa as duas sem sobra nos dados reais — zero installmentNumber
+// duplicado dentro do mesmo grupo de 4 campos. Retorna null se a transação
+// não tem os campos mínimos (não é parcelado, ou falta installmentNumber/
+// totalInstallments).
+function _pluggyCompraChave(pt) {
+  const cc = pt.metadata?.creditCardMetadata;
+  if (!cc?.installmentNumber || !cc?.totalInstallments) return null;
+  if (cc.purchaseDate) return cc.purchaseDate;
+
+  const [ay, am] = pt.data.split('-').map(Number);
+  const idx = ay * 12 + am - (Number(cc.installmentNumber) - 1);
+  const mesCompra = ((idx - 1) % 12) + 1;
+  const anoCompra = (idx - mesCompra) / 12;
+  const compraMes = `${anoCompra}-${String(mesCompra).padStart(2, '0')}`;
+  return `${pt.descricao}|${Math.round(Number(pt.valor) * 100)}|${cc.totalInstallments}|${compraMes}`;
+}
+
 function _diffDias(dataStr1, dataStr2) {
   return Math.abs((parseData(dataStr1) - parseData(dataStr2)) / 86400000);
 }
@@ -4878,7 +4907,7 @@ function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
     } else {
       venidxReal = getVencimentoIdx(pt.data, cartaoObj?.fechamento, cartaoObj?.vencimento);
     }
-    const purchaseDate = cc.purchaseDate;
+    const compraChave = _pluggyCompraChave(pt);
     for (const lan of lancRows) {
       if ((lan.tipo || '').toLowerCase() !== 'parcelado') continue;
 
@@ -4886,12 +4915,12 @@ function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
       // despesa futura"): `parcelas` guarda só as parcelas RESTANTES no
       // momento da criação, não o total real da compra — casar por
       // `parcelas === totalInstallments` (regra de baixo) nunca bateria
-      // aqui. Casa por IDENTIDADE DA COMPRA (purchaseDate + total real,
-      // gravados à parte por _pluggyJaExisteNoApp/importarPendentes só pra
-      // isso) — desenho revisado a pedido do Opus pra não depender de
-      // calcularResumo() saber cortar por data (ver Decisões no CLAUDE.md).
-      if (lan.pluggy_data_compra) {
-        if (lan.pluggy_data_compra !== purchaseDate) continue;
+      // aqui. Casa por IDENTIDADE DA COMPRA (`pluggy_compra_chave`, mesma
+      // função `_pluggyCompraChave` usada na criação — desenho revisado a
+      // pedido do Opus pra não depender de calcularResumo() saber cortar por
+      // data, ver Decisões no CLAUDE.md).
+      if (lan.pluggy_compra_chave) {
+        if (lan.pluggy_compra_chave !== compraChave) continue;
         if (Number(lan.pluggy_parcelas_totais) !== instTot) continue;
         const parcelaInicial = Number(lan.pluggy_parcelas_totais) - Number(lan.parcelas) + 1;
         const offset = instNum - parcelaInicial;
@@ -5030,14 +5059,14 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
         faturas: faturasMap,
       };
 
-      // Rastreia, por compra parcelada (purchaseDate+totalInstallments), a
-      // maior parcela vista nesta rodada — usado depois do loop pra criar o
-      // lançamento das parcelas AINDA NÃO cobradas (ver mais abaixo). Usar a
-      // MAIOR, não a primeira encontrada: um backlog inicial pode trazer
-      // várias parcelas já ocorridas da mesma compra numa rodada só, e
-      // começar do meio delas contaria fatura em dobro pras que já foram
-      // importadas como extrato nesta mesma rodada (armadilha apontada pelo
-      // Opus — ver Decisões no CLAUDE.md).
+      // Rastreia, por compra parcelada (chave via _pluggyCompraChave — ver
+      // Decisões no CLAUDE.md), a maior parcela vista nesta rodada — usado
+      // depois do loop pra criar o lançamento das parcelas AINDA NÃO
+      // cobradas (ver mais abaixo). Usar a MAIOR, não a primeira encontrada:
+      // um backlog inicial pode trazer várias parcelas já ocorridas da mesma
+      // compra numa rodada só, e começar do meio delas contaria fatura em
+      // dobro pras que já foram importadas como extrato nesta mesma rodada
+      // (armadilha apontada pelo Opus).
       const gruposParcelado = new Map();
 
       for (const pt of pendentes) {
@@ -5058,14 +5087,14 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
         const ccPt = pt.metadata?.creditCardMetadata;
         const instNumPt = ccPt?.installmentNumber ? Number(ccPt.installmentNumber) : null;
         const instTotPt = ccPt?.totalInstallments ? Number(ccPt.totalInstallments) : null;
-        if (ehCartao && instNumPt && instTotPt && ccPt.purchaseDate) {
-          const chave = `${ccPt.purchaseDate}|${instTotPt}`;
-          const g = gruposParcelado.get(chave) || {
-            purchaseDate: ccPt.purchaseDate, instTot: instTotPt, maxInstNum: 0,
+        const compraChavePt = ehCartao ? _pluggyCompraChave(pt) : null;
+        if (compraChavePt) {
+          const g = gruposParcelado.get(compraChavePt) || {
+            compraChave: compraChavePt, instTot: instTotPt, maxInstNum: 0,
             valor, ultimaData: pt.data, descricaoBase: pt.descricao,
           };
           if (instNumPt > g.maxInstNum) { g.maxInstNum = instNumPt; g.ultimaData = pt.data; g.valor = valor; }
-          gruposParcelado.set(chave, g);
+          gruposParcelado.set(compraChavePt, g);
         }
 
         const match = _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache);
@@ -5114,8 +5143,10 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
       // Parcelado cobrindo só o que falta — nunca reconstrói o passado
       // (mes_ini começa no mês SEGUINTE à última parcela vista, nunca no mês
       // atual nem antes). `parcelas` aqui guarda a contagem restante, não o
-      // total real da compra — o total real fica em `pluggy_parcelas_totais`
-      // só pra _pluggyJaExisteNoApp() casar as parcelas futuras quando
+      // total real da compra — o total real fica em `pluggy_parcelas_totais`,
+      // e a identidade da compra em `pluggy_compra_chave` (via
+      // _pluggyCompraChave, mesma função usada no casamento), só pra
+      // _pluggyJaExisteNoApp() reconhecer as parcelas futuras quando
       // sincronizarem depois, sem duplicar. calcularResumo()/calcularSaldo()
       // não precisam saber de nada disso: como mes_ini nunca é anterior a
       // hoje, o lançamento nunca alcança fatura já fechada — ver Decisões no
@@ -5132,7 +5163,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
         // dobro daqui pra frente.
         const jaTracked = (cache.lancamentos.get(nome) || []).some(l => {
           if ((l.tipo || '').toLowerCase() !== 'parcelado') return false;
-          if (l.pluggy_data_compra === g.purchaseDate && Number(l.pluggy_parcelas_totais) === g.instTot) return true;
+          if (l.pluggy_compra_chave === g.compraChave && Number(l.pluggy_parcelas_totais) === g.instTot) return true;
           return Number(l.parcelas) === g.instTot && _valorIgual(l.valor, g.valor);
         });
         if (jaTracked) continue;
@@ -5146,7 +5177,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
           valor: g.valor, parcelas: g.instTot - g.maxInstNum,
           mes_ini: mesIni, ano_ini: anoIni, dia_ini: ad,
           conta_nome: nome, origem: 'cartao', ativo: true,
-          origem_dado: 'pluggy', pluggy_data_compra: g.purchaseDate, pluggy_parcelas_totais: g.instTot,
+          origem_dado: 'pluggy', pluggy_compra_chave: g.compraChave, pluggy_parcelas_totais: g.instTot,
         };
         const criado = await sbInsert('lancamentos', novoLan);
         if (criado) {
