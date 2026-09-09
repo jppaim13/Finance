@@ -1031,6 +1031,10 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
         Sincronização
       </button>
+      <button class="sidebar-item" data-page="categorizacao">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20.59 13.41L13.42 20.58a2 2 0 01-2.83 0L2.59 12.58A2 2 0 012 11.17V4a2 2 0 012-2h7.17a2 2 0 011.42.59l8 8a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        Categorização
+      </button>
       <button class="sidebar-item" data-page="config">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
         Configurações
@@ -1236,6 +1240,20 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
       <div class="text-xs text-3" id="pluggySyncStatus" style="margin-bottom:12px"></div>
       <div id="pluggy-contas-list">
         <div class="empty-state"><div class="emoji">🔄</div><p>Nenhuma conta sincronizada ainda</p></div>
+      </div>
+    </div>
+
+    <!-- ── CATEGORIZAÇÃO (transações importadas da Pluggy) ─────────────── -->
+    <div class="page" id="page-categorizacao">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Categorização</div>
+          <div class="page-subtitle">Transações importadas da Pluggy sem categoria — enriquecimento opcional, não bloqueia nada</div>
+        </div>
+      </div>
+      <div class="text-xs text-2" id="categorizacaoContador" style="margin-bottom:12px">Carregando...</div>
+      <div id="categorizacao-list">
+        <div class="empty-state"><div class="emoji">🏷️</div><p>Carregando...</p></div>
       </div>
     </div>
 
@@ -1489,6 +1507,12 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
       </div>
       Sincro
+    </button>
+    <button class="nav-item" data-page="categorizacao">
+      <div class="nav-icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20.59 13.41L13.42 20.58a2 2 0 01-2.83 0L2.59 12.58A2 2 0 012 11.17V4a2 2 0 012-2h7.17a2 2 0 011.42.59l8 8a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      </div>
+      Categ.
     </button>
     <button class="nav-item" data-page="config">
       <div class="nav-icon-wrap">
@@ -2142,6 +2166,7 @@ const PAGES = {
   repasses:       renderRepasses,
   transferencias: renderTransferencias,
   sincronizacao:  renderSincronizacao,
+  categorizacao:  renderCategorizacao,
 };
 
 function paginaAtiva() {
@@ -5076,6 +5101,127 @@ async function atualizarIgnorarPluggy(id, ignorar) {
 
 function renderSincronizacao() {
   carregarPluggyContas();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// CATEGORIZAÇÃO — fila de transações importadas da Pluggy (origem_dado=
+// 'pluggy') ainda com categoria 'nao_classificado'. Enriquecimento opcional,
+// nunca portão de entrada: a transação já está no extrato com saldo
+// correto, categorizar só melhora relatório/filtro. Se o usuário nunca abrir
+// esta tela, nada quebra — critério de projeto já registrado no CLAUDE.md.
+// ════════════════════════════════════════════════════════════════════════════
+function _fmtDataBR(dataStr) {
+  return (dataStr || '').split('-').reverse().join('/');
+}
+
+function _optsCategoria(tipo, selecionado) {
+  const base = tipo === 'receita' ? CATS_RECEITA : CATS_DESPESA;
+  const todas = [...(state.catsExtra || []), ...base].filter(c => c.id !== 'nao_classificado');
+  return `<option value="">Categorizar...</option>` +
+    todas.map(c => `<option value="${c.id}" ${c.id === selecionado ? 'selected' : ''}>${c.emoji} ${c.nome}</option>`).join('');
+}
+
+async function renderCategorizacao() {
+  const el = document.getElementById('categorizacao-list');
+  const contadorEl = document.getElementById('categorizacaoContador');
+  if (!el || !_sb) return;
+
+  const { data: pendentes, error } = await _sb.from('extrato')
+    .select('*')
+    .eq('origem_dado', 'pluggy')
+    .eq('categoria', 'nao_classificado')
+    .order('data', { ascending: false });
+
+  if (error) {
+    console.error('renderCategorizacao', error);
+    el.innerHTML = '<div class="empty-state"><p>Erro ao carregar</p></div>';
+    return;
+  }
+  if (!pendentes || !pendentes.length) {
+    if (contadorEl) contadorEl.textContent = 'Tudo categorizado — nenhuma pendência 🎉';
+    el.innerHTML = '<div class="empty-state"><div class="emoji">✅</div><p>Nenhuma transação pendente de categorização</p></div>';
+    return;
+  }
+  if (contadorEl) contadorEl.textContent = `${pendentes.length} transação(ões) sem categoria`;
+
+  // Sugestão barata: descrição idêntica já categorizada antes (inclusive
+  // manual) — mesmo par "descrição ↔ categoria" que o casamento da Fase 1.7
+  // produz. Só sugere, nunca aplica sozinho.
+  const descricoes = [...new Set(pendentes.map(p => p.descricao).filter(Boolean))];
+  const sugestoes = new Map();
+  if (descricoes.length) {
+    const { data: historico } = await _sb.from('extrato')
+      .select('descricao, categoria')
+      .in('descricao', descricoes)
+      .neq('categoria', 'nao_classificado')
+      .not('categoria', 'is', null);
+    (historico || []).forEach(h => { if (!sugestoes.has(h.descricao)) sugestoes.set(h.descricao, h.categoria); });
+  }
+
+  // Agrupar por descrição (assinatura, mercado, posto costumam repetir o
+  // mesmo texto) — grupo maior primeiro, pra categorizar em bloco o que
+  // rende mais rápido.
+  const grupos = new Map();
+  pendentes.forEach(p => {
+    const chave = p.descricao || '(sem descrição)';
+    if (!grupos.has(chave)) grupos.set(chave, []);
+    grupos.get(chave).push(p);
+  });
+  const gruposOrdenados = [...grupos.entries()].sort((a, b) => b[1].length - a[1].length);
+
+  el.innerHTML = gruposOrdenados.map(([descricao, itens]) => {
+    const tipo = itens[0].tipo;
+    const total = itens.reduce((s, i) => s + Number(i.valor || 0), 0);
+    const sugestao = sugestoes.get(descricao);
+    const descEsc = descricao.replace(/'/g, "\\'");
+    return `
+      <div class="card" style="padding:14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+          <div>
+            <div style="font-weight:500">${descricao}</div>
+            <div class="text-xs text-3">${itens.length} transação(ões) · total ${fmt(total)}${sugestao ? ` · sugestão: ${sugestao}` : ''}</div>
+          </div>
+          <select class="form-select" style="max-width:220px" onchange="categorizarGrupo('${descEsc}', this.value)">
+            ${_optsCategoria(tipo, sugestao)}
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px">
+          ${itens.map(i => `
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid var(--border)">
+              <span class="text-2" style="flex:1">${_fmtDataBR(i.data)} · ${i.cartao_nome || i.conta_nome || ''}</span>
+              <span class="font-mono">${fmt(i.valor)}</span>
+              <select class="form-select" style="max-width:170px;font-size:12px" onchange="categorizarLinha('${i.id}', this.value)">
+                ${_optsCategoria(tipo, '')}
+              </select>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function categorizarLinha(id, categoria) {
+  if (!categoria) return;
+  const ok = await sbUpdate('extrato', id, { categoria });
+  if (!ok) { showToast('Erro ao categorizar ❌'); return; }
+  showToast('Categorizado ✅');
+  await renderCategorizacao();
+}
+
+// Categoriza TODAS as pendentes com a mesma descrição de uma vez — o filtro
+// do update é idêntico ao usado pra montar o grupo na tela (mesma descrição
+// + ainda 'nao_classificado'), então só afeta exatamente as linhas exibidas.
+async function categorizarGrupo(descricao, categoria) {
+  if (!categoria) return;
+  const { error } = await _sb.from('extrato')
+    .update({ categoria })
+    .eq('origem_dado', 'pluggy')
+    .eq('categoria', 'nao_classificado')
+    .eq('descricao', descricao);
+  if (error) { console.error('categorizarGrupo', error); showToast('Erro ao categorizar grupo ❌'); return; }
+  showToast('Grupo categorizado ✅');
+  await renderCategorizacao();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
