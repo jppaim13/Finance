@@ -1222,11 +1222,11 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
           <div class="page-subtitle">Saldo real (banco) vs. calculado pelo app</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn-secondary" id="btnSincronizarPluggy" onclick="sincronizarPluggy()">🔄 Sincronizar agora</button>
-          <button class="btn-secondary" id="btnImportarPendentes" onclick="importarPendentes()" title="Todas as contas/cartões cobertos pela Pluggy — Nubank testado e aprovado primeiro, ver Decisões no CLAUDE.md">📥 Importar pendentes</button>
+          <button class="btn-secondary" id="btnSincronizarPluggy" onclick="sincronizarPluggy()" title="Automático ao abrir o app (no máximo 1x a cada 4h) — use aqui pra forçar antes disso">🔄 Sincronizar agora</button>
+          <button class="btn-secondary" id="btnImportarPendentes" onclick="importarPendentes()" title="Também roda automaticamente logo após a sincronização, ao abrir o app — use aqui pra forçar sem esperar">📥 Importar pendentes</button>
         </div>
       </div>
-      <div class="text-xs text-2" style="margin-bottom:12px">"Sincronizar agora" só espelha dado da Pluggy, não altera nenhum lançamento. "Importar pendentes" grava no extrato (categoria "Não classificado") — só transações a partir da data de corte de cada conta/cartão, e só o que ainda não existe no app.</div>
+      <div class="text-xs text-2" style="margin-bottom:12px">Desde 09/09/2026, os dois rodam sozinhos ao abrir o app (no máximo a cada 4h) — os botões continuam aqui pra forçar manualmente. "Sincronizar agora" só espelha dado da Pluggy, não altera nenhum lançamento. "Importar pendentes" grava no extrato (categoria "Não classificado") — só transações a partir da data de corte de cada conta/cartão, e só o que ainda não existe no app.</div>
       <div class="text-xs text-3" id="appBuildInfo" style="margin-bottom:12px"></div>
       <div class="month-selector" style="margin-bottom:12px">
         <button class="month-nav-btn" onclick="changeMonth(-1,'S')">
@@ -1916,7 +1916,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-09a';
+const APP_VERSION = '2026-09-09b';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -2063,6 +2063,13 @@ function iniciarAuthGate() {
       if (emailEl) emailEl.textContent = session.user.email || '—';
       hideLoginScreen();
       await loadData();
+      // Só em abertura de sessão de verdade (login ou app reaberto com
+      // sessão já válida) — não em TOKEN_REFRESHED, que dispara periodicamente
+      // em segundo plano sem o usuário "abrir o app" de novo. Fire-and-forget:
+      // não trava a UI esperando a sincronização terminar.
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+        autoSincronizarEImportar();
+      }
     } else {
       showLoginScreen();
     }
@@ -4722,18 +4729,29 @@ async function deletarTransferencia(id) {
 // apenas o mapeamento manual em pluggy_contas.
 //
 // importarPendentes(), mais abaixo, é a ÚNICA exceção deliberada — Fase 2
-// (importação manual a partir do marco zero, ver Decisões no CLAUDE.md):
-// escreve em extrato, gatilho manual (nunca automático), só pra
-// contas/cartões com data_inicial preenchida (marco zero) e dentro dos 3
-// filtros obrigatórios lá documentados.
+// (importação a partir do marco zero, ver Decisões no CLAUDE.md): escreve
+// em extrato, só pra contas/cartões com data_inicial preenchida (marco
+// zero) e dentro dos 3 filtros obrigatórios lá documentados. Desde
+// 09/09/2026 roda automaticamente ao abrir o app (autoSincronizarEImportar,
+// logo abaixo) além do gatilho manual — decisão consciente de antecipar a
+// automação, com duas salvaguardas que compensam as rodadas manuais
+// observadas que ficaram de fora: resumo sempre visível (nunca silencioso
+// de verdade) e os botões manuais continuam funcionando.
 // ════════════════════════════════════════════════════════════════════════════
-async function sincronizarPluggy() {
-  if (!_sb) { showToast('Sem conexão com Supabase ❌'); return; }
+// `opts.silencioso`: true suprime os toasts próprios (usado pelo disparo
+// automático, que monta um resumo combinado com o resultado da importação
+// em seguida) — os widgets na tela de Sincronização são sempre atualizados
+// de qualquer forma. Devolve { ok, processadas, erro } pro chamador decidir
+// o que fazer com o resultado.
+async function sincronizarPluggy(opts = {}) {
+  const { silencioso = false } = opts;
+  if (!_sb) { if (!silencioso) showToast('Sem conexão com Supabase ❌'); return { ok: false, erro: 'sem conexão' }; }
   const btn      = document.getElementById('btnSincronizarPluggy');
   const statusEl = document.getElementById('pluggySyncStatus');
-  btn.disabled = true;
-  statusEl.textContent = 'Sincronizando...';
+  if (btn) btn.disabled = true;
+  if (statusEl) statusEl.textContent = 'Sincronizando...';
 
+  let resultado = { ok: false, processadas: 0, erro: null };
   try {
     const { data: { session } } = await _sb.auth.getSession();
     if (!session) throw new Error('sem sessão ativa');
@@ -4748,16 +4766,58 @@ async function sincronizarPluggy() {
     });
     const json = await res.json();
     if (!res.ok || json.ok === false) {
-      showToast(`Erro na sincronização ❌ ${json.erro || res.statusText}`);
+      resultado = { ok: false, processadas: 0, erro: json.erro || res.statusText };
+      if (!silencioso) showToast(`Erro na sincronização ❌ ${resultado.erro}`);
     } else {
-      showToast(`Sincronizado ✅ — ${json.processadas} transação(ões) processada(s)`);
+      resultado = { ok: true, processadas: json.processadas || 0, erro: null };
+      if (!silencioso) showToast(`Sincronizado ✅ — ${json.processadas} transação(ões) processada(s)`);
     }
   } catch (e) {
-    showToast(`Erro na sincronização ❌ ${e.message}`);
+    resultado = { ok: false, processadas: 0, erro: e.message };
+    if (!silencioso) showToast(`Erro na sincronização ❌ ${e.message}`);
   }
-  btn.disabled = false;
+  if (btn) btn.disabled = false;
   // recarrega mesmo em erro, pra refletir o log mais recente (inclusive falhas)
   await carregarPluggyContas();
+  return resultado;
+}
+
+// Disparo automático ao abrir o app (ver Decisões no CLAUDE.md — decisão
+// consciente de antecipar a automação, sem esperar as rodadas manuais
+// observadas do critério original). Duas salvaguardas: resumo sempre
+// visível ao final (nunca "silencioso" de verdade — só sem diálogo de
+// confirmação) e os botões manuais continuam disponíveis se isto falhar.
+//
+// Intervalo mínimo: não sincroniza a cada abertura do app — só dispara se a
+// última sincronização bem-sucedida tiver mais de `INTERVALO_MIN_SYNC_HORAS`
+// (a Pluggy não atualiza em tempo real, e isso evita gastar quota e reduz
+// a chance de execuções sobrepostas entre aparelhos/abas).
+const INTERVALO_MIN_SYNC_HORAS = 4;
+
+async function autoSincronizarEImportar() {
+  if (!_sb) return;
+  try {
+    const { data: ultimoSync } = await _sb.from('pluggy_sync_log')
+      .select('terminado_em')
+      .eq('tipo', 'sync')
+      .in('status', ['ok', 'parcial'])
+      .order('terminado_em', { ascending: false })
+      .limit(1).maybeSingle();
+
+    const horasDesdeUltimoSync = ultimoSync?.terminado_em
+      ? (Date.now() - new Date(ultimoSync.terminado_em).getTime()) / 3600000
+      : Infinity;
+    if (horasDesdeUltimoSync < INTERVALO_MIN_SYNC_HORAS) return; // sincronizado recentemente, nada a fazer
+
+    const syncResult = await sincronizarPluggy({ silencioso: true });
+    if (!syncResult.ok) {
+      showToast(`Sincronização automática falhou ❌ ${syncResult.erro} — use "Sincronizar agora" pra tentar de novo`);
+      return;
+    }
+    await importarPendentes(null, { silencioso: true });
+  } catch (e) {
+    console.error('autoSincronizarEImportar', e);
+  }
 }
 
 // ─── Importação (Fase 2) ─────────────────────────────────────────────────
@@ -4842,16 +4902,53 @@ function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
   return null;
 }
 
-// Importação manual (gatilho explícito, nunca automático — ver Decisões no
-// CLAUDE.md, Fase 2). `filtroNomes`: null importa todas as contas/cartões
-// cobertos; um array de nomes restringe a rollout (ex: só Nubank no início).
-async function importarPendentes(filtroNomes = null) {
-  if (!_sb) { showToast('Sem conexão com Supabase ❌'); return; }
-  if (!confirm('Importar transações pendentes da Pluggy pro extrato?\n\nEntram só a partir da data de corte de cada conta/cartão, com categoria "Não classificado".')) return;
+// Guard de concorrência da importação — o upsert do espelho (pluggy_transacoes)
+// é idempotente por pluggy_id, mas a inserção em extrato não tem essa
+// garantia. Duas rodadas simultâneas (dois aparelhos abertos ao mesmo tempo,
+// ou reload no meio de uma rodada) podem inserir a mesma transação duas
+// vezes antes de qualquer uma marcar transacao_id. Mesmo padrão de guard já
+// usado na Edge Function pra sincronização (janela de 5min pra uma execução
+// travada não bloquear pra sempre) — ver Decisões no CLAUDE.md.
+async function _importGuardIniciar() {
+  const { data: app } = await _sb.from('pluggy_apps').select('id').limit(1).maybeSingle();
+  if (!app) return { logId: null, appId: null }; // sem app cadastrado, sem guard possível
+
+  const { data: emAndamento } = await _sb.from('pluggy_sync_log')
+    .select('id')
+    .eq('app_id', app.id)
+    .eq('tipo', 'import')
+    .is('status', null)
+    .gte('iniciado_em', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+    .limit(1).maybeSingle();
+  if (emAndamento) return { logId: 'ocupado', appId: app.id };
+
+  const { data: log } = await _sb.from('pluggy_sync_log')
+    .insert({ app_id: app.id, tipo: 'import' }).select().single();
+  return { logId: log?.id || null, appId: app.id };
+}
+
+// `filtroNomes`: null importa todas as contas/cartões cobertos; um array de
+// nomes restringe a rollout (ex: só Nubank no início). `opts.silencioso`:
+// true pra disparo automático (sem diálogo de confirmação, mensagem final
+// mais discreta) — ver Decisões no CLAUDE.md sobre a automação ao abrir o
+// app. O gatilho manual continua existindo (botão na tela de Sincronização)
+// mesmo com a automação ligada, pra forçar sem depender de recarregar a
+// página se a automação falhar silenciosamente.
+async function importarPendentes(filtroNomes = null, opts = {}) {
+  const { silencioso = false } = opts;
+  if (!_sb) { if (!silencioso) showToast('Sem conexão com Supabase ❌'); return; }
+  if (!silencioso && !confirm('Importar transações pendentes da Pluggy pro extrato?\n\nEntram só a partir da data de corte de cada conta/cartão, com categoria "Não classificado".')) return;
 
   const btn = document.getElementById('btnImportarPendentes');
   if (btn) btn.disabled = true;
-  showToast('Importando...');
+  if (!silencioso) showToast('Importando...');
+
+  const { logId, appId } = await _importGuardIniciar();
+  if (logId === 'ocupado') {
+    if (btn) btn.disabled = false;
+    if (!silencioso) showToast('Já existe uma importação em andamento (outro aparelho/aba) — tente de novo em alguns minutos ⏳');
+    return;
+  }
 
   try {
     const { data: mapeamentos } = await _sb.from('pluggy_contas').select('*').eq('ignorar', false);
@@ -4956,12 +5053,35 @@ async function importarPendentes(filtroNomes = null) {
       }
     }
 
-    showToast(`Importação concluída ✅ — ${importadas} nova(s), ${casadas} já existiam, ${suspeitas} pendente(s) de revisão`);
+    if (logId) {
+      await _sb.from('pluggy_sync_log')
+        .update({ terminado_em: new Date().toISOString(), status: 'ok', criadas: importadas })
+        .eq('id', logId);
+    }
+
+    // Resumo visível — mesmo no disparo automático (silencioso), sempre
+    // mostra alguma coisa: a diferença entre notar algo estranho no mesmo
+    // dia e descobrir semanas depois com dado errado acumulado. "Pendente
+    // de revisão" (moeda estrangeira sem valor convertido) é destacado à
+    // parte por ser o único caso que precisa de atenção humana.
+    const partes = [];
+    if (importadas > 0) partes.push(`${importadas} nova(s)`);
+    if (casadas > 0) partes.push(`${casadas} já existia(m)`);
+    const base = partes.length ? partes.join(', ') : 'nenhuma novidade';
+    const avisoSuspeitas = suspeitas > 0 ? ` — ⚠️ ${suspeitas} pendente(s) de revisão (moeda estrangeira)` : '';
+    showToast(silencioso
+      ? `Sincronização automática: ${base}${avisoSuspeitas}`
+      : `Importação concluída ✅ — ${base}${avisoSuspeitas}`);
     if (avisos.length) console.warn('[importarPendentes] pendentes de revisão manual:', avisos);
     await loadData();
   } catch (e) {
+    if (logId) {
+      await _sb.from('pluggy_sync_log')
+        .update({ terminado_em: new Date().toISOString(), status: 'erro', erro: String(e) })
+        .eq('id', logId);
+    }
     console.error('importarPendentes', e);
-    showToast(`Erro na importação ❌ ${e.message}`);
+    if (!silencioso) showToast(`Erro na importação ❌ ${e.message}`);
   }
   if (btn) btn.disabled = false;
 }

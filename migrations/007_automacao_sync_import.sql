@@ -1,0 +1,24 @@
+-- ════════════════════════════════════════════════════════════════════════════
+-- 007_automacao_sync_import.sql
+-- Pré-requisito pra ligar sincronização + importação automáticas ao abrir o
+-- app (ver Decisões no CLAUDE.md). Uma coluna só, aditiva, com default
+-- seguro:
+--
+-- pluggy_sync_log.tipo ('sync' | 'import') — até aqui essa tabela só
+-- registrava execuções da Edge Function de sincronização. A importação
+-- (importarPendentes(), que roda inteiramente no navegador, sem Edge
+-- Function própria) precisa do mesmo tipo de guard contra execução
+-- concorrente que a sincronização já tem (HTTP 409 se já houver uma "em
+-- andamento" recente) — sem isso, abrir o app em dois aparelhos ao mesmo
+-- tempo, ou recarregar no meio de uma importação, pode inserir a mesma
+-- transação duas vezes em `extrato` antes de qualquer uma marcar
+-- `transacao_id` (o upsert do espelho é idempotente por `pluggy_id`; a
+-- inserção em `extrato` não tem essa garantia).
+--
+-- Default 'sync' preserva a leitura correta de todo o histórico de log já
+-- registrado, sem precisar de backfill.
+--
+-- Aplicar manualmente no SQL Editor do Supabase.
+-- ════════════════════════════════════════════════════════════════════════════
+
+alter table pluggy_sync_log add column if not exists tipo text default 'sync';
