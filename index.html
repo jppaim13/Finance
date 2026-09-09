@@ -1916,7 +1916,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-09e';
+const APP_VERSION = '2026-09-09f';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -5468,7 +5468,14 @@ async function renderCategorizacao() {
     const tipo = itens[0].tipo;
     const total = itens.reduce((s, i) => s + Number(i.valor || 0), 0);
     const sugestao = sugestoes.get(descricaoBase);
-    const idsGrupo = JSON.stringify(itens.map(i => i.id)).replace(/'/g, "\\'");
+    // JSON.stringify de ids (uuid) sempre traz aspas DUPLAS ("id1","id2") —
+    // embutido cru dentro do atributo onclick/onchange, que também usa aspas
+    // duplas, o navegador encerrava o atributo na primeira aspa da própria
+    // lista, truncando a chamada (bug real: "categorizar em lote" parava de
+    // funcionar). Corrigido escapando aspas simples E duplas — a dupla vira
+    // entidade HTML (&quot;), decodificada de volta pelo navegador antes de
+    // rodar o JS, mantendo o atributo íntegro.
+    const idsGrupo = JSON.stringify(itens.map(i => i.id)).replace(/'/g, "\\'").replace(/"/g, '&quot;');
     const selIdGrupo = `catgrupo-${idx}`;
     return `
       <div class="card" style="padding:14px;margin-bottom:10px">
