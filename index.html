@@ -1227,6 +1227,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
         </div>
       </div>
       <div class="text-xs text-2" style="margin-bottom:12px">"Sincronizar agora" só espelha dado da Pluggy, não altera nenhum lançamento. "Importar pendentes" grava no extrato (categoria "Não classificado") — só transações a partir da data de corte de cada conta/cartão, e só o que ainda não existe no app.</div>
+      <div class="text-xs text-3" id="appBuildInfo" style="margin-bottom:12px"></div>
       <div class="month-selector" style="margin-bottom:12px">
         <button class="month-nav-btn" onclick="changeMonth(-1,'S')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 18l-6-6 6-6"/></svg>
@@ -4791,22 +4792,30 @@ function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
   const billId  = cc?.billId;
 
   // Parcelado: casar pela estrutura (installmentNumber/totalInstallments +
-  // competência via billId → pluggy_faturas.due_date), não por valor+data —
-  // mesma correção registrada na Fase 1.7 (valor+data não é chave quando há
-  // parcelamento envolvido).
-  if (ehCartao && instNum && instTot && billId) {
-    const fatura = cache.faturas.get(billId);
+  // competência), não por valor+data — mesma correção registrada na Fase
+  // 1.7 (valor+data não é chave quando há parcelamento envolvido).
+  // Competência preferencialmente via billId → pluggy_faturas.due_date;
+  // quando não existe (Nubank: billId nulo desde 09/07/2026, quebra
+  // permanente confirmada — ver Decisões no CLAUDE.md, não é lag), cai pra
+  // getVencimentoIdx calculado direto da data da transação, mesma função
+  // pura que o resto do app usa — não deixa o casamento estrutural inteiro
+  // de fora só porque falta um campo de um conector específico.
+  if (ehCartao && instNum && instTot) {
+    const cartaoObj = state.cartoes.find(c => c.nome === nome);
+    const fatura = billId ? cache.faturas.get(billId) : null;
+    let venidxReal;
     if (fatura?.due_date) {
       const [ay, am] = fatura.due_date.split('-').map(Number);
-      const venidxReal = ay * 12 + am;
-      const cartaoObj = state.cartoes.find(c => c.nome === nome);
-      for (const lan of lancRows) {
-        if ((lan.tipo || '').toLowerCase() !== 'parcelado') continue;
-        if (Number(lan.parcelas) !== instTot) continue;
-        if (!_valorIgual(lan.valor, valor)) continue;
-        const venidxLan = getInstVencIdx(lan, instNum - 1, cartaoObj?.fechamento, cartaoObj?.vencimento);
-        if (venidxLan === venidxReal) return { fonte: 'lancamentos', id: lan.id };
-      }
+      venidxReal = ay * 12 + am;
+    } else {
+      venidxReal = getVencimentoIdx(pt.data, cartaoObj?.fechamento, cartaoObj?.vencimento);
+    }
+    for (const lan of lancRows) {
+      if ((lan.tipo || '').toLowerCase() !== 'parcelado') continue;
+      if (Number(lan.parcelas) !== instTot) continue;
+      if (!_valorIgual(lan.valor, valor)) continue;
+      const venidxLan = getInstVencIdx(lan, instNum - 1, cartaoObj?.fechamento, cartaoObj?.vencimento);
+      if (venidxLan === venidxReal) return { fonte: 'lancamentos', id: lan.id };
     }
   }
 
@@ -5101,6 +5110,15 @@ async function atualizarIgnorarPluggy(id, ignorar) {
 
 function renderSincronizacao() {
   carregarPluggyContas();
+  // Indicador de versão automático (document.lastModified — o próprio
+  // navegador reporta a partir do header Last-Modified que o GitHub Pages
+  // envia pro arquivo servido, sem exigir nenhum passo manual de bump de
+  // versão). Existe pra tornar "essa aba está rodando código antigo?"
+  // verificável olhando a tela, em vez de depender de lembrar de recarregar
+  // depois de um deploy — foi exatamente essa lembrança que faltou e
+  // custou duas rodadas de limpeza de dado na retomada de 08/09/2026.
+  const buildEl = document.getElementById('appBuildInfo');
+  if (buildEl) buildEl.textContent = `Versão carregada nesta aba: ${document.lastModified}`;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
