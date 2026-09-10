@@ -1931,7 +1931,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-09k';
+const APP_VERSION = '2026-09-10a';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -5476,6 +5476,14 @@ function _fmtDataBR(dataStr) {
   return (dataStr || '').split('-').reverse().join('/');
 }
 
+// Escapa texto pra dentro de um atributo HTML de VALOR (ex: value="...") —
+// diferente do escape usado pra embutir JSON dentro de onclick/onchange
+// (esse aqui não precisa escapar aspas simples, só o que quebraria o
+// atributo de verdade).
+function _escHtml(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function _optsCategoria(tipo, selecionado) {
   const base = tipo === 'receita' ? CATS_RECEITA : CATS_DESPESA;
   const todas = [...(state.catsExtra || []), ...base].filter(c => c.id !== 'nao_classificado');
@@ -5561,49 +5569,60 @@ async function renderCategorizacao() {
     const tipo = itens[0].tipo;
     const total = itens.reduce((s, i) => s + Number(i.valor || 0), 0);
     const sugestao = sugestoes.get(descricaoBase);
-    // JSON.stringify de ids (uuid) sempre traz aspas DUPLAS ("id1","id2") —
-    // embutido cru dentro do atributo onclick/onchange, que também usa aspas
-    // duplas, o navegador encerrava o atributo na primeira aspa da própria
-    // lista, truncando a chamada (bug real: "categorizar em lote" parava de
-    // funcionar). Corrigido escapando aspas simples E duplas — a dupla vira
-    // entidade HTML (&quot;), decodificada de volta pelo navegador antes de
-    // rodar o JS, mantendo o atributo íntegro.
-    const idsGrupo = JSON.stringify(itens.map(i => i.id)).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    // JSON.stringify de ids/descrição (com aspas duplas de string) embutido
+    // cru dentro de onclick/onchange (que também usa aspas duplas) truncava
+    // o atributo na primeira aspa — bug real já corrigido. `_escJsAttr`
+    // escapa aspas simples (delimitador da string JS) E duplas (delimitador
+    // do atributo HTML, via entidade &quot;), reusado em todo texto que vai
+    // dentro de um onclick/onchange.
+    const _escJsAttr = s => String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    // {id, descricao} de cada item — não só id — porque renomear o grupo
+    // precisa saber o texto ORIGINAL de cada linha pra preservar o sufixo
+    // "(N/M)"/texto extra ao trocar só a parte base.
+    const itensGrupo = _escJsAttr(JSON.stringify(itens.map(i => ({ id: i.id, descricao: i.descricao }))));
+    const baseOriginalAttr = _escJsAttr(JSON.stringify(descricaoBase));
     const selIdGrupo = `catgrupo-${idx}`;
+    const descIdGrupo = `descgrupo-${idx}`;
     return `
       <div class="card" style="padding:14px;margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-          <div>
-            <div style="font-weight:500">${descricaoBase}</div>
+          <div style="flex:1;min-width:180px">
+            <input id="${descIdGrupo}" class="form-input" style="font-weight:500;padding:4px 8px;margin-bottom:2px" value="${_escHtml(descricaoBase)}">
             <div class="text-xs text-3">${itens.length} transação(ões) · total ${fmt(total)}${sugestao ? ` · sugestão: ${sugestao}` : ''}</div>
           </div>
           <div style="display:flex;gap:6px;align-items:center">
-            <select id="${selIdGrupo}" class="form-select" style="max-width:220px" onchange="categorizarGrupo('${idsGrupo}', this.value)">
+            <select id="${selIdGrupo}" class="form-select" style="max-width:220px" onchange="categorizarGrupo('${itensGrupo}', this.value, ${baseOriginalAttr}, document.getElementById('${descIdGrupo}').value)">
               ${_optsCategoria(tipo, sugestao)}
             </select>
-            <button class="btn-primary" style="padding:6px 14px;font-size:12px;white-space:nowrap" onclick="categorizarGrupo('${idsGrupo}', document.getElementById('${selIdGrupo}').value)">OK</button>
+            <button class="btn-primary" style="padding:6px 14px;font-size:12px;white-space:nowrap" onclick="categorizarGrupo('${itensGrupo}', document.getElementById('${selIdGrupo}').value, ${baseOriginalAttr}, document.getElementById('${descIdGrupo}').value)">OK</button>
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;flex-direction:column;gap:6px">
           ${itens.map(i => {
             const selIdLinha = `catlinha-${i.id}`;
+            const descIdLinha = `desclinha-${i.id}`;
             return `
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid var(--border)">
-              <span class="text-2" style="flex:1">${_fmtDataBR(i.data)} · ${i.cartao_nome || i.conta_nome || ''}${i.descricao !== descricaoBase ? ` · ${i.descricao.slice(descricaoBase.length).trim()}` : ''}</span>
-              <span class="font-mono">${fmt(i.valor)}</span>
-              <select id="${selIdLinha}" class="form-select" style="max-width:170px;font-size:12px" onchange="categorizarLinha('${i.id}', this.value)">
-                ${_optsCategoria(tipo, '')}
-              </select>
-              <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="categorizarLinha('${i.id}', document.getElementById('${selIdLinha}').value)">OK</button>
-              ${i.origem === 'conta' ? (() => {
-                const selIdTransf = `translinha-${i.id}`;
-                return `
-              <select id="${selIdTransf}" class="form-select" style="max-width:150px;font-size:11px">
-                <option value="">🔄 Transferência...</option>
-                ${_optsContasTransferencia(i.conta_nome)}
-              </select>
-              <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="marcarComoTransferencia('${i.id}', document.getElementById('${selIdTransf}').value)">OK</button>`;
-              })() : ''}
+            <div style="display:flex;flex-direction:column;gap:4px;padding:6px 0;border-top:1px solid var(--border)">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px">
+                <span class="text-3">${_fmtDataBR(i.data)} · ${i.cartao_nome || i.conta_nome || ''}</span>
+                <span class="font-mono">${fmt(i.valor)}</span>
+              </div>
+              <input id="${descIdLinha}" class="form-input" style="font-size:12px;padding:4px 8px" value="${_escHtml(i.descricao)}">
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <select id="${selIdLinha}" class="form-select" style="max-width:170px;font-size:12px" onchange="categorizarLinha('${i.id}', this.value, document.getElementById('${descIdLinha}').value)">
+                  ${_optsCategoria(tipo, '')}
+                </select>
+                <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="categorizarLinha('${i.id}', document.getElementById('${selIdLinha}').value, document.getElementById('${descIdLinha}').value)">OK</button>
+                ${i.origem === 'conta' ? (() => {
+                  const selIdTransf = `translinha-${i.id}`;
+                  return `
+                <select id="${selIdTransf}" class="form-select" style="max-width:150px;font-size:11px">
+                  <option value="">🔄 Transferência...</option>
+                  ${_optsContasTransferencia(i.conta_nome)}
+                </select>
+                <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="marcarComoTransferencia('${i.id}', document.getElementById('${selIdTransf}').value)">OK</button>`;
+                })() : ''}
+              </div>
             </div>
           `;
           }).join('')}
@@ -5613,9 +5632,17 @@ async function renderCategorizacao() {
   }).join('');
 }
 
-async function categorizarLinha(id, categoria) {
+// `descricao`, quando informada, sobrescreve o texto original — permite
+// renomear ao categorizar (pedido do usuário). Seguro contra reimportação
+// duplicada: o casamento de dedup da Pluggy (`_pluggyJaExisteNoApp`) usa
+// valor+data (e, pra parcelado, a descrição ORIGINAL da própria Pluggy via
+// `_pluggyCompraChave`, nunca a `extrato.descricao` editada aqui) — ver
+// Decisões no CLAUDE.md. Renomear no app não afeta o que o sync reconhece.
+async function categorizarLinha(id, categoria, descricao) {
   if (!categoria) return;
-  const ok = await sbUpdate('extrato', id, { categoria });
+  const changes = { categoria };
+  if (descricao != null && descricao.trim()) changes.descricao = descricao.trim();
+  const ok = await sbUpdate('extrato', id, changes);
   if (!ok) { showToast('Erro ao categorizar ❌'); return; }
   showToast('Categorizado ✅');
   await renderCategorizacao();
@@ -5624,14 +5651,22 @@ async function categorizarLinha(id, categoria) {
 // Categoriza TODAS as pendentes de um grupo de uma vez, por id — não por
 // descrição (a descrição varia por linha quando há sufixo de parcela " (N/M)",
 // então casar por texto exato deixaria de pegar o grupo inteiro).
-async function categorizarGrupo(idsJson, categoria) {
+// `novoBase`, quando diferente de `baseOriginal`, renomeia a parte comum do
+// grupo em cada linha, preservando o que vem depois dela (sufixo de parcela
+// ou texto extra do banco) — troca só o prefixo, não o texto inteiro.
+async function categorizarGrupo(itensJson, categoria, baseOriginal, novoBase) {
   if (!categoria) return;
-  const ids = JSON.parse(idsJson);
-  const { error } = await _sb.from('extrato')
-    .update({ categoria })
-    .in('id', ids);
-  if (error) { console.error('categorizarGrupo', error); showToast('Erro ao categorizar grupo ❌'); return; }
-  showToast('Grupo categorizado ✅');
+  const itens = JSON.parse(itensJson);
+  const renomear = novoBase != null && novoBase.trim() && novoBase.trim() !== baseOriginal;
+  const baseNova = renomear ? novoBase.trim() : null;
+  const resultados = await Promise.all(itens.map(i => {
+    const changes = { categoria };
+    if (renomear) changes.descricao = baseNova + i.descricao.slice(baseOriginal.length);
+    return _sb.from('extrato').update(changes).eq('id', i.id);
+  }));
+  const erro = resultados.find(r => r.error);
+  if (erro) { console.error('categorizarGrupo', erro.error); showToast('Erro ao categorizar grupo ❌'); return; }
+  showToast(renomear ? 'Grupo categorizado e renomeado ✅' : 'Grupo categorizado ✅');
   await renderCategorizacao();
 }
 

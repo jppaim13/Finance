@@ -476,6 +476,15 @@ Usuário pediu pra verificar uma transferência específica (R$5.725,05, 01/09/2
 - **Por que isso evita o mesmo bug de novo**: qualquer transferência manual lançada ANTES de rodar a importação (o caso que causou o bug) agora é reconhecida no `_pluggyJaExisteNoApp()` independente da ordem de categorização dos dois lados — não depende mais de os dois estarem com `categoria='nao_classificado'` ao mesmo tempo.
 - **Sem migration** — só leitura de uma tabela que já existia.
 
+### Categorização — editar nome/renomear ao categorizar (10/09/2026)
+
+Pedido do usuário: poder editar a descrição (ou dar um "subnome") ao categorizar uma pendente, com garantia explícita de que renomear não faz a Pluggy reimportar a mesma transação como se fosse nova.
+
+- **Segurança confirmada relendo o código atual antes de implementar, não assumida**: `matchAvista` (usada pra quase toda transação não-parcelada, `_pluggyJaExisteNoApp`) casa só por **valor+data** contra `extrato`, nunca lê `descricao`. O único ponto que usa texto pra casar (`_pluggyCompraChave`, parcelado sem `purchaseDate`) lê `pt.descricao` — a descrição ORIGINAL da própria `pluggy_transacoes`, imutável — nunca `extrato.descricao`, que é exatamente o campo editado aqui. Renomear no app não tem nenhum caminho de código que afete o que o sync reconhece como já importado.
+- **Linha individual**: o texto de cada pendente virou um `<input>` editável (pré-preenchido com a descrição atual), ao lado do select de categoria. `categorizarLinha(id, categoria, descricao)` salva os dois juntos num só clique em OK (ou ao trocar a categoria direto no select) — sem categoria selecionada, nada salva (mesma regra de sempre, incluindo o texto).
+- **Grupo**: o cabeçalho do grupo também virou `<input>` editável — renomear ali troca a parte BASE comum de todas as linhas do grupo, preservando o que vem depois dela em cada uma (sufixo de parcela "(N/M)" ou texto extra do banco) — nunca sobrescreve o texto inteiro de cada linha com o mesmo valor. `categorizarGrupo()` precisou passar a receber `{id, descricao}` por item (não só `id`) pra saber o texto original de cada linha na hora de recortar o prefixo.
+- **Escape de atributo teve que crescer**: além do `idsGrupo`/`itensGrupo` (JSON com aspas duplas, mesmo bug já corrigido antes), agora também o texto livre da descrição vai dentro de `value="..."` de um `<input>` — helper novo `_escHtml()` (escapa `&`, `"`, `<`, `>`) pra esse caso, diferente do `_escJsAttr` usado pra embutir JSON dentro de `onclick`/`onchange` (que precisa escapar aspas simples do delimitador de string JS também). Dois escapes com propósitos diferentes, não confundir um pelo outro.
+
 ### Limite de crédito sincronizado da Pluggy (09/09/2026)
 
 Pedido do usuário: buscar o limite dos cartões na Pluggy e atualizar `cartoes.limite` automaticamente, em vez de depender de cadastro manual.
