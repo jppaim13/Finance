@@ -1931,7 +1931,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-10a';
+const APP_VERSION = '2026-09-10b';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -5505,6 +5505,15 @@ function _optsContasTransferencia(excluirNome) {
          (caixinhas ? `<optgroup label="Investimentos">${caixinhas}</optgroup>` : '');
 }
 
+function _optsCartoes() {
+  return `<option value="">Cartão...</option>` +
+    (state.cartoes || []).map(c => `<option value="${c.nome}">${c.nome}</option>`).join('');
+}
+
+function _optsMeses(selecionado) {
+  return MESES_NOMES.map((m, i) => `<option value="${m}" ${m === selecionado ? 'selected' : ''}>${MESES[i]}</option>`).join('');
+}
+
 async function renderCategorizacao() {
   const el = document.getElementById('categorizacao-list');
   const contadorEl = document.getElementById('categorizacaoContador');
@@ -5615,12 +5624,28 @@ async function renderCategorizacao() {
                 <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="categorizarLinha('${i.id}', document.getElementById('${selIdLinha}').value, document.getElementById('${descIdLinha}').value)">OK</button>
                 ${i.origem === 'conta' ? (() => {
                   const selIdTransf = `translinha-${i.id}`;
+                  const selIdCartao = `fatcartao-${i.id}`;
+                  const selIdMes = `fatmes-${i.id}`;
+                  // Chute de mês: mesmo mês/ano da data do pagamento — não usa
+                  // getVencimentoIdx (feito pra classificar COMPRA por
+                  // fechamento, não pagamento) porque o pagamento acontece
+                  // perto do vencimento, não do fechamento. É só o valor
+                  // inicial do seletor, sempre trocável antes de confirmar.
+                  const [ay, am] = i.data.split('-').map(Number);
+                  const mesChute = `${_MES_ABREV[am - 1]}-${ay}`;
                   return `
                 <select id="${selIdTransf}" class="form-select" style="max-width:150px;font-size:11px">
                   <option value="">🔄 Transferência...</option>
                   ${_optsContasTransferencia(i.conta_nome)}
                 </select>
-                <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="marcarComoTransferencia('${i.id}', document.getElementById('${selIdTransf}').value)">OK</button>`;
+                <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="marcarComoTransferencia('${i.id}', document.getElementById('${selIdTransf}').value)">OK</button>
+                <select id="${selIdCartao}" class="form-select" style="max-width:130px;font-size:11px">
+                  ${_optsCartoes()}
+                </select>
+                <select id="${selIdMes}" class="form-select" style="max-width:100px;font-size:11px">
+                  ${_optsMeses(mesChute)}
+                </select>
+                <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="marcarComoFatura('${i.id}', document.getElementById('${selIdCartao}').value, document.getElementById('${selIdMes}').value)">📋 Fatura</button>`;
                 })() : ''}
               </div>
             </div>
@@ -5737,6 +5762,28 @@ async function marcarComoTransferencia(extratoId, outraConta) {
 
   showToast(contraparte ? 'Transferência criada — os dois lados foram casados ✅' : 'Transferência criada ✅');
   await loadData(); // muda saldo/resumo, não só a lista de pendentes — recarrega tudo
+}
+
+// Escape hatch manual pra pagamento de fatura que `autoDetectarPagamentosFatura()`
+// não pegou sozinho (fora da janela de ±5 dias do vencimento, fatura ainda
+// sem due_date sincronizado, ou valor não bate exato com o total do
+// emissor) — mesmo papel do botão de Transferência, só que pra fatura.
+// Converte a linha pendente em `categoria='fatura'` direto (não cria linha
+// nova como "Pagar Fatura" da tela de Faturas — aqui a transação REAL já
+// existe em `extrato`, só faltava o rótulo certo).
+async function marcarComoFatura(extratoId, cartaoNome, mesNome) {
+  if (!cartaoNome || !mesNome) { showToast('Selecione o cartão e o mês da fatura'); return; }
+
+  const { data: tx, error } = await _sb.from('extrato').select('*').eq('id', extratoId).maybeSingle();
+  if (error || !tx) { showToast('Erro ao carregar transação ❌'); return; }
+  if (tx.origem !== 'conta') { showToast('Só transação de conta pode virar pagamento de fatura ❌'); return; }
+
+  const key = `${cartaoNome}-${mesNome}`;
+  const ok = await sbUpdate('extrato', tx.id, { categoria: 'fatura', cartao_nome: cartaoNome, parcela: key });
+  if (!ok) { showToast('Erro ao marcar como fatura ❌'); return; }
+
+  showToast('Marcado como pagamento de fatura ✅');
+  await loadData(); // muda state.faturasPagas/resumo, não só a lista de pendentes
 }
 
 // Nome do titular da conta Pluggy — só o João tem integração própria (ver

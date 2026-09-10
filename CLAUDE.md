@@ -476,6 +476,14 @@ Usuário pediu pra verificar uma transferência específica (R$5.725,05, 01/09/2
 - **Por que isso evita o mesmo bug de novo**: qualquer transferência manual lançada ANTES de rodar a importação (o caso que causou o bug) agora é reconhecida no `_pluggyJaExisteNoApp()` independente da ordem de categorização dos dois lados — não depende mais de os dois estarem com `categoria='nao_classificado'` ao mesmo tempo.
 - **Sem migration** — só leitura de uma tabela que já existia.
 
+### Categorização — marcar pagamento de fatura manualmente (10/09/2026)
+
+Pergunta do usuário ("como vou categorizar as faturas pagas?") expôs um buraco real: `autoDetectarPagamentosFatura()` (ver seção anterior) só reconhece sozinho quando o valor bate exato com `pluggy_faturas.total_amount` e a data cai em ±5 dias do `due_date` — fora dessa janela (fatura ainda sem `due_date` sincronizado, valor não exato, pagamento atrasado), a transação real fica em "não classificado" pra sempre sem nenhum jeito de virar `categoria='fatura'` a não ser recriando pelo botão "Pagar Fatura" da tela de Faturas — que cria uma linha NOVA, duplicando a que já existe.
+
+- **Nova ação por linha na Categorização** (`marcarComoFatura`, mesmo padrão do botão de Transferência, só pra `origem==='conta'`): dois seletores (cartão + mês) e um botão "📋 Fatura" — converte a linha pendente já existente em `categoria='fatura'` com `cartao_nome`/`parcela` certos, **sem criar linha nova** (diferente de "Pagar Fatura", que sempre insere).
+- **Mês vem com um chute pré-selecionado, sempre trocável**: mesmo ano-mês da DATA do pagamento — deliberadamente **não** usa `getVencimentoIdx` (essa função classifica COMPRA por `fechamento`, não pagamento; pagamento acontece perto do `vencimento`, lógica diferente). É só o valor inicial do seletor, o usuário corrige se o chute errar.
+- **Mesma limitação de sempre no seletor de mês**: `MESES_NOMES`/`MESES` são arrays fixos (Mar/2026–Fev/2027) — pagamento de fatura fora dessa janela não teria opção certa no seletor (degrada silenciosamente pro primeiro item, não trava). Fora do escopo desta mudança corrigir isso — é limitação pré-existente do app inteiro, não introduzida aqui.
+
 ### Categorização — editar nome/renomear ao categorizar (10/09/2026)
 
 Pedido do usuário: poder editar a descrição (ou dar um "subnome") ao categorizar uma pendente, com garantia explícita de que renomear não faz a Pluggy reimportar a mesma transação como se fosse nova.
