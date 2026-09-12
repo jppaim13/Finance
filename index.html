@@ -300,11 +300,6 @@ body {
 .kpi-badge.up { background: var(--green-soft); color: var(--green); }
 .kpi-badge.down { background: var(--red-soft); color: var(--red); }
 
-.color-green { color: var(--green); }
-.color-red { color: var(--red); }
-.color-accent { color: var(--accent); }
-.color-amber { color: var(--amber); }
-
 /* ── Section Label ──────────────────────────────────────────────── */
 .section-label {
   font-size: 12px;
@@ -905,15 +900,23 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 .pat-legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
 
 .metric-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-top: 12px; }
-/* Entradas/Saídas/Resultado: 3 colunas FIXAS, nunca auto-fit — a informação
-   mais consultada do Dashboard não pode empilhar e esconder o Resultado
-   abaixo da dobra no mobile. Cada coluna encolhe (min-width:0 já herdado de
-   .metric), o texto quebra dentro da própria célula se precisar, mas a
-   linha nunca vira 2 ou 3 linhas de célula. */
-.metric-strip-3 { grid-template-columns: repeat(3, 1fr); }
+/* Entradas/Saídas: 2 colunas FIXAS, nunca auto-fit — não pode empilhar.
+   Resultado (.metric-strip-1) fica sozinho na linha de baixo, largura
+   total, porque é o que mais precisa de espaço (valor + "acumulado ..."). */
+.metric-strip-2 { grid-template-columns: repeat(2, 1fr); }
+.metric-strip-1 { grid-template-columns: 1fr; }
 .metric { background: var(--bg-card); padding: 14px 16px; min-width: 0; }
 .metric-label { font-size: 9.5px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--text-3); }
-.metric-value { font-family: var(--font-mono); font-size: 17px; font-weight: 500; margin-top: 5px; color: var(--text); font-variant-numeric: tabular-nums; }
+/* overflow-wrap:anywhere — causa raiz do corte visto no celular: `.metric-
+   strip` tem overflow:hidden (necessário pra arredondar canto do grid), e
+   `toLocaleString('pt-BR',{style:'currency'})` usa espaço NÃO-QUEBRÁVEL
+   entre "R$" e o número — a string inteira é um token sem ponto de quebra.
+   Numa coluna estreita demais pro token caber, ele estourava a célula e o
+   overflow:hidden do ancestral cortava sem aviso (sem "...", sem erro). Com
+   isto, se um valor futuro ainda não couber mesmo com 2 colunas, ele quebra
+   pra uma segunda linha na própria célula em vez de ser cortado — sempre
+   tem pra onde ir. Ver Decisões no CLAUDE.md. */
+.metric-value { font-family: var(--font-mono); font-size: 17px; font-weight: 500; margin-top: 5px; color: var(--text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .metric-sub { font-size: 10.5px; color: var(--text-3); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .metric.clickable { cursor: pointer; transition: background var(--transition); }
 .metric.clickable:hover { background: var(--bg-hover); }
@@ -1081,6 +1084,21 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 .relev-row:hover { background: var(--bg-hover); }
 .relev-foot { height: 38px; background: var(--bg-hover); border-top: 1px solid var(--border-2); }
 .relev-num { font-family: var(--font-mono); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Utilitários de cor por sinal — de propósito no FIM da folha de estilo,
+   não perto de onde foram declarados antes. Empatam em especificidade (uma
+   classe só) com várias regras de componente que também fixam `color`
+   (ex: .metric-value) — em empate, quem vem DEPOIS no CSS vence, então
+   "depois de tudo" é a única posição que garante que estes sempre ganham,
+   não importa em qual elemento forem aplicados. Bug real encontrado: as
+   três cores do Dashboard (Entradas/Saídas/Resultado) apareciam sempre
+   pretas porque `.metric-value` (definida mais abaixo que estas classes)
+   sobrescrevia `color`, mesmo com a classe certa presente no elemento —
+   ver Decisões no CLAUDE.md. Nunca declarar cor literal aqui, só variável. */
+.color-green { color: var(--green); }
+.color-red { color: var(--red); }
+.color-accent { color: var(--accent); }
+.color-amber { color: var(--amber); }
 </style>
 </head>
 <body>
@@ -1232,10 +1250,13 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
       </div>
 
       <!-- Entradas / Saídas / Resultado do mês — a informação mais consultada
-           do Dashboard, uma linha só logo abaixo do Patrimônio (pedido do
-           usuário, ver Decisões no CLAUDE.md). Cor por SINAL DO VALOR, não
-           por qual campo é — aplicada em renderDashboard(). -->
-      <div class="metric-strip metric-strip-3">
+           do Dashboard, logo abaixo do Patrimônio (pedido do usuário, ver
+           Decisões no CLAUDE.md). Entradas/Saídas em 2 colunas; Resultado
+           sozinho na linha de baixo, largura total — 3 colunas cortavam
+           valor de 6 dígitos no mobile (corte real visto e corrigido, ver
+           Decisões). Cor por SINAL DO VALOR, não por qual campo é —
+           aplicada em renderDashboard(). -->
+      <div class="metric-strip metric-strip-2">
         <div class="metric">
           <div class="metric-label">Entradas</div>
           <div class="metric-value" id="kpi-receita">R$ —</div>
@@ -1244,6 +1265,8 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
           <div class="metric-label">Saídas</div>
           <div class="metric-value" id="kpi-despesa">R$ —</div>
         </div>
+      </div>
+      <div class="metric-strip metric-strip-1">
         <div class="metric">
           <div class="metric-label">Resultado</div>
           <div class="metric-value" id="kpi-saldo">R$ —</div>
@@ -2117,7 +2140,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-12c';
+const APP_VERSION = '2026-09-12d';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
