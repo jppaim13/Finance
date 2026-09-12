@@ -2108,7 +2108,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-12a';
+const APP_VERSION = '2026-09-12b';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -4116,6 +4116,17 @@ function renderRelEvolucao() {
     </div>`;
 }
 
+// Toggle dos chips de cartão no Relatório de Faturas — achado ausente (a
+// função foi apagada no redesign de 12/09, mas o onclick que a chama em
+// renderRelFaturas() continuou sendo gerado; clicar num chip não fazia
+// nada, silenciosamente, sem erro visível fora do console). Restaurada.
+function toggleFaturaSel(nome) {
+  if (!state._faturasSel) state._faturasSel = new Set();
+  if (state._faturasSel.has(nome)) state._faturasSel.delete(nome);
+  else state._faturasSel.add(nome);
+  renderRelFaturas();
+}
+
 function renderRelFaturas() {
   if (!state._faturasSel) state._faturasSel = new Set();
   const isDark = false;
@@ -5973,18 +5984,27 @@ async function renderCategorizacao() {
 async function aplicarTodasSugestoes() {
   const lista = state._catSugestoes || [];
   if (!lista.length) return;
+
+  // Escrita em massa baseada em heurística (mesma descrição ⇒ mesma
+  // categoria de antes) — acerta na maioria, mas quando erra propaga o erro
+  // por todas as linhas do grupo num clique só. Confirmação mostra o mesmo
+  // tamanho que já aparece no rótulo do botão, pra não decidir às cegas.
+  const totalItens = lista.reduce((s, g) => s + g.itens.length, 0);
+  if (!confirm(`Aplicar ${lista.length} ${lista.length === 1 ? 'sugestão' : 'sugestões'} em ${totalItens} ${totalItens === 1 ? 'transação' : 'transações'}?`)) return;
+
   const btn = document.getElementById('categ-aplicar-todas');
   const rotulo = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Aplicando...'; }
-  let ok = 0;
+  let ok = 0, itensOk = 0;
   for (const g of lista) {
     try {
       await categorizarGrupo(JSON.stringify(g.itens), g.categoria, g.base, g.base);
       ok++;
+      itensOk += g.itens.length;
     } catch (e) { console.error('aplicarTodasSugestoes', g.base, e); }
   }
   if (btn) { btn.disabled = false; btn.textContent = rotulo; }
-  showToast(ok + ' ' + (ok === 1 ? 'grupo' : 'grupos') + ' categorizado' + (ok === 1 ? '' : 's') + ' ✅');
+  showToast(`${ok} ${ok === 1 ? 'grupo' : 'grupos'} · ${itensOk} ${itensOk === 1 ? 'transação categorizada' : 'transações categorizadas'} ✅`);
   await renderCategorizacao();
 }
 
