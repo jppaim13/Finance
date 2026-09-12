@@ -905,6 +905,12 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 .pat-legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
 
 .metric-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-top: 12px; }
+/* Entradas/Saídas/Resultado: 3 colunas FIXAS, nunca auto-fit — a informação
+   mais consultada do Dashboard não pode empilhar e esconder o Resultado
+   abaixo da dobra no mobile. Cada coluna encolhe (min-width:0 já herdado de
+   .metric), o texto quebra dentro da própria célula se precisar, mas a
+   linha nunca vira 2 ou 3 linhas de célula. */
+.metric-strip-3 { grid-template-columns: repeat(3, 1fr); }
 .metric { background: var(--bg-card); padding: 14px 16px; min-width: 0; }
 .metric-label { font-size: 9.5px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--text-3); }
 .metric-value { font-family: var(--font-mono); font-size: 17px; font-weight: 500; margin-top: 5px; color: var(--text); font-variant-numeric: tabular-nums; }
@@ -1225,13 +1231,28 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
         <div class="pat-legend" id="kpi-patrimonio-sub"></div>
       </div>
 
-      <!-- O que exige ação -->
-      <div class="metric-strip">
+      <!-- Entradas / Saídas / Resultado do mês — a informação mais consultada
+           do Dashboard, uma linha só logo abaixo do Patrimônio (pedido do
+           usuário, ver Decisões no CLAUDE.md). Cor por SINAL DO VALOR, não
+           por qual campo é — aplicada em renderDashboard(). -->
+      <div class="metric-strip metric-strip-3">
         <div class="metric">
-          <div class="metric-label">Resultado do mês</div>
+          <div class="metric-label">Entradas</div>
+          <div class="metric-value" id="kpi-receita">R$ —</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Saídas</div>
+          <div class="metric-value" id="kpi-despesa">R$ —</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Resultado</div>
           <div class="metric-value" id="kpi-saldo">R$ —</div>
           <div class="metric-sub" id="kpi-saldo-acum">—</div>
         </div>
+      </div>
+
+      <!-- O que exige ação -->
+      <div class="metric-strip">
         <div class="metric clickable" onclick="navigate('faturas')">
           <div class="metric-label">Faturas a pagar</div>
           <div class="metric-value" id="kpi-apagar">R$ —</div>
@@ -1241,18 +1262,6 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
           <div class="metric-label">Sem categoria</div>
           <div class="metric-value" id="kpi-semcat">—</div>
           <div class="metric-sub">importadas da Pluggy</div>
-        </div>
-      </div>
-
-      <!-- Entradas e saídas do mês -->
-      <div class="metric-strip">
-        <div class="metric">
-          <div class="metric-label">Entradas</div>
-          <div class="metric-value color-green" id="kpi-receita">R$ —</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">Saídas</div>
-          <div class="metric-value color-red" id="kpi-despesa">R$ —</div>
         </div>
       </div>
 
@@ -2108,7 +2117,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-12b';
+const APP_VERSION = '2026-09-12c';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -2818,12 +2827,30 @@ function renderDashboard() {
 
   document.getElementById('dash-subtitle').textContent = MESES[mi];
   document.getElementById('pat-label').textContent = 'Patrimônio em ' + MESES[mi];
-  document.getElementById('kpi-receita').textContent = fmt(receita);
-  document.getElementById('kpi-despesa').textContent = fmt(despesa);
+
+  // Entradas/Saídas/Resultado: cor pelo SINAL DO VALOR, não por qual campo é
+  // (pedido explícito — se Entradas algum dia vier negativa por estorno, a
+  // cor acompanha a realidade, não o rótulo do campo). Zero fica neutro
+  // (sem classe = cor padrão de .metric-value), nunca cai em verde por
+  // acaso via `>= 0`. Ver Decisões no CLAUDE.md.
+  const _classePorSinal = v => v > 0 ? 'color-green' : v < 0 ? 'color-red' : '';
+  const _prefixoSinal   = v => v > 0 ? '+ ' : v < 0 ? '− ' : '';
+
+  const elReceita = document.getElementById('kpi-receita');
+  elReceita.textContent = fmt(receita);
+  elReceita.className = 'metric-value ' + _classePorSinal(receita);
+
+  const elDespesa = document.getElementById('kpi-despesa');
+  // Despesa já vem como valor absoluto (calcularResumo soma custos como
+  // positivo) — sinal negativo pra "saída de dinheiro" é aplicado aqui, não
+  // alterado na origem, pra não mexer no resto do app que consome `despesa`
+  // como magnitude positiva.
+  elDespesa.textContent = fmt(despesa);
+  elDespesa.className = 'metric-value ' + _classePorSinal(-despesa);
 
   const elSaldo = document.getElementById('kpi-saldo');
-  elSaldo.textContent = (saldo >= 0 ? '+ ' : '− ') + fmt(Math.abs(saldo));
-  elSaldo.className = 'metric-value ' + (saldo >= 0 ? 'color-green' : 'color-red');
+  elSaldo.textContent = _prefixoSinal(saldo) + fmt(Math.abs(saldo));
+  elSaldo.className = 'metric-value ' + _classePorSinal(saldo);
   document.getElementById('kpi-saldo-acum').textContent = 'acumulado ' + fmt(acum);
 
   document.getElementById('kpi-patrimonio').textContent = fmt(patrimonio);
