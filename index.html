@@ -1288,6 +1288,11 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
         </div>
       </div>
 
+      <!-- Fixo × Pluggy: sugestão de vínculo (confirmar/desfazer) e "previsto,
+           ainda não debitado" — populado por renderFixoConciliacao(), fica
+           vazio (sem section-label nenhum) quando não há nada relevante. -->
+      <div id="fixo-conciliacao"></div>
+
       <div class="section-label">Contas e caixinhas</div>
       <div class="card">
         <div id="accounts-list">
@@ -2140,7 +2145,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-12d';
+const APP_VERSION = '2026-09-12e';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -2598,12 +2603,18 @@ function montarLancamentosMes(mesNome, extratoMes, allLancamentos) {
 }
 
 // Calcula resumo de receitas/despesas/faturas para todos os 12 meses
-function calcularResumo(allLancamentos, allExtrato, cartoes) {
+// `lancamentosRealizados`: mesmo array de {lancamento_id, ano, mes} (já
+// filtrado pelo chamador só pros CONFIRMADOS) que `calcularSaldo()` recebe
+// — ver comentário lá e Decisões no CLAUDE.md ("conciliar Fixo/Parcelado
+// com realizado"). Undefined/vazio é byte-idêntico ao comportamento
+// anterior a este parâmetro existir.
+function calcularResumo(allLancamentos, allExtrato, cartoes, lancamentosRealizados) {
   // Mapa rápido de cartão pelo nome
   const cartaoMap = {};
   (cartoes || []).forEach(c => { cartaoMap[c.nome] = c; });
   // Conjunto de categorias neutras (não afetam despesa/receita nos totais)
   const catsNeutras = new Set((state.catsExtra||[]).filter(c=>c.neutro).map(c=>c.id));
+  const realizadosSet = new Set((lancamentosRealizados || []).map(r => `${r.lancamento_id}|${r.ano}-${r.mes}`));
 
   return MESES_NOMES.map(mesNome => {
     const [anoAtual, mesAtual] = mesNomeToAnoMes(mesNome);
@@ -2681,7 +2692,12 @@ function calcularResumo(allLancamentos, allExtrato, cartoes) {
           if (mesIdx - startIdx >= Number(lan.parcelas || 1)) continue;
           if (!lanNeutro) despesa += valor;
         } else {
-          if (!lanNeutro) despesa += valor;
+          // Fixo/Variável: pula a ocorrência fantasma deste mês se já foi
+          // reconhecida como realizada por uma transação real (ver
+          // calcularSaldo() e Decisões no CLAUDE.md) — sem isso, o gasto
+          // real (já em `extrato`, contado no loop de cima) e a ocorrência
+          // fantasma dobrariam o mesmo aluguel/despesa fixa no mês.
+          if (!lanNeutro && !realizadosSet.has(`${lan.id}|${anoAtual}-${mesAtual}`)) despesa += valor;
         }
       }
     }
@@ -2754,7 +2770,8 @@ async function loadData() {
 
   // Busca paralela de todos os dados necessários
   const [contasData, cartoesData, lanFixData, extratoMesData,
-         allExtratoData, allTransfData, repassesData, catsData] = await Promise.all([
+         allExtratoData, allTransfData, repassesData, catsData,
+         lancRealizadosData] = await Promise.all([
     sbSelect('contas',   q => q.order('criado_em')),
     sbSelect('cartoes',  q => q.order('criado_em')),
     sbSelect('lancamentos', q => q.eq('ativo', true)),
@@ -2762,7 +2779,16 @@ async function loadData() {
     sbSelect('extrato',  q => q.order('data')),
     sbSelect('transferencias', q => q.order('data')),
     sbSelect('repasses', q => q.order('criado_em')),
+    Promise.resolve(undefined),
+    sbSelect('lancamentos_realizados', q => q.order('ano').order('mes')),
   ]);
+  // Só os CONFIRMADOS suprimem a ocorrência fantasma em calcularSaldo()/
+  // calcularResumo() — os pendentes de confirmação (mês sem
+  // pluggy_descricao_ref ainda aprendida) continuam contando normal até o
+  // usuário confirmar, de propósito (ver Decisões no CLAUDE.md — risco
+  // assimétrico, falso positivo é pior que duplicata visível).
+  state._lancRealizados = lancRealizadosData || [];
+  const lancRealizadosConfirmados = state._lancRealizados.filter(r => r.confirmado_em);
 
   // Categorias: busca direto para distinguir erro de tabela vazia
   await (async () => {
@@ -2811,10 +2837,10 @@ async function loadData() {
 
   // Calcula saldos atuais de contas e caixinhas
   state.contas    = todasContas.filter(c => c.tipo === 'conta').map(c => ({
-    ...c, saldo: calcularSaldo(c, lanFixData, allExtratoData, allTransfData),
+    ...c, saldo: calcularSaldo(c, lanFixData, allExtratoData, allTransfData, undefined, lancRealizadosConfirmados),
   }));
   state.caixinhas = todasContas.filter(c => c.tipo === 'caixinha').map(c => ({
-    ...c, saldo: calcularSaldo(c, lanFixData, allExtratoData, allTransfData),
+    ...c, saldo: calcularSaldo(c, lanFixData, allExtratoData, allTransfData, undefined, lancRealizadosConfirmados),
   }));
   state.cartoes   = cartoesData.map(c => ({ ...c, conta: c.conta_nome }));
 
@@ -2826,7 +2852,7 @@ async function loadData() {
   state.lancamentos = montarLancamentosMes(mesNome, extratoMesData, lanFixData);
 
   // Calcula resumo dos 12 meses
-  state.resumo = calcularResumo(lanFixData, allExtratoData, cartoesData);
+  state.resumo = calcularResumo(lanFixData, allExtratoData, cartoesData, lancRealizadosConfirmados);
 
   buildSelectores();
   buildCatGrid();
@@ -2905,6 +2931,81 @@ function renderDashboard() {
 
   renderAccounts();
   renderCaixinhas();
+  renderFixoConciliacao();
+}
+
+// Fixo × Pluggy: sugestões pendentes de confirmar (só valor+mês bateram,
+// sem descrição de referência ainda — risco de falso positivo medido como
+// real, ver Decisões no CLAUDE.md), vínculos já confirmados recentes (com
+// "Desfazer" — o controle real do usuário) e ocorrências do mês corrente
+// ainda sem nenhum vínculo ("previsto, ainda não debitado"). Nunca é
+// portão de entrada — a seção fica vazia (sem nada renderizado) quando não
+// há nada relevante, mesmo critério já usado em outras telas.
+function renderFixoConciliacao() {
+  const el = document.getElementById('fixo-conciliacao');
+  if (!el) return;
+
+  const fixos = (state._allLancamentos || []).filter(l => l.tipo === 'Fixo' && l.origem === 'conta' && l.ativo);
+  const realizados = state._lancRealizados || [];
+  const hoje = new Date();
+  const anoAtual = hoje.getFullYear(), mesAtual = hoje.getMonth() + 1;
+  const fixoMap = {};
+  fixos.forEach(f => { fixoMap[f.id] = f; });
+
+  const pendentes = realizados.filter(r => !r.confirmado_em && fixoMap[r.lancamento_id]);
+
+  // Confirmados recentes: mês atual ou anterior, pra não empilhar histórico
+  // inteiro toda vez que a tela abre.
+  const anoMesAnterior = mesAtual === 1 ? [anoAtual - 1, 12] : [anoAtual, mesAtual - 1];
+  const confirmadosRecentes = realizados.filter(r => r.confirmado_em && fixoMap[r.lancamento_id] && (
+    (r.ano === anoAtual && r.mes === mesAtual) ||
+    (r.ano === anoMesAnterior[0] && r.mes === anoMesAnterior[1])
+  ));
+
+  const nowIdx = anoAtual * 12 + mesAtual;
+  const previstos = fixos.filter(f => {
+    const jaTem = realizados.some(r => r.lancamento_id === f.id && r.ano === anoAtual && r.mes === mesAtual);
+    if (jaTem) return false;
+    const startIdx = Number(f.ano_ini || anoAtual) * 12 + Number(f.mes_ini || 1);
+    if (startIdx > nowIdx) return false;
+    if (f.ano_fim && f.mes_fim && Number(f.ano_fim) * 12 + Number(f.mes_fim) < nowIdx) return false;
+    return true;
+  });
+
+  if (!pendentes.length && !confirmadosRecentes.length && !previstos.length) { el.innerHTML = ''; return; }
+
+  const htmlPend = pendentes.map(r => {
+    const f = fixoMap[r.lancamento_id];
+    return `
+      <div class="card" style="padding:12px;margin-bottom:8px">
+        <div class="text-sm">🔎 <b>${f.descricao}</b> (Fixo, ${fmt(f.valor)}) pode já ter sido pago em ${_MES_ABREV[r.mes-1]}/${r.ano} — encontrei uma transação do mesmo valor naquele mês.</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn-primary" style="padding:6px 12px;font-size:12px" onclick="confirmarFixoRealizado('${r.id}')">Confirmar</button>
+          <button class="btn-primary" style="padding:6px 12px;font-size:12px;background:var(--bg-input);color:var(--text)" onclick="desfazerFixoRealizado('${r.id}')">Não é isso</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  const htmlConf = confirmadosRecentes.map(r => {
+    const f = fixoMap[r.lancamento_id];
+    return `
+      <div class="card" style="padding:10px 12px;margin-bottom:8px">
+        <div class="text-sm" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <span>✅ <b>${f.descricao}</b> (Fixo) de ${_MES_ABREV[r.mes-1]}/${r.ano} reconhecido como pago.</span>
+          <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="desfazerFixoRealizado('${r.id}')">Desfazer</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  const htmlPrev = previstos.map(f => `
+    <div class="card" style="padding:10px 12px;margin-bottom:8px">
+      <div class="text-sm">⏳ <b>${f.descricao}</b> (Fixo) — ${fmt(f.valor)} previsto para este mês, ainda não debitado.</div>
+    </div>`).join('');
+
+  el.innerHTML =
+    (pendentes.length ? `<div class="section-label">Fixo a confirmar</div>${htmlPend}` : '') +
+    (previstos.length ? `<div class="section-label">Fixo previsto, ainda não debitado</div>${htmlPrev}` : '') +
+    (confirmadosRecentes.length ? `<div class="section-label">Fixo reconhecido recentemente</div>${htmlConf}` : '');
 }
 
 // Cor de marcação por índice — deriva da paleta de categorias, então conta nova
@@ -5589,6 +5690,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
     // antes desta função existir, não só o que este run acabou de importar.
     transferidas = await autoDetectarTransferencias();
     const faturasReconhecidas = await autoDetectarPagamentosFatura();
+    const fixosReconciliados = await autoDetectarFixoRealizado();
 
     if (logId) {
       await _sb.from('pluggy_sync_log')
@@ -5606,6 +5708,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
     if (casadas > 0) partes.push(`${casadas} já existia(m)`);
     if (transferidas > 0) partes.push(`${transferidas} transferência(s) identificada(s)`);
     if (faturasReconhecidas > 0) partes.push(`${faturasReconhecidas} pagamento(s) de fatura reconhecido(s)`);
+    if (fixosReconciliados > 0) partes.push(`${fixosReconciliados} ocorrência(s) de Fixo reconciliada(s)`);
     if (planejadas > 0) partes.push(`${planejadas} parcelamento(s) planejado(s)`);
     const base = partes.length ? partes.join(', ') : 'nenhuma novidade';
     const avisoSuspeitas = suspeitas > 0 ? ` — ⚠️ ${suspeitas} pendente(s) de revisão (moeda estrangeira)` : '';
@@ -6304,6 +6407,118 @@ async function autoDetectarPagamentosFatura() {
     if (!error) { pendentes.splice(idx, 1); marcadas++; } // remove do pool pra não reusar no mesmo run
   }
   return marcadas;
+}
+
+// Reconcilia Fixo com o realizado da Pluggy — achado real: mesmo aluguel
+// (Fixo, valor constante) pago de 3 contas diferentes em 3 meses seguidos,
+// nunca a `conta_nome` cadastrada. A conta pagadora não é propriedade do
+// Fixo, é circunstância do mês (mesmo padrão já resolvido pra fatura de
+// cartão) — por isso o casamento aqui NUNCA exige `conta_nome` igual ao
+// cadastrado, procura em QUALQUER conta coberta. Ver Decisões no CLAUDE.md.
+//
+// Confiança em dois níveis, por causa do risco assimétrico (falso positivo
+// — despesa real suprimida por engano — é PIOR que duplicata visível,
+// mesma regra do falso-positivo do XP na Fase 1.7):
+// - `pluggy_descricao_ref` já aprendida (não é o primeiro mês desse Fixo):
+//   casa por valor + mês + descrição compatível — confiança alta, suprime
+//   automático (`confirmado_em` preenchido na hora, não espera clique).
+// - Sem referência ainda (primeiro mês): casa só por valor + mês —
+//   confiança baixa, MEDIDA como risco real antes de aceitar esse critério
+//   (colisão de valor+mês encontrada nos dados reais, não hipotética: dois
+//   débitos de R$1.600,00 em contas diferentes no mesmo mês já aconteceram
+//   — mesmo valor do aluguel que motivou isso). Fica como sugestão
+//   PENDENTE (`confirmado_em` nulo) — a ocorrência do Fixo continua
+//   contando normal até o usuário confirmar na tela; confirmar também
+//   aprende a descrição pra casar sozinho dali em diante.
+//
+// Não escaneia só `categoria='nao_classificado'` — mesmo furo já corrigido
+// pra transferência (Categorização — casamento contra transferencias):
+// a transação pode já ter sido categorizada (ex: "moradia") antes desta
+// função rodar, e ainda assim ser a mesma ocorrência do Fixo.
+async function autoDetectarFixoRealizado() {
+  const hoje = new Date();
+  const anoHoje = hoje.getFullYear(), mesHoje = hoje.getMonth() + 1;
+  const nowIdx = anoHoje * 12 + mesHoje;
+
+  const { data: fixos } = await _sb.from('lancamentos')
+    .select('*').eq('tipo', 'Fixo').eq('origem', 'conta').eq('ativo', true);
+  if (!fixos || !fixos.length) return 0;
+
+  const { data: jaLigados } = await _sb.from('lancamentos_realizados').select('*');
+  const ligadosSet = new Set((jaLigados || []).map(r => `${r.lancamento_id}|${r.ano}-${r.mes}`));
+  const transacoesLigadas = new Set((jaLigados || []).map(r => r.transacao_id).filter(Boolean));
+
+  const { data: candidatos } = await _sb.from('extrato')
+    .select('*').eq('origem_dado', 'pluggy').eq('origem', 'conta').eq('tipo', 'despesa');
+  if (!candidatos || !candidatos.length) return 0;
+
+  const usadosNestaRodada = new Set();
+  let criados = 0;
+
+  for (const lan of fixos) {
+    const startIdx = Number(lan.ano_ini || anoHoje) * 12 + Number(lan.mes_ini || 1);
+    const anoFim = lan.ano_fim ? Number(lan.ano_fim) : anoHoje;
+    const mesFim = lan.mes_fim ? Number(lan.mes_fim) : mesHoje;
+    const endIdx = Math.min(anoFim * 12 + mesFim, nowIdx);
+    const refNorm = lan.pluggy_descricao_ref ? _normalizarTexto(lan.pluggy_descricao_ref) : null;
+
+    for (let idx = startIdx; idx <= endIdx; idx++) {
+      const mAtual = ((idx - 1) % 12) + 1;
+      const aAtual = (idx - mAtual) / 12;
+      if (ligadosSet.has(`${lan.id}|${aAtual}-${mAtual}`)) continue; // já tem vínculo (pendente ou confirmado)
+
+      const candidato = candidatos.find(c => {
+        if (usadosNestaRodada.has(c.id) || transacoesLigadas.has(c.id)) return false;
+        if (!_valorIgual(c.valor, lan.valor)) return false;
+        const [cy, cm] = c.data.split('-').map(Number);
+        if (cy !== aAtual || cm !== mAtual) return false;
+        if (refNorm) {
+          const descNorm = _normalizarTexto(c.descricao);
+          if (!descNorm.includes(refNorm) && !refNorm.includes(descNorm)) return false;
+        }
+        return true;
+      });
+      if (!candidato) continue;
+
+      usadosNestaRodada.add(candidato.id);
+      const { error } = await _sb.from('lancamentos_realizados').insert({
+        lancamento_id: lan.id, ano: aAtual, mes: mAtual, transacao_id: candidato.id,
+        confirmado_em: refNorm ? new Date().toISOString() : null,
+      });
+      if (!error) criados++;
+    }
+  }
+  return criados;
+}
+
+// Aprende `pluggy_descricao_ref` a partir da transação já vinculada — a
+// partir do mês seguinte, `autoDetectarFixoRealizado()` casa por descrição
+// também, não só valor+mês, e passa a suprimir automático.
+async function confirmarFixoRealizado(id) {
+  const link = (state._lancRealizados || []).find(r => r.id === id);
+  if (!link) return;
+
+  const { data: tx } = await _sb.from('extrato').select('descricao').eq('id', link.transacao_id).maybeSingle();
+  const { error } = await _sb.from('lancamentos_realizados')
+    .update({ confirmado_em: new Date().toISOString() }).eq('id', id);
+  if (error) { showToast('Erro ao confirmar ❌'); return; }
+
+  if (tx?.descricao) {
+    await _sb.from('lancamentos').update({ pluggy_descricao_ref: tx.descricao }).eq('id', link.lancamento_id);
+  }
+  showToast('Confirmado — meses seguintes casam sozinhos ✅');
+  await loadData();
+}
+
+// Desfazer é o controle real do usuário (confirmar é opcional pro caso
+// automático) — remove o vínculo, a ocorrência do Fixo volta a contar
+// normal no próximo cálculo. Não desaprende `pluggy_descricao_ref` (um
+// vínculo errado num mês não invalida a referência aprendida antes).
+async function desfazerFixoRealizado(id) {
+  const { error } = await _sb.from('lancamentos_realizados').delete().eq('id', id);
+  if (error) { showToast('Erro ao desfazer ❌'); return; }
+  showToast('Desfeito ✅');
+  await loadData();
 }
 
 // ════════════════════════════════════════════════════════════════════════════

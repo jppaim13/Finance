@@ -115,6 +115,27 @@ assertEqual(formatarData(parseData('2028-02-29')), '2028-02-29', 'round-trip: 29
   assertEqual(saldo, 840, 'calcularSaldo: sem data_inicial, comportamento idêntico ao anterior à mudança (regressão)');
 }
 {
+  // Conciliação Fixo × Pluggy (ver Decisões no CLAUDE.md, "conciliar Fixo/
+  // Parcelado com realizado"): ocorrência marcada em `realizados` some do
+  // cálculo fantasma, as demais continuam normais.
+  const hoje = new Date(2026, 7, 15); // agosto/2026
+  const conta = { nome: 'C', saldo_inicial: 0 };
+  const lan = { id: 'fixo-1', conta_nome: 'C', ativo: true, tipo: 'Fixo', valor: 100, mes_ini: 1, ano_ini: 2026 };
+
+  const semRealizado = calcularSaldo(conta, [lan], [], [], hoje);
+  assertEqual(semRealizado, -800, 'calcularSaldo: Fixo sem `realizados` conta todos os 8 meses (jan-ago) — regressão, parâmetro ausente/vazio idêntico a antes');
+
+  const comRealizado = calcularSaldo(conta, [lan], [], [], hoje, [{ lancamento_id: 'fixo-1', ano: 2026, mes: 5 }]);
+  assertEqual(comRealizado, -700, 'calcularSaldo: Fixo com maio marcado como realizado pula só aquele mês (7 de 8)');
+
+  // Lançamento SEM nenhuma entrada em `realizados`, no mesmo array de
+  // lancamentos que um que TEM — não pode ser afetado pelo vizinho; precisa
+  // continuar pelo caminho em bloco (bulk), não escorregar pro loop.
+  const outroLan = { id: 'fixo-2', conta_nome: 'C', ativo: true, tipo: 'Fixo', valor: 50, mes_ini: 1, ano_ini: 2026 };
+  const doisLancamentos = calcularSaldo(conta, [lan, outroLan], [], [], hoje, [{ lancamento_id: 'fixo-1', ano: 2026, mes: 5 }]);
+  assertEqual(doisLancamentos, -1100, 'calcularSaldo: realizado de um Fixo não vaza pro outro sem vínculo (700 + 400)');
+}
+{
   // Parcelado tem a mesma estrutura que Fixo — corte na ocorrência (parcela),
   // não no registro. 10 parcelas a partir de jan/2026; corte em ago/2026;
   // "hoje" = ago/2026 → só a parcela de agosto (a 8ª) passa do corte.

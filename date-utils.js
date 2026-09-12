@@ -91,7 +91,23 @@ function getInstVencIdx(lan, offset, fec, ven) {
 // `hoje` é parâmetro opcional só pra permitir teste determinístico de
 // lançamentos recorrentes sem depender da data real do relógio; em
 // produção o app nunca passa esse argumento (sempre usa o default).
-function calcularSaldo(conta, lancamentos, extrato, transferencias, hoje = new Date()) {
+//
+// `realizados` (array opcional de {lancamento_id, ano, mes}, já filtrado
+// pelo chamador só pros CONFIRMADOS): ocorrências de Fixo que a Pluggy
+// reconheceu como pagas por uma transação real numa conta diferente da
+// cadastrada no lançamento (achado real: aluguel pago ora do Caju, ora de
+// outra conta, nunca a configurada — ver Decisões no CLAUDE.md, "conciliar
+// Fixo/Parcelado com realizado"). Quando o mês de um Fixo está em
+// `realizados`, a ocorrência fantasma daquele mês não é somada aqui — o
+// gasto real já entra pelo loop de `extrato` abaixo (a transação importada
+// normal), então somar as duas dobraria o débito. Só afeta o Fixo que tiver
+// alguma entrada em `realizados`; qualquer outro lançamento continua pela
+// mesma conta em bloco de sempre (`valor * quantidade de meses`), byte-
+// idêntico ao comportamento anterior a este parâmetro existir — coberto em
+// tests.html. Fora de escopo por enquanto: o mesmo pra `parcelado` (a
+// máquina de identidade já existe via `pluggy_compra_chave`, falta ligar
+// aqui — não feito nesta rodada, registrado como próximo passo).
+function calcularSaldo(conta, lancamentos, extrato, transferencias, hoje = new Date(), realizados = []) {
   let saldo = Number(conta.saldo_inicial || 0);
   const nome = conta.nome;
 
@@ -103,6 +119,9 @@ function calcularSaldo(conta, lancamentos, extrato, transferencias, hoje = new D
   const cutoffIdx = dataInicial
     ? (() => { const [ay, am] = String(dataInicial).split('-').map(Number); return ay * 12 + am; })()
     : -Infinity;
+
+  const lancamentosComRealizado = new Set((realizados || []).map(r => r.lancamento_id));
+  const realizadosSet = new Set((realizados || []).map(r => `${r.lancamento_id}|${r.ano}-${r.mes}`));
 
   for (const lan of lancamentos) {
     if (lan.conta_nome !== nome || !lan.ativo) continue;
@@ -126,7 +145,16 @@ function calcularSaldo(conta, lancamentos, extrato, transferencias, hoje = new D
       const mesFim = lan.mes_fim ? Number(lan.mes_fim) : mesHoje;
       const endIdx = Math.min(anoFim * 12 + mesFim, nowIdx);
       const efetivoInicio = Math.max(startIdx, cutoffIdx);
-      saldo -= valor * Math.max(0, endIdx - efetivoInicio + 1);
+      if (!lancamentosComRealizado.has(lan.id)) {
+        saldo -= valor * Math.max(0, endIdx - efetivoInicio + 1);
+      } else {
+        for (let idx = efetivoInicio; idx <= endIdx; idx++) {
+          const mAtual = ((idx - 1) % 12) + 1;
+          const aAtual = (idx - mAtual) / 12;
+          if (realizadosSet.has(`${lan.id}|${aAtual}-${mAtual}`)) continue;
+          saldo -= valor;
+        }
+      }
     } else if (tipo === 'parcelado') {
       const parcelas = Number(lan.parcelas || 1);
       const ultimaParcelaIdx = startIdx + parcelas - 1;
