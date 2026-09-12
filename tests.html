@@ -75,16 +75,20 @@ assertEqual(formatarData(parseData('2028-02-29')), '2028-02-29', 'round-trip: 29
 }
 
 // ─── calcularSaldo: marco zero (conta.data_inicial) ────────────────────────
-// Critério de aceitação: com data_inicial nulo, byte-idêntico ao
-// comportamento de antes dessa mudança existir. `hoje` é injetado pra não
-// depender da data real do relógio (só usado em teste, nunca em produção).
+// `hoje` é injetado pra não depender da data real do relógio (só usado em
+// teste, nunca em produção). NOTA: os valores esperados abaixo mudaram
+// numa sessão posterior à extração original (12/09/2026, "Pendentes do mês
+// — Mobills") — Fixo/Parcelado do MÊS CORRENTE deixaram de contar
+// incondicionalmente (ver calcularSaldo() em date-utils.js e Decisões no
+// CLAUDE.md); os números aqui refletem essa mudança de comportamento
+// intencional, não são mais "byte-idêntico ao anterior".
 {
   const hoje = new Date(2026, 7, 15); // 15/ago/2026 (mês 0-based: 7 = agosto)
   const conta = { nome: 'Conta Corte', saldo_inicial: 1000, data_inicial: '2026-08-01' };
   const lancamentos = [
-    // fixo iniciado em jan/2026, sem fim — só a ocorrência de agosto (o mês
-    // de "hoje") cai depois do corte de 01/08; jan-jul não podem contar de
-    // novo, já estão embutidos no saldo_inicial vindo da Pluggy.
+    // fixo iniciado em jan/2026, sem fim — a única ocorrência dentro do
+    // corte (01/08) é a de agosto, que também é o mês CORRENTE de "hoje" —
+    // sem vínculo em `realizados`, não desconta (pendente, ainda não pago).
     { conta_nome: 'Conta Corte', ativo: true, tipo: 'Fixo', valor: 10, mes_ini: 1, ano_ini: 2026 },
   ];
   const extrato = [
@@ -92,14 +96,14 @@ assertEqual(formatarData(parseData('2028-02-29')), '2028-02-29', 'round-trip: 29
     { conta_nome: 'Conta Corte', data: '2026-08-05', tipo: 'despesa', valor: 30 }, // depois do corte: conta
   ];
   const transferencias = [];
-  // 1000 - 10 (fixo, só a ocorrência de agosto) - 30 (extrato de 05/08) = 960
-  // extrato de 15/07 fica de fora
+  // 1000 - 0 (fixo de agosto é o mês corrente, sem vínculo, pendente) - 30 (extrato de 05/08) = 970
   const saldo = calcularSaldo(conta, lancamentos, extrato, transferencias, hoje);
-  assertEqual(saldo, 960, 'calcularSaldo: marco zero corta extrato antigo e limita fixo à ocorrência pós-corte');
+  assertEqual(saldo, 970, 'calcularSaldo: marco zero corta extrato antigo; fixo do mês corrente fica pendente sem vínculo');
 }
 {
-  // MESMA fixture, sem data_inicial: tem que reproduzir o comportamento de
-  // antes do corte existir — extrato antigo conta, fixo soma jan-ago inteiro.
+  // MESMA fixture, sem data_inicial: extrato antigo conta (marco zero não
+  // se aplica); fixo soma jan-jul (passado, incondicional) + agosto só se
+  // tiver vínculo — sem vínculo aqui, agosto fica de fora.
   const hoje = new Date(2026, 7, 15);
   const conta = { nome: 'Conta Corte', saldo_inicial: 1000 }; // sem data_inicial
   const lancamentos = [
@@ -110,49 +114,64 @@ assertEqual(formatarData(parseData('2028-02-29')), '2028-02-29', 'round-trip: 29
     { conta_nome: 'Conta Corte', data: '2026-08-05', tipo: 'despesa', valor: 30 },
   ];
   const transferencias = [];
-  // 1000 - 50 - 30 (extrato, os dois contam) - 10*8 (fixo jan-ago = 8 meses) = 840
+  // 1000 - 50 - 30 (extrato, os dois contam) - 10*7 (fixo jan-jul, passado) = 850
+  // agosto (mês corrente) não conta sem vínculo
   const saldo = calcularSaldo(conta, lancamentos, extrato, transferencias, hoje);
-  assertEqual(saldo, 840, 'calcularSaldo: sem data_inicial, comportamento idêntico ao anterior à mudança (regressão)');
+  assertEqual(saldo, 850, 'calcularSaldo: sem data_inicial, fixo passado conta (jan-jul), mês corrente fica pendente');
 }
 {
-  // Conciliação Fixo × Pluggy (ver Decisões no CLAUDE.md, "conciliar Fixo/
-  // Parcelado com realizado"): ocorrência marcada em `realizados` some do
-  // cálculo fantasma, as demais continuam normais.
-  const hoje = new Date(2026, 7, 15); // agosto/2026
+  // Conciliação Fixo × Pluggy + "Pendentes do mês" (ver Decisões no
+  // CLAUDE.md): duas regras diferentes por mês, não uma só —
+  // (a) mês CORRENTE só desconta COM vínculo (pendente até então);
+  // (b) meses PASSADOS descontam por padrão, EXCETO com vínculo confirmado
+  //     (a transação real já foi contada via `extrato`, contar a fantasma
+  //     de novo dobraria o débito — motivo original do mecanismo, vale pra
+  //     qualquer mês, não só o corrente).
+  const hoje = new Date(2026, 7, 15); // agosto/2026 — mês corrente do teste
   const conta = { nome: 'C', saldo_inicial: 0 };
   const lan = { id: 'fixo-1', conta_nome: 'C', ativo: true, tipo: 'Fixo', valor: 100, mes_ini: 1, ano_ini: 2026 };
 
   const semRealizado = calcularSaldo(conta, [lan], [], [], hoje);
-  assertEqual(semRealizado, -800, 'calcularSaldo: Fixo sem `realizados` conta todos os 8 meses (jan-ago) — regressão, parâmetro ausente/vazio idêntico a antes');
+  assertEqual(semRealizado, -700, 'calcularSaldo: sem nenhum vínculo, jan-jul (passado) conta, agosto (corrente) fica pendente — 7 de 8 meses');
 
-  const comRealizado = calcularSaldo(conta, [lan], [], [], hoje, [{ lancamento_id: 'fixo-1', ano: 2026, mes: 5 }]);
-  assertEqual(comRealizado, -700, 'calcularSaldo: Fixo com maio marcado como realizado pula só aquele mês (7 de 8)');
+  const comRealizadoPassado = calcularSaldo(conta, [lan], [], [], hoje, [{ lancamento_id: 'fixo-1', ano: 2026, mes: 5 }]);
+  assertEqual(comRealizadoPassado, -600, 'calcularSaldo: maio confirmado (passado) pula esse mês; agosto (corrente) continua pendente sem vínculo próprio — 6 de 8');
+
+  const comRealizadoMesCorrente = calcularSaldo(conta, [lan], [], [], hoje, [{ lancamento_id: 'fixo-1', ano: 2026, mes: 8 }]);
+  assertEqual(comRealizadoMesCorrente, -800, 'calcularSaldo: agosto (o próprio mês corrente) confirmado — passa a contar, os 8 meses inteiros');
 
   // Lançamento SEM nenhuma entrada em `realizados`, no mesmo array de
-  // lancamentos que um que TEM — não pode ser afetado pelo vizinho; precisa
-  // continuar pelo caminho em bloco (bulk), não escorregar pro loop.
+  // lancamentos que um que TEM — não pode ser afetado pelo vizinho.
   const outroLan = { id: 'fixo-2', conta_nome: 'C', ativo: true, tipo: 'Fixo', valor: 50, mes_ini: 1, ano_ini: 2026 };
   const doisLancamentos = calcularSaldo(conta, [lan, outroLan], [], [], hoje, [{ lancamento_id: 'fixo-1', ano: 2026, mes: 5 }]);
-  assertEqual(doisLancamentos, -1100, 'calcularSaldo: realizado de um Fixo não vaza pro outro sem vínculo (700 + 400)');
+  assertEqual(doisLancamentos, -950, 'calcularSaldo: vínculo de um Fixo não vaza pro outro (600 do fixo-1 + 350 do fixo-2, que não tem vínculo nenhum)');
 }
 {
-  // Parcelado tem a mesma estrutura que Fixo — corte na ocorrência (parcela),
-  // não no registro. 10 parcelas a partir de jan/2026; corte em ago/2026;
-  // "hoje" = ago/2026 → só a parcela de agosto (a 8ª) passa do corte.
+  // Parcelado tem a mesma estrutura que Fixo — mesma regra dupla (mês
+  // corrente exige vínculo; passado desconta por padrão, exceto
+  // confirmado). 10 parcelas a partir de jan/2026; "hoje" = ago/2026 (8ª
+  // parcela, dentro das 10) — a 8ª parcela cai no mês corrente.
   const hoje = new Date(2026, 7, 15);
   const comCorte = calcularSaldo(
     { nome: 'C', saldo_inicial: 0, data_inicial: '2026-08-01' },
-    [{ conta_nome: 'C', ativo: true, tipo: 'Parcelado', valor: 5, parcelas: 10, mes_ini: 1, ano_ini: 2026 }],
+    [{ id: 'parc-1', conta_nome: 'C', ativo: true, tipo: 'Parcelado', valor: 5, parcelas: 10, mes_ini: 1, ano_ini: 2026 }],
     [], [], hoje
   );
-  assertEqual(comCorte, -5, 'calcularSaldo: parcelado com corte conta só a parcela pós-corte (agosto)');
+  assertEqual(comCorte, 0, 'calcularSaldo: parcelado com corte — única parcela pós-corte é a de agosto (corrente), pendente sem vínculo');
 
   const semCorte = calcularSaldo(
     { nome: 'C', saldo_inicial: 0 },
-    [{ conta_nome: 'C', ativo: true, tipo: 'Parcelado', valor: 5, parcelas: 10, mes_ini: 1, ano_ini: 2026 }],
+    [{ id: 'parc-1', conta_nome: 'C', ativo: true, tipo: 'Parcelado', valor: 5, parcelas: 10, mes_ini: 1, ano_ini: 2026 }],
     [], [], hoje
   );
-  assertEqual(semCorte, -40, 'calcularSaldo: parcelado sem corte conta jan-ago (8 de 10 parcelas) — regressão');
+  assertEqual(semCorte, -35, 'calcularSaldo: parcelado sem corte — jan-jul (7 parcelas, passado) conta, a 8ª (agosto, corrente) fica pendente');
+
+  const comVinculoMesCorrente = calcularSaldo(
+    { nome: 'C', saldo_inicial: 0 },
+    [{ id: 'parc-1', conta_nome: 'C', ativo: true, tipo: 'Parcelado', valor: 5, parcelas: 10, mes_ini: 1, ano_ini: 2026 }],
+    [], [], hoje, [{ lancamento_id: 'parc-1', ano: 2026, mes: 8 }]
+  );
+  assertEqual(comVinculoMesCorrente, -40, 'calcularSaldo: parcelado com a parcela de agosto confirmada — volta a contar as 8 parcelas inteiras');
 }
 {
   // receita única: ocorre uma vez só, no mês de mes_ini/ano_ini — antes do

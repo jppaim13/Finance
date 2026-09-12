@@ -1,0 +1,22 @@
+-- ════════════════════════════════════════════════════════════════════════════
+-- 013_pendentes_mobills.sql
+-- Inversão de comportamento pedida pelo usuário (referência explícita:
+-- despesas pendentes do Mobills). Despesa pendente conta em Saídas (é gasto
+-- do mês), mas NÃO desconta do saldo/patrimônio enquanto não for marcada
+-- como paga — o dinheiro ainda está na conta. Antes, `calcularSaldo()`
+-- assumia o mês corrente inteiro de Fixo/Parcelado como já debitado,
+-- incondicionalmente; agora só desconta com vínculo em
+-- `lancamentos_realizados` (ver date-utils.js e Decisões no CLAUDE.md).
+--
+-- lancamentos_realizados.origem ('automatico' | 'manual'): de onde veio o
+-- vínculo — casamento automático com a Pluggy (`autoDetectarFixoRealizado`)
+-- ou marcação direta do usuário na tela de Pendentes (tipicamente quando o
+-- pagamento saiu de uma conta não coberta, ex: Caju, que a Pluggy nunca
+-- vê). São confianças diferentes na origem do dado — registrado explicitamente
+-- em vez de inferido depois, porque uma sessão futura vai precisar saber
+-- qual foi qual.
+--
+-- Aplicar manualmente no SQL Editor do Supabase.
+-- ════════════════════════════════════════════════════════════════════════════
+
+alter table lancamentos_realizados add column if not exists origem text not null default 'automatico';

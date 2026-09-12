@@ -900,11 +900,9 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 .pat-legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
 
 .metric-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-top: 12px; }
-/* Entradas/Saídas: 2 colunas FIXAS, nunca auto-fit — não pode empilhar.
-   Resultado (.metric-strip-1) fica sozinho na linha de baixo, largura
-   total, porque é o que mais precisa de espaço (valor + "acumulado ..."). */
+/* Entradas/Saídas e Resultado/Pendentes: 2 colunas FIXAS, nunca auto-fit —
+   não pode empilhar no mobile (corte de valor já corrigido antes). */
 .metric-strip-2 { grid-template-columns: repeat(2, 1fr); }
-.metric-strip-1 { grid-template-columns: 1fr; }
 .metric { background: var(--bg-card); padding: 14px 16px; min-width: 0; }
 .metric-label { font-size: 9.5px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--text-3); }
 /* overflow-wrap:anywhere — causa raiz do corte visto no celular: `.metric-
@@ -1266,20 +1264,23 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
           <div class="metric-value" id="kpi-despesa">R$ —</div>
         </div>
       </div>
-      <div class="metric-strip metric-strip-1">
+      <!-- Resultado + Pendentes dividem a linha (2 colunas fixas, nunca
+           empilha — mesma correção de truncamento já feita antes; valores
+           protegidos por overflow-wrap:anywhere em .metric-value). Saldo
+           agora É o realizado (ver inversão em calcularSaldo(), Decisões no
+           CLAUDE.md) — não existe mais "Projetado", esse card foi retirado. -->
+      <div class="metric-strip metric-strip-2">
         <div class="metric">
           <div class="metric-label">Resultado</div>
           <div class="metric-value" id="kpi-saldo">R$ —</div>
           <div class="metric-sub" id="kpi-saldo-acum">—</div>
         </div>
+        <div class="metric clickable" onclick="navigate('pendentes')">
+          <div class="metric-label">Pendentes do mês</div>
+          <div class="metric-value" id="kpi-pendentes">R$ —</div>
+          <div class="metric-sub" id="kpi-pendentes-sub">—</div>
+        </div>
       </div>
-
-      <!-- Despesas pendentes do mês — "Projetado fim do mês" É o saldo de
-           contas já calculado (calcularSaldo, inalterado), sem cálculo
-           paralelo. "Saldo hoje" e "Pendente" são derivados dele por soma
-           simples (renderSaldoPendente()) — um saldo só, pendente como
-           lente sobre ele. Some inteira quando não há nada pendente. -->
-      <div id="saldo-pendente"></div>
 
       <!-- O que exige ação -->
       <div class="metric-strip">
@@ -1470,6 +1471,25 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
         <div id="categorizacao-list">
           <div class="empty-state"><p>Carregando...</p></div>
         </div>
+      </div>
+    </div>
+
+    <!-- ── PENDENTES DO MÊS ─────────────────────────────────────────── -->
+    <div class="page" id="page-pendentes" data-screen-label="Pendentes">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Pendentes do mês</div>
+          <div class="page-subtitle">Fixo e Parcelado do mês corrente ainda sem confirmação — não descontam do saldo até serem marcados como pagos</div>
+        </div>
+      </div>
+
+      <div class="hero-card" style="margin-bottom:12px">
+        <div class="hero-label">Total pendente</div>
+        <span class="hero-value" id="pend-total">—</span>
+      </div>
+
+      <div id="pendentes-list">
+        <div class="empty-state"><p>Carregando...</p></div>
       </div>
     </div>
 
@@ -2152,7 +2172,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-12f';
+const APP_VERSION = '2026-09-12g';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -2421,6 +2441,7 @@ const PAGES = {
   transferencias: renderTransferencias,
   sincronizacao:  renderSincronizacao,
   categorizacao:  renderCategorizacao,
+  pendentes:      renderPendentes,
 };
 
 function paginaAtiva() {
@@ -2701,9 +2722,19 @@ function calcularResumo(allLancamentos, allExtrato, cartoes, lancamentosRealizad
         } else {
           // Fixo/Variável: pula a ocorrência fantasma deste mês se já foi
           // reconhecida como realizada por uma transação real (ver
-          // calcularSaldo() e Decisões no CLAUDE.md) — sem isso, o gasto
-          // real (já em `extrato`, contado no loop de cima) e a ocorrência
-          // fantasma dobrariam o mesmo aluguel/despesa fixa no mês.
+          // Decisões no CLAUDE.md) — sem isso, o gasto real (já em
+          // `extrato`, contado no loop de cima) e a ocorrência fantasma
+          // dobrariam o mesmo aluguel/despesa fixa no mês.
+          //
+          // DIVERGE DE PROPÓSITO de calcularSaldo() (date-utils.js) desde
+          // "Pendentes do mês (Mobills)", e isso é intencional, não
+          // esquecimento — não "alinhar" as duas numa sessão futura.
+          // calcularSaldo() exige vínculo CONFIRMADO pro mês CORRENTE
+          // especificamente (senão a ocorrência não desconta do saldo —
+          // "ainda está na conta"). Aqui não há essa distinção: despesa é
+          // "gasto do mês" (Saídas), conta tanto pendente quanto realizada,
+          // em QUALQUER mês — só evita contar a MESMA despesa duas vezes
+          // (fantasma + extrato real), nunca deixa de contar de propósito.
           if (!lanNeutro && !realizadosSet.has(`${lan.id}|${anoAtual}-${mesAtual}`)) despesa += valor;
         }
       }
@@ -2938,8 +2969,7 @@ function renderDashboard() {
 
   renderAccounts();
   renderCaixinhas();
-  renderSaldoPendente();
-  renderFixoConciliacao();
+  atualizarKpiPendentes();
 }
 
 // Ocorrências de Fixo/Parcelado (origem='conta') ativas num ano-mês —
@@ -2963,163 +2993,139 @@ function _ocorrenciasFixoParceladoMes(lancamentosConta, ano, mes) {
   });
 }
 
-// "Projetado fim do mês" É `contasSaldo` — o mesmo saldo já calculado por
-// calcularSaldo() em loadData(), sem recálculo paralelo (calcularSaldo já
-// soma o mês corrente inteiro de Fixo/Parcelado, confirmado ou não — só
-// ocorrência CONFIRMADA em lancamentos_realizados é excluída dali). "Saldo
-// hoje" e "Pendente do mês" são derivados por soma simples: Saldo hoje =
-// Projetado + Pendente (o que ainda não realizou, somado de volta).
-//
-// Salvaguarda: ocorrência cujo dia já passou e que não tem NENHUM vínculo
-// (nem pendente) vira "vencido, não identificado", destacado à parte — as
-// 3 formas de quebrar (Caju invisível pra Pluggy, parcela final que devia
-// ter parado, assinatura cancelada e lançamento esquecido) deixariam o
-// projetado pessimista sem sinal nenhum se só entrassem no bolo do
-// pendente comum. Ver Decisões no CLAUDE.md.
-function renderSaldoPendente() {
-  const el = document.getElementById('saldo-pendente');
-  if (!el) return;
-
+// Classifica as ocorrências de Fixo/Parcelado (conta) do mês corrente em
+// três baldes — reusado pelo card do Dashboard (só os totais) e pela tela
+// de Pendentes (a lista completa, com ações). Um vínculo CONFIRMADO
+// (`confirmado_em` preenchido) já foi excluído de calcularSaldo() — não é
+// mais pendente. Sem vínculo confirmado, é pendente; dentro desse grupo,
+// dia já passado + nenhum vínculo (nem sugestão pendente) vira "vencido,
+// não identificado" — destaque à parte, nunca somado calado (ver Decisões
+// no CLAUDE.md, assimetria de risco: erro invisível é o caro).
+function _classificarPendentesMes() {
   const hoje = new Date();
   const anoAtual = hoje.getFullYear(), mesAtual = hoje.getMonth() + 1, diaHoje = hoje.getDate();
+  const ultimoDiaMes = new Date(anoAtual, mesAtual, 0).getDate();
 
   const lancamentosConta = (state._allLancamentos || []).filter(l => l.origem === 'conta');
   const ocorrencias = _ocorrenciasFixoParceladoMes(lancamentosConta, anoAtual, mesAtual);
   const realizados = state._lancRealizados || [];
 
-  let pendenteTotal = 0;
-  const vencidosNaoIdentificados = [];
-
+  const aVencer = [], vencidos = [], pagos = [];
   ocorrencias.forEach(l => {
     const vinculo = realizados.find(r => r.lancamento_id === l.id && r.ano === anoAtual && r.mes === mesAtual);
-    if (vinculo?.confirmado_em) return; // já realizado — não é pendente, calcularSaldo já excluiu
+    if (vinculo?.confirmado_em) { pagos.push({ lan: l, vinculo }); return; }
 
-    pendenteTotal += Number(l.valor || 0);
-
-    const ultimoDia = new Date(anoAtual, mesAtual, 0).getDate();
-    const diaOcorrencia = Math.min(Number(l.dia_ini) || 1, ultimoDia);
-    if (!vinculo && diaOcorrencia < diaHoje) {
-      vencidosNaoIdentificados.push({ lan: l, dia: diaOcorrencia });
+    const diaOcorrencia = Math.min(Number(l.dia_ini) || 1, ultimoDiaMes);
+    if (vinculo) { // sugestão automática, ainda não confirmada
+      aVencer.push({ lan: l, vinculo, dia: diaOcorrencia });
+    } else if (diaOcorrencia < diaHoje) {
+      vencidos.push({ lan: l, dia: diaOcorrencia });
+    } else {
+      aVencer.push({ lan: l, vinculo: null, dia: diaOcorrencia });
     }
   });
 
-  if (pendenteTotal <= 0 && !vencidosNaoIdentificados.length) { el.innerHTML = ''; return; }
-
-  const projetado = (state.contas || []).reduce((s, c) => s + (c.saldo || 0), 0);
-  const saldoHoje = projetado + pendenteTotal;
-
-  const htmlVencidos = vencidosNaoIdentificados.length ? `
-    <div class="card" style="padding:12px;margin-top:8px;border:1px solid var(--red)">
-      <div class="text-sm" style="font-weight:600;margin-bottom:6px">⚠️ Vencido, não identificado</div>
-      ${vencidosNaoIdentificados.map(v => `
-        <div class="text-sm" style="margin-top:4px">${v.lan.descricao} — ${fmt(v.lan.valor)}, esperado dia ${v.dia}. Foi pago fora do radar (ex: conta não coberta) ou o lançamento está obsoleto?</div>
-      `).join('')}
-    </div>` : '';
-
-  el.innerHTML = `
-    <div class="card" style="padding:14px 16px;margin-top:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0">
-        <span class="text-2 text-sm">Saldo hoje</span>
-        <span class="font-mono">${fmt(saldoHoje)}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0">
-        <span class="text-2 text-sm">Pendente do mês</span>
-        <span class="font-mono color-red">−${fmt(pendenteTotal)}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0 0;margin-top:4px;border-top:1px solid var(--border);font-weight:600">
-        <span class="text-sm">Projetado fim do mês</span>
-        <span class="font-mono">${fmt(projetado)}</span>
-      </div>
-    </div>
-    ${htmlVencidos}
-  `;
+  return { anoAtual, mesAtual, aVencer, vencidos, pagos };
 }
 
-// Fixo × Pluggy: sugestões pendentes de confirmar (só valor+mês bateram,
-// sem descrição de referência ainda — risco de falso positivo medido como
-// real, ver Decisões no CLAUDE.md), vínculos já confirmados recentes (com
-// "Desfazer" — o controle real do usuário) e ocorrências do mês corrente
-// ainda sem nenhum vínculo ("previsto, ainda não debitado"). Nunca é
-// portão de entrada — a seção fica vazia (sem nada renderizado) quando não
-// há nada relevante, mesmo critério já usado em outras telas.
-function renderFixoConciliacao() {
-  const el = document.getElementById('fixo-conciliacao');
-  if (!el) return;
-
-  const fixos = (state._allLancamentos || []).filter(l => l.tipo === 'Fixo' && l.origem === 'conta' && l.ativo);
-  const realizados = state._lancRealizados || [];
-  const hoje = new Date();
-  const anoAtual = hoje.getFullYear(), mesAtual = hoje.getMonth() + 1;
-  const fixoMap = {};
-  fixos.forEach(f => { fixoMap[f.id] = f; });
-
-  const pendentes = realizados.filter(r => !r.confirmado_em && fixoMap[r.lancamento_id]);
-
-  // Confirmados recentes: mês atual ou anterior, pra não empilhar histórico
-  // inteiro toda vez que a tela abre.
-  const anoMesAnterior = mesAtual === 1 ? [anoAtual - 1, 12] : [anoAtual, mesAtual - 1];
-  const confirmadosRecentes = realizados.filter(r => r.confirmado_em && fixoMap[r.lancamento_id] && (
-    (r.ano === anoAtual && r.mes === mesAtual) ||
-    (r.ano === anoMesAnterior[0] && r.mes === anoMesAnterior[1])
-  ));
-
-  // "Previsto" aqui é só o que AINDA NÃO VENCEU (dia do mês ainda não
-  // chegou) — o que já venceu sem vínculo nenhum tem destaque PRÓPRIO,
-  // mais forte ("⚠️ Vencido, não identificado"), na seção de saldo
-  // pendente do Dashboard (renderSaldoPendente()) — não duplicar o mesmo
-  // fato nas duas seções com framings diferentes.
-  const nowIdx = anoAtual * 12 + mesAtual;
-  const ultimoDiaMes = new Date(anoAtual, mesAtual, 0).getDate();
-  const diaHoje = hoje.getDate();
-  const previstos = fixos.filter(f => {
-    const jaTem = realizados.some(r => r.lancamento_id === f.id && r.ano === anoAtual && r.mes === mesAtual);
-    if (jaTem) return false;
-    const startIdx = Number(f.ano_ini || anoAtual) * 12 + Number(f.mes_ini || 1);
-    if (startIdx > nowIdx) return false;
-    if (f.ano_fim && f.mes_fim && Number(f.ano_fim) * 12 + Number(f.mes_fim) < nowIdx) return false;
-    const diaOcorrencia = Math.min(Number(f.dia_ini) || 1, ultimoDiaMes);
-    return diaOcorrencia >= diaHoje;
-  });
-
-  if (!pendentes.length && !confirmadosRecentes.length && !previstos.length) { el.innerHTML = ''; return; }
-
-  const htmlPend = pendentes.map(r => {
-    const f = fixoMap[r.lancamento_id];
-    return `
-      <div class="card" style="padding:12px;margin-bottom:8px">
-        <div class="text-sm">🔎 <b>${f.descricao}</b> (Fixo, ${fmt(f.valor)}) pode já ter sido pago em ${_MES_ABREV[r.mes-1]}/${r.ano} — encontrei uma transação do mesmo valor naquele mês.</div>
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <button class="btn-primary" style="padding:6px 12px;font-size:12px" onclick="confirmarFixoRealizado('${r.id}')">Confirmar</button>
-          <button class="btn-primary" style="padding:6px 12px;font-size:12px;background:var(--bg-input);color:var(--text)" onclick="desfazerFixoRealizado('${r.id}')">Não é isso</button>
-        </div>
-      </div>`;
-  }).join('');
-
-  const htmlConf = confirmadosRecentes.map(r => {
-    const f = fixoMap[r.lancamento_id];
-    return `
-      <div class="card" style="padding:10px 12px;margin-bottom:8px">
-        <div class="text-sm" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <span>✅ <b>${f.descricao}</b> (Fixo) de ${_MES_ABREV[r.mes-1]}/${r.ano} reconhecido como pago.</span>
-          <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="desfazerFixoRealizado('${r.id}')">Desfazer</button>
-        </div>
-      </div>`;
-  }).join('');
-
-  const htmlPrev = previstos.map(f => `
-    <div class="card" style="padding:10px 12px;margin-bottom:8px">
-      <div class="text-sm">⏳ <b>${f.descricao}</b> (Fixo) — ${fmt(f.valor)} previsto para este mês, ainda não debitado.</div>
-    </div>`).join('');
-
-  el.innerHTML =
-    (pendentes.length ? `<div class="section-label">Fixo a confirmar</div>${htmlPend}` : '') +
-    (previstos.length ? `<div class="section-label">Fixo previsto, ainda não debitado</div>${htmlPrev}` : '') +
-    (confirmadosRecentes.length ? `<div class="section-label">Fixo reconhecido recentemente</div>${htmlConf}` : '');
+// Card "Pendentes do mês" no Dashboard — só o total e a contagem, a lista
+// completa com ações fica na tela própria (navigate('pendentes')).
+function atualizarKpiPendentes() {
+  const elVal = document.getElementById('kpi-pendentes');
+  const elSub = document.getElementById('kpi-pendentes-sub');
+  if (!elVal) return;
+  const { aVencer, vencidos } = _classificarPendentesMes();
+  const total = [...aVencer, ...vencidos].reduce((s, x) => s + Number(x.lan.valor || 0), 0);
+  elVal.textContent = fmt(total);
+  elVal.className = 'metric-value';
+  if (elSub) {
+    const n = aVencer.length + vencidos.length;
+    elSub.textContent = n ? (n + (n > 1 ? ' pendências' : ' pendência') + (vencidos.length ? ` · ${vencidos.length} vencida(s)` : '')) : 'nenhuma';
+  }
 }
 
 // Cor de marcação por índice — deriva da paleta de categorias, então conta nova
 // entra com cor estável sem ninguém escolher nada.
 function marcaConta(i) { return CAT_COLORS[i % CAT_COLORS.length]; }
+
+// Tela dedicada de Pendentes — consolida o que antes ficava espalhado
+// inline no Dashboard. Lista as ocorrências de Fixo/Parcelado do mês
+// corrente sem vínculo confirmado, com ação de marcar como paga (e
+// desmarcar) — "marcado" aqui pode ser confirmação de uma sugestão
+// automática (já achou candidata na Pluggy) ou marcação manual pura
+// (usuário afirma que pagou, tipicamente conta não coberta como o Caju) —
+// ver `origem` em `lancamentos_realizados`, Decisões no CLAUDE.md.
+function renderPendentes() {
+  const el = document.getElementById('pendentes-list');
+  const totalEl = document.getElementById('pend-total');
+  if (!el) return;
+
+  const { aVencer, vencidos, pagos } = _classificarPendentesMes();
+  const total = [...aVencer, ...vencidos].reduce((s, x) => s + Number(x.lan.valor || 0), 0);
+  if (totalEl) totalEl.textContent = fmt(total);
+
+  if (!aVencer.length && !vencidos.length && !pagos.length) {
+    el.innerHTML = '<div class="empty-state"><div class="emoji">✅</div><p>Nada de Fixo/Parcelado pendente este mês</p></div>';
+    return;
+  }
+
+  const linhaOcorrencia = (item, extraBtns) => `
+    <div class="card" style="padding:12px;margin-bottom:8px">
+      <div class="text-sm">${item.lan.descricao} — ${fmt(item.lan.valor)}${item.dia ? `, esperado dia ${item.dia}` : ''}</div>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${extraBtns}</div>
+    </div>`;
+
+  const htmlAVencer = aVencer.map(item => {
+    if (item.vinculo) {
+      // sugestão automática — mesmo par confirmar/desfazer de sempre
+      return linhaOcorrencia(item, `
+        <button class="btn-primary" style="padding:6px 12px;font-size:12px" onclick="confirmarFixoRealizado('${item.vinculo.id}')">Confirmar pagamento encontrado</button>
+        <button class="btn-primary" style="padding:6px 12px;font-size:12px;background:var(--bg-input);color:var(--text)" onclick="desfazerFixoRealizado('${item.vinculo.id}')">Não é isso</button>
+      `);
+    }
+    return linhaOcorrencia(item, `
+      <button class="btn-primary" style="padding:6px 12px;font-size:12px" onclick="marcarFixoComoPago('${item.lan.id}')">Marcar como paga</button>
+    `);
+  }).join('');
+
+  const htmlVencidos = vencidos.map(item => `
+    <div class="card" style="padding:12px;margin-bottom:8px;border:1px solid var(--red)">
+      <div class="text-sm">⚠️ <b>${item.lan.descricao}</b> — ${fmt(item.lan.valor)}, esperado dia ${item.dia}. Foi pago fora do radar (ex: conta não coberta) ou o lançamento está obsoleto?</div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn-primary" style="padding:6px 12px;font-size:12px" onclick="marcarFixoComoPago('${item.lan.id}')">Marcar como paga</button>
+      </div>
+    </div>`).join('');
+
+  const htmlPagos = pagos.map(item => `
+    <div class="card" style="padding:10px 12px;margin-bottom:8px">
+      <div class="text-sm" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span>✅ ${item.lan.descricao} — ${fmt(item.lan.valor)}${item.vinculo.origem === 'manual' ? ' (marcado manualmente)' : ''}</span>
+        <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="desfazerFixoRealizado('${item.vinculo.id}')">Desfazer</button>
+      </div>
+    </div>`).join('');
+
+  el.innerHTML =
+    (vencidos.length ? `<div class="section-label">⚠️ Vencido, não identificado</div>${htmlVencidos}` : '') +
+    (aVencer.length ? `<div class="section-label">A vencer / a confirmar</div>${htmlAVencer}` : '') +
+    (pagos.length ? `<div class="section-label">Pago este mês</div>${htmlPagos}` : '');
+}
+
+// Marcação MANUAL de pagamento — o usuário está afirmando que pagou (sem
+// candidata da Pluggy pra vincular, `transacao_id` fica nulo), tipicamente
+// quando o pagamento saiu de uma conta não coberta (ex: Caju). Confiança
+// diferente de um casamento automático — por isso `origem: 'manual'`
+// explícito, não inferido depois. Ver Decisões no CLAUDE.md.
+async function marcarFixoComoPago(lancamentoId) {
+  const hoje = new Date();
+  const { error } = await _sb.from('lancamentos_realizados').insert({
+    lancamento_id: lancamentoId,
+    ano: hoje.getFullYear(), mes: hoje.getMonth() + 1,
+    origem: 'manual', confirmado_em: hoje.toISOString(),
+  });
+  if (error) { console.error('marcarFixoComoPago', error); showToast('Erro ao marcar como pago ❌'); return; }
+  showToast('Marcado como pago ✅');
+  await loadData();
+}
 
 function renderAccounts() {
   const el = document.getElementById('accounts-list');
@@ -6629,7 +6635,7 @@ async function autoDetectarFixoRealizado() {
       usadosNestaRodada.add(candidato.id);
       const { error } = await _sb.from('lancamentos_realizados').insert({
         lancamento_id: lan.id, ano: aAtual, mes: mAtual, transacao_id: candidato.id,
-        confirmado_em: refNorm ? new Date().toISOString() : null,
+        origem: 'automatico', confirmado_em: refNorm ? new Date().toISOString() : null,
       });
       if (!error) criados++;
     }

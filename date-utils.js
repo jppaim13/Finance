@@ -93,20 +93,29 @@ function getInstVencIdx(lan, offset, fec, ven) {
 // produção o app nunca passa esse argumento (sempre usa o default).
 //
 // `realizados` (array opcional de {lancamento_id, ano, mes}, já filtrado
-// pelo chamador só pros CONFIRMADOS): ocorrências de Fixo que a Pluggy
-// reconheceu como pagas por uma transação real numa conta diferente da
-// cadastrada no lançamento (achado real: aluguel pago ora do Caju, ora de
-// outra conta, nunca a configurada — ver Decisões no CLAUDE.md, "conciliar
-// Fixo/Parcelado com realizado"). Quando o mês de um Fixo está em
-// `realizados`, a ocorrência fantasma daquele mês não é somada aqui — o
-// gasto real já entra pelo loop de `extrato` abaixo (a transação importada
-// normal), então somar as duas dobraria o débito. Só afeta o Fixo que tiver
-// alguma entrada em `realizados`; qualquer outro lançamento continua pela
-// mesma conta em bloco de sempre (`valor * quantidade de meses`), byte-
-// idêntico ao comportamento anterior a este parâmetro existir — coberto em
-// tests.html. Fora de escopo por enquanto: o mesmo pra `parcelado` (a
-// máquina de identidade já existe via `pluggy_compra_chave`, falta ligar
-// aqui — não feito nesta rodada, registrado como próximo passo).
+// pelo chamador só pros CONFIRMADOS): ocorrências de Fixo/Parcelado que a
+// Pluggy reconheceu como pagas (ou que o usuário marcou manualmente como
+// pagas) — ver Decisões no CLAUDE.md, "conciliar Fixo/Parcelado com
+// realizado" e "Pendentes do mês (Mobills)".
+//
+// REGRA INVERTIDA a partir da segunda mudança (pedido explícito, referência
+// Mobills): despesa PENDENTE do mês corrente conta em Saídas
+// (`calcularResumo()`, que NÃO usa este parâmetro dessa forma — despesa é
+// "gasto do mês", não "saída de caixa", as duas funções divergem de
+// propósito por decisão, não por descuido), mas NÃO desconta do
+// saldo/patrimônio aqui enquanto não tiver vínculo em `realizados` — o
+// dinheiro ainda está na conta até o usuário confirmar ou marcar como paga.
+//
+// O corte é só no MÊS CORRENTE — meses PASSADOS continuam pelo cálculo em
+// bloco de sempre (`valor * quantidade de meses`), assumindo que já
+// aconteceram de verdade. Sem esse corte, todo o histórico "voltaria a
+// dever" retroativamente só porque o mecanismo de vínculo é novo e nunca
+// foi preenchido pra meses antigos. Com `realizados` vazio (nenhum vínculo
+// em lugar nenhum), o mês corrente também nunca desconta — byte-idêntico
+// ao comportamento de antes deste parâmetro existir só quando NADA está
+// ativo no mês corrente; quando há Fixo/Parcelado ativo no mês corrente e
+// nenhum vínculo, o saldo fica MAIOR que antes por construção (a mudança
+// pedida), não mais um caso de regressão a testar como "idêntico".
 function calcularSaldo(conta, lancamentos, extrato, transferencias, hoje = new Date(), realizados = []) {
   let saldo = Number(conta.saldo_inicial || 0);
   const nome = conta.nome;
@@ -120,7 +129,6 @@ function calcularSaldo(conta, lancamentos, extrato, transferencias, hoje = new D
     ? (() => { const [ay, am] = String(dataInicial).split('-').map(Number); return ay * 12 + am; })()
     : -Infinity;
 
-  const lancamentosComRealizado = new Set((realizados || []).map(r => r.lancamento_id));
   const realizadosSet = new Set((realizados || []).map(r => `${r.lancamento_id}|${r.ano}-${r.mes}`));
 
   for (const lan of lancamentos) {
@@ -145,13 +153,31 @@ function calcularSaldo(conta, lancamentos, extrato, transferencias, hoje = new D
       const mesFim = lan.mes_fim ? Number(lan.mes_fim) : mesHoje;
       const endIdx = Math.min(anoFim * 12 + mesFim, nowIdx);
       const efetivoInicio = Math.max(startIdx, cutoffIdx);
-      if (!lancamentosComRealizado.has(lan.id)) {
-        saldo -= valor * Math.max(0, endIdx - efetivoInicio + 1);
-      } else {
-        for (let idx = efetivoInicio; idx <= endIdx; idx++) {
-          const mAtual = ((idx - 1) % 12) + 1;
-          const aAtual = (idx - mAtual) / 12;
-          if (realizadosSet.has(`${lan.id}|${aAtual}-${mAtual}`)) continue;
+      // Duas regras diferentes por mês, nunca a mesma pra todos — por isso
+      // é loop mês a mês, não mais fórmula em bloco:
+      // (1) MÊS CORRENTE: regra invertida (estilo Mobills, pedido
+      //     explícito) — despesa pendente NÃO desconta do saldo até ter
+      //     vínculo em `realizados` (automático, casou com a Pluggy; ou
+      //     manual, usuário marcou como paga). Sem vínculo, o dinheiro
+      //     "ainda está na conta". Ver calcularResumo() (não muda — Saídas
+      //     é gasto do mês, não saída de caixa; as duas funções divergem
+      //     de propósito por decisão, ver Decisões no CLAUDE.md).
+      // (2) MESES PASSADOS: continuam contando por padrão (assume que já
+      //     aconteceu de verdade — sem isso o histórico inteiro "voltaria
+      //     a dever" retroativamente), EXCETO quando têm vínculo
+      //     CONFIRMADO — nesse caso a transação real já foi importada
+      //     numa conta diferente da cadastrada e contada no loop de
+      //     `extrato` abaixo; contar a fantasma de novo dobraria o débito
+      //     (motivo original do mecanismo, "conciliar Fixo/Parcelado com
+      //     realizado" — continua valendo pra qualquer mês, não só o
+      //     corrente).
+      for (let idx = efetivoInicio; idx <= endIdx; idx++) {
+        const mAtual = ((idx - 1) % 12) + 1;
+        const aAtual = (idx - mAtual) / 12;
+        const temVinculo = realizadosSet.has(`${lan.id}|${aAtual}-${mAtual}`);
+        if (idx === nowIdx) {
+          if (temVinculo) saldo -= valor;
+        } else if (!temVinculo) {
           saldo -= valor;
         }
       }
@@ -160,7 +186,18 @@ function calcularSaldo(conta, lancamentos, extrato, transferencias, hoje = new D
       const ultimaParcelaIdx = startIdx + parcelas - 1;
       const efetivoInicio = Math.max(startIdx, cutoffIdx);
       const efetivoFim    = Math.min(ultimaParcelaIdx, nowIdx);
-      saldo -= valor * Math.max(0, efetivoFim - efetivoInicio + 1);
+      // Mesma regra dupla do Fixo acima (mês corrente exige vínculo; meses
+      // passados descontam por padrão, exceto vínculo confirmado).
+      for (let idx = efetivoInicio; idx <= efetivoFim; idx++) {
+        const mAtual = ((idx - 1) % 12) + 1;
+        const aAtual = (idx - mAtual) / 12;
+        const temVinculo = realizadosSet.has(`${lan.id}|${aAtual}-${mAtual}`);
+        if (idx === nowIdx) {
+          if (temVinculo) saldo -= valor;
+        } else if (!temVinculo) {
+          saldo -= valor;
+        }
+      }
     }
   }
 
