@@ -1274,6 +1274,13 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
         </div>
       </div>
 
+      <!-- Despesas pendentes do mês — "Projetado fim do mês" É o saldo de
+           contas já calculado (calcularSaldo, inalterado), sem cálculo
+           paralelo. "Saldo hoje" e "Pendente" são derivados dele por soma
+           simples (renderSaldoPendente()) — um saldo só, pendente como
+           lente sobre ele. Some inteira quando não há nada pendente. -->
+      <div id="saldo-pendente"></div>
+
       <!-- O que exige ação -->
       <div class="metric-strip">
         <div class="metric clickable" onclick="navigate('faturas')">
@@ -2145,7 +2152,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-12e';
+const APP_VERSION = '2026-09-12f';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -2931,7 +2938,101 @@ function renderDashboard() {
 
   renderAccounts();
   renderCaixinhas();
+  renderSaldoPendente();
   renderFixoConciliacao();
+}
+
+// Ocorrências de Fixo/Parcelado (origem='conta') ativas num ano-mês —
+// mesma lógica de range de calcularSaldo()/calcularResumo(), reescrita aqui
+// só pra listar (não pra somar saldo): Fixo usa mes_fim/ano_fim (indefinido
+// se ausente), Parcelado se encerra sozinho (mes_ini/ano_ini + parcelas).
+function _ocorrenciasFixoParceladoMes(lancamentosConta, ano, mes) {
+  const idx = ano * 12 + mes;
+  return lancamentosConta.filter(l => {
+    if (!l.ativo) return false;
+    const tipo = (l.tipo || '').toLowerCase().trim();
+    if (tipo !== 'fixo' && tipo !== 'parcelado') return false;
+    const startIdx = Number(l.ano_ini || ano) * 12 + Number(l.mes_ini || 1);
+    if (idx < startIdx) return false;
+    if (tipo === 'parcelado') {
+      const parcelas = Number(l.parcelas || 1);
+      return idx <= startIdx + parcelas - 1;
+    }
+    const endIdx = (l.ano_fim && l.mes_fim) ? Number(l.ano_fim) * 12 + Number(l.mes_fim) : Infinity;
+    return idx <= endIdx;
+  });
+}
+
+// "Projetado fim do mês" É `contasSaldo` — o mesmo saldo já calculado por
+// calcularSaldo() em loadData(), sem recálculo paralelo (calcularSaldo já
+// soma o mês corrente inteiro de Fixo/Parcelado, confirmado ou não — só
+// ocorrência CONFIRMADA em lancamentos_realizados é excluída dali). "Saldo
+// hoje" e "Pendente do mês" são derivados por soma simples: Saldo hoje =
+// Projetado + Pendente (o que ainda não realizou, somado de volta).
+//
+// Salvaguarda: ocorrência cujo dia já passou e que não tem NENHUM vínculo
+// (nem pendente) vira "vencido, não identificado", destacado à parte — as
+// 3 formas de quebrar (Caju invisível pra Pluggy, parcela final que devia
+// ter parado, assinatura cancelada e lançamento esquecido) deixariam o
+// projetado pessimista sem sinal nenhum se só entrassem no bolo do
+// pendente comum. Ver Decisões no CLAUDE.md.
+function renderSaldoPendente() {
+  const el = document.getElementById('saldo-pendente');
+  if (!el) return;
+
+  const hoje = new Date();
+  const anoAtual = hoje.getFullYear(), mesAtual = hoje.getMonth() + 1, diaHoje = hoje.getDate();
+
+  const lancamentosConta = (state._allLancamentos || []).filter(l => l.origem === 'conta');
+  const ocorrencias = _ocorrenciasFixoParceladoMes(lancamentosConta, anoAtual, mesAtual);
+  const realizados = state._lancRealizados || [];
+
+  let pendenteTotal = 0;
+  const vencidosNaoIdentificados = [];
+
+  ocorrencias.forEach(l => {
+    const vinculo = realizados.find(r => r.lancamento_id === l.id && r.ano === anoAtual && r.mes === mesAtual);
+    if (vinculo?.confirmado_em) return; // já realizado — não é pendente, calcularSaldo já excluiu
+
+    pendenteTotal += Number(l.valor || 0);
+
+    const ultimoDia = new Date(anoAtual, mesAtual, 0).getDate();
+    const diaOcorrencia = Math.min(Number(l.dia_ini) || 1, ultimoDia);
+    if (!vinculo && diaOcorrencia < diaHoje) {
+      vencidosNaoIdentificados.push({ lan: l, dia: diaOcorrencia });
+    }
+  });
+
+  if (pendenteTotal <= 0 && !vencidosNaoIdentificados.length) { el.innerHTML = ''; return; }
+
+  const projetado = (state.contas || []).reduce((s, c) => s + (c.saldo || 0), 0);
+  const saldoHoje = projetado + pendenteTotal;
+
+  const htmlVencidos = vencidosNaoIdentificados.length ? `
+    <div class="card" style="padding:12px;margin-top:8px;border:1px solid var(--red)">
+      <div class="text-sm" style="font-weight:600;margin-bottom:6px">⚠️ Vencido, não identificado</div>
+      ${vencidosNaoIdentificados.map(v => `
+        <div class="text-sm" style="margin-top:4px">${v.lan.descricao} — ${fmt(v.lan.valor)}, esperado dia ${v.dia}. Foi pago fora do radar (ex: conta não coberta) ou o lançamento está obsoleto?</div>
+      `).join('')}
+    </div>` : '';
+
+  el.innerHTML = `
+    <div class="card" style="padding:14px 16px;margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0">
+        <span class="text-2 text-sm">Saldo hoje</span>
+        <span class="font-mono">${fmt(saldoHoje)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0">
+        <span class="text-2 text-sm">Pendente do mês</span>
+        <span class="font-mono color-red">−${fmt(pendenteTotal)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0 0;margin-top:4px;border-top:1px solid var(--border);font-weight:600">
+        <span class="text-sm">Projetado fim do mês</span>
+        <span class="font-mono">${fmt(projetado)}</span>
+      </div>
+    </div>
+    ${htmlVencidos}
+  `;
 }
 
 // Fixo × Pluggy: sugestões pendentes de confirmar (só valor+mês bateram,
@@ -2962,14 +3063,22 @@ function renderFixoConciliacao() {
     (r.ano === anoMesAnterior[0] && r.mes === anoMesAnterior[1])
   ));
 
+  // "Previsto" aqui é só o que AINDA NÃO VENCEU (dia do mês ainda não
+  // chegou) — o que já venceu sem vínculo nenhum tem destaque PRÓPRIO,
+  // mais forte ("⚠️ Vencido, não identificado"), na seção de saldo
+  // pendente do Dashboard (renderSaldoPendente()) — não duplicar o mesmo
+  // fato nas duas seções com framings diferentes.
   const nowIdx = anoAtual * 12 + mesAtual;
+  const ultimoDiaMes = new Date(anoAtual, mesAtual, 0).getDate();
+  const diaHoje = hoje.getDate();
   const previstos = fixos.filter(f => {
     const jaTem = realizados.some(r => r.lancamento_id === f.id && r.ano === anoAtual && r.mes === mesAtual);
     if (jaTem) return false;
     const startIdx = Number(f.ano_ini || anoAtual) * 12 + Number(f.mes_ini || 1);
     if (startIdx > nowIdx) return false;
     if (f.ano_fim && f.mes_fim && Number(f.ano_fim) * 12 + Number(f.mes_fim) < nowIdx) return false;
-    return true;
+    const diaOcorrencia = Math.min(Number(f.dia_ini) || 1, ultimoDiaMes);
+    return diaOcorrencia >= diaHoje;
   });
 
   if (!pendentes.length && !confirmadosRecentes.length && !previstos.length) { el.innerHTML = ''; return; }
@@ -5505,6 +5614,14 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
       return true;
     });
 
+    // Categoria pertence à COMPRA, não à parcela (pedido do usuário — "não
+    // preciso categorizar a mesma despesa todo mês"): buscado uma vez só,
+    // fora do loop por conta/cartão, porque uma compra pode ter parcelas
+    // vencendo em cartões/meses diferentes dentro da mesma rodada de
+    // importação. Ver Decisões no CLAUDE.md.
+    const { data: categoriasCompra } = await _sb.from('pluggy_categorias_compra').select('*');
+    const categoriaPorCompra = new Map((categoriasCompra || []).map(c => [c.compra_chave, c.categoria]));
+
     let importadas = 0, casadas = 0, suspeitas = 0, planejadas = 0, transferidas = 0;
     const avisos = [];
 
@@ -5613,10 +5730,15 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
           ? ` (${cc.installmentNumber}/${cc.totalInstallments})` : '';
         const descricaoFinal = `${pt.descricao}${sufixoParcela}`;
 
+        // Se essa COMPRA já foi categorizada antes (qualquer parcela dela),
+        // a parcela nova já entra com a mesma categoria — nunca cai em "não
+        // classificado" pra passar de novo pela tela de Categorização.
+        const categoriaConhecida = compraChavePt ? categoriaPorCompra.get(compraChavePt) : null;
+
         const linha = ehCartao ? {
-          data: pt.data, descricao: descricaoFinal, categoria: 'nao_classificado',
+          data: pt.data, descricao: descricaoFinal, categoria: categoriaConhecida || 'nao_classificado',
           valor, tipo: 'despesa', conta_nome: '', origem: 'cartao', cartao_nome: nome,
-          origem_dado: 'pluggy',
+          origem_dado: 'pluggy', pluggy_compra_chave: compraChavePt || null,
         } : {
           data: pt.data, descricao: descricaoFinal, categoria: 'nao_classificado',
           valor, tipo: pt.tipo === 'CREDIT' ? 'receita' : 'despesa',
@@ -6034,10 +6156,12 @@ async function renderCategorizacao() {
     // do atributo HTML, via entidade &quot;), reusado em todo texto que vai
     // dentro de um onclick/onchange.
     const _escJsAttr = s => String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
-    // {id, descricao} de cada item — não só id — porque renomear o grupo
-    // precisa saber o texto ORIGINAL de cada linha pra preservar o sufixo
-    // "(N/M)"/texto extra ao trocar só a parte base.
-    const itensGrupo = _escJsAttr(JSON.stringify(itens.map(i => ({ id: i.id, descricao: i.descricao }))));
+    // {id, descricao, pluggy_compra_chave} de cada item — não só id — porque
+    // renomear o grupo precisa do texto ORIGINAL de cada linha (preservar o
+    // sufixo "(N/M)"), e `pluggy_compra_chave` é o que permite categorizar
+    // uma compra parcelada inteira de uma vez (aprende pra parcelas futuras,
+    // ver Decisões no CLAUDE.md — "categoria por compra, não por parcela").
+    const itensGrupo = _escJsAttr(JSON.stringify(itens.map(i => ({ id: i.id, descricao: i.descricao, pluggy_compra_chave: i.pluggy_compra_chave || null }))));
     const baseOriginalAttr = _escJsAttr(JSON.stringify(descricaoBase));
     const selIdGrupo = `catgrupo-${idx}`;
     const descIdGrupo = `descgrupo-${idx}`;
@@ -6076,7 +6200,7 @@ async function renderCategorizacao() {
               </div>
               <input id="${descIdLinha}" class="form-input" style="font-size:12px;padding:4px 8px" value="${_escHtml(i.descricao)}">
               <div class="cat-line-ctls">
-                <select id="${selIdLinha}" class="form-select" style="max-width:170px;font-size:12px" onchange="categorizarLinha('${i.id}', this.value, document.getElementById('${descIdLinha}').value)">
+                <select id="${selIdLinha}" class="form-select" style="max-width:170px;font-size:12px" onchange="categorizarLinha('${i.id}', this.value, document.getElementById('${descIdLinha}').value, ${i.pluggy_compra_chave ? `'${_escJsAttr(i.pluggy_compra_chave)}'` : 'null'})">
                   <option value="">Categoria…</option>
                   ${_optsCategoria(tipo, "")}
                 </select>
@@ -6167,12 +6291,27 @@ async function aplicarTodasSugestoes() {
 // valor+data (e, pra parcelado, a descrição ORIGINAL da própria Pluggy via
 // `_pluggyCompraChave`, nunca a `extrato.descricao` editada aqui) — ver
 // Decisões no CLAUDE.md. Renomear no app não afeta o que o sync reconhece.
-async function categorizarLinha(id, categoria, descricao) {
+// Categoria pertence à COMPRA, não à parcela (pedido do usuário) —
+// `_pluggyCompraChave`, mesma identidade já usada em `lancamentos.
+// pluggy_compra_chave` pra "lançar despesa futura". Grava o aprendizado
+// (pra toda parcela futura importar já categorizada) e aplica retroativo
+// nas parcelas irmãs que já estão pendentes agora ('nao_classificado') —
+// sem isso, o usuário só veria efeito nos próximos meses, não neste.
+async function _aplicarCategoriaPorCompra(compraChave, categoria) {
+  if (!compraChave) return;
+  await _sb.from('pluggy_categorias_compra')
+    .upsert({ compra_chave: compraChave, categoria, atualizado_em: new Date().toISOString() });
+  await _sb.from('extrato')
+    .update({ categoria }).eq('pluggy_compra_chave', compraChave).eq('categoria', 'nao_classificado');
+}
+
+async function categorizarLinha(id, categoria, descricao, compraChave) {
   if (!categoria) return;
   const changes = { categoria };
   if (descricao != null && descricao.trim()) changes.descricao = descricao.trim();
   const ok = await sbUpdate('extrato', id, changes);
   if (!ok) { showToast('Erro ao categorizar ❌'); return; }
+  if (compraChave) await _aplicarCategoriaPorCompra(compraChave, categoria);
   showToast('Categorizado ✅');
   await renderCategorizacao();
 }
@@ -6195,6 +6334,13 @@ async function categorizarGrupo(itensJson, categoria, baseOriginal, novoBase) {
   }));
   const erro = resultados.find(r => r.error);
   if (erro) { console.error('categorizarGrupo', erro.error); showToast('Erro ao categorizar grupo ❌'); return; }
+
+  // Um grupo pode misturar mais de uma compra (agrupado por descrição, não
+  // por identidade) — aplica o aprendizado por chave, uma vez por compra
+  // distinta presente no grupo, não uma chave só pro grupo inteiro.
+  const chaves = [...new Set(itens.map(i => i.pluggy_compra_chave).filter(Boolean))];
+  await Promise.all(chaves.map(ch => _aplicarCategoriaPorCompra(ch, categoria)));
+
   showToast(renomear ? 'Grupo categorizado e renomeado ✅' : 'Grupo categorizado ✅');
   await renderCategorizacao();
 }
