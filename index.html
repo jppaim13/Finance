@@ -3,8 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#1a1f2e" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f5f7fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#f1f3f6">
 
 <!-- PWA / iOS -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -21,7 +20,7 @@
 
 <title>Finanças</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -29,90 +28,51 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --accent:       #5b7fff;
-  --accent-soft:  #e8edff;
-  --green:        #22c55e;
-  --green-soft:   #dcfce7;
-  --red:          #ef4444;
-  --red-soft:     #fee2e2;
-  --amber:        #f59e0b;
-  --amber-soft:   #fef3c7;
+  /* Acentos — teal (entrada/ok) e ferrugem (saída/atenção).
+     Os nomes --green/--red ficam: centenas de usos no arquivo dependem deles,
+     só o VALOR mudou. Verde/vermelho saturado saiu da paleta. */
+  --accent:       oklch(0.52 0.11 195);
+  --accent-soft:  oklch(0.95 0.03 195);
+  --green:        oklch(0.52 0.11 195);
+  --green-soft:   oklch(0.95 0.03 195);
+  --red:          oklch(0.50 0.13 40);
+  --red-soft:     oklch(0.96 0.025 40);
+  --amber:        oklch(0.60 0.12 75);
+  --amber-soft:   oklch(0.96 0.03 75);
 
-  --radius-sm:  8px;
-  --radius-md:  14px;
-  --radius-lg:  20px;
-  --radius-xl:  28px;
+  /* Tinta e superfícies — azul-ardósia frio, tema único (escuro abandonado) */
+  --bg:         #f1f3f6;
+  --bg-card:    #ffffff;
+  --bg-input:   #f0f2f5;
+  --bg-hover:   #f7f8fa;
+  --border:     #e3e6eb;
+  --border-2:   #cfd4dc;
+  --text:       #1f2328;
+  --text-2:     #5b636e;
+  --text-3:     #8b939e;
+  --nav-bg:     rgba(247,248,250,.94);
 
-  --shadow-sm: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
-  --shadow-md: 0 4px 16px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
-  --shadow-lg: 0 12px 40px rgba(0,0,0,.12), 0 4px 8px rgba(0,0,0,.06);
+  /* Raio menor: a estrutura agora é régua fina e alinhamento, não cápsula */
+  --radius-sm:  6px;
+  --radius-md:  8px;
+  --radius-lg:  10px;
+  --radius-xl:  12px;
+
+  --shadow-sm: 0 1px 2px rgba(31,35,40,.05);
+  --shadow-md: 0 2px 8px rgba(31,35,40,.07);
+  --shadow-lg: 0 8px 28px rgba(31,35,40,.12);
 
   --transition: 200ms cubic-bezier(.4,0,.2,1);
-  --font: 'DM Sans', sans-serif;
-  --font-mono: 'DM Mono', monospace;
+  --font: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Roboto Mono', ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg:         #f5f7fa;
-    --bg-card:    #ffffff;
-    --bg-input:   #f0f2f7;
-    --bg-hover:   #eef0f6;
-    --border:     #e4e7ef;
-    --text:       #111827;
-    --text-2:     #6b7280;
-    --text-3:     #9ca3af;
-    --nav-bg:     rgba(245,247,250,.92);
-  }
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg:         #0f1117;
-    --bg-card:    #1a1f2e;
-    --bg-input:   #242938;
-    --bg-hover:   #2a3044;
-    --border:     #2d3348;
-    --text:       #f1f5f9;
-    --text-2:     #94a3b8;
-    --text-3:     #64748b;
-    --nav-bg:     rgba(15,17,23,.92);
-    --accent-soft:  #1e2a4a;
-    --green-soft:   #052e16;
-    --red-soft:     #2d0a0a;
-    --amber-soft:   #2d1f00;
-  }
-}
-
-/* Manual theme overrides — take priority over system preference */
-:root[data-theme="light"] {
-  --bg:         #f5f7fa;
-  --bg-card:    #ffffff;
-  --bg-input:   #f0f2f7;
-  --bg-hover:   #eef0f6;
-  --border:     #e4e7ef;
-  --text:       #111827;
-  --text-2:     #6b7280;
-  --text-3:     #9ca3af;
-  --nav-bg:     rgba(245,247,250,.92);
-  --accent-soft:  #e8edff;
-  --green-soft:   #dcfce7;
-  --red-soft:     #fee2e2;
-  --amber-soft:   #fef3c7;
-}
-:root[data-theme="dark"] {
-  --bg:         #0f1117;
-  --bg-card:    #1a1f2e;
-  --bg-input:   #242938;
-  --bg-hover:   #2a3044;
-  --border:     #2d3348;
-  --text:       #f1f5f9;
-  --text-2:     #94a3b8;
-  --text-3:     #64748b;
-  --nav-bg:     rgba(15,17,23,.92);
-  --accent-soft:  #1e2a4a;
-  --green-soft:   #052e16;
-  --red-soft:     #2d0a0a;
-  --amber-soft:   #2d1f00;
+/* Números sempre tabulares — coluna de valor não pode dançar entre linhas */
+.font-mono, .kpi-value, .account-balance, .tx-amount, .credit-card-amount,
+.cat-value, .meta-spent, .repasse-saldo-valor, .repasse-tx-val,
+.repasse-item-val, .repasse-valor-preview, .lote-input[type="number"] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
 }
 
 html { font-size: 16px; }
@@ -457,7 +417,7 @@ body {
 }
 .credit-card-icon {
   width: 40px; height: 26px;
-  background: linear-gradient(135deg, var(--accent), #8b5cf6);
+  background: linear-gradient(135deg, var(--accent), oklch(0.55 0.12 310));
   border-radius: 5px;
   flex-shrink: 0;
 }
@@ -484,11 +444,11 @@ body {
   border: none;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 20px rgba(91,127,255,.4);
+  box-shadow: 0 2px 10px rgba(31,35,40,.16);
   z-index: 90;
   transition: transform var(--transition), box-shadow var(--transition);
 }
-.fab:hover { transform: scale(1.07); box-shadow: 0 6px 28px rgba(91,127,255,.5); }
+.fab:hover { transform: scale(1.07); box-shadow: 0 4px 16px rgba(31,35,40,.22); }
 .fab:active { transform: scale(.96); }
 .fab svg { width: 24px; height: 24px; stroke: white; stroke-width: 2.2; }
 @media (min-width: 768px) { .fab { bottom: 24px; right: 24px; } }
@@ -819,30 +779,29 @@ body {
 /* ── Tabs ───────────────────────────────────────────────────────── */
 .tabs {
   display: flex;
-  background: var(--bg-input);
-  border-radius: var(--radius-sm);
-  padding: 3px;
-  gap: 3px;
+  gap: 22px;
+  border-bottom: 1px solid var(--border);
   margin-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.tabs::-webkit-scrollbar { display: none; }
 .tab-btn {
-  flex: 1;
-  padding: 8px;
+  flex: 0 0 auto;
+  padding: 0 0 10px;
   border: none;
+  border-bottom: 2px solid transparent;
   background: none;
-  border-radius: 6px;
   font-family: var(--font);
   font-size: 13px;
-  font-weight: 500;
-  color: var(--text-2);
+  font-weight: 400;
+  color: var(--text-3);
   cursor: pointer;
-  transition: all var(--transition);
+  white-space: nowrap;
+  transition: color var(--transition);
 }
-.tab-btn.active {
-  background: var(--bg-card);
-  color: var(--text);
-  box-shadow: var(--shadow-sm);
-}
+.tab-btn:hover { color: var(--text-2); }
+.tab-btn.active { color: var(--text); font-weight: 600; border-bottom-color: var(--text); }
 
 /* ── Chip filters ───────────────────────────────────────────────── */
 .filter-chips {
@@ -898,7 +857,7 @@ body {
 
 /* ── Repasses ───────────────────────────────────────────────────── */
 .repasse-saldo-card { border-radius: var(--radius-lg); padding: 20px 24px; margin-bottom: 16px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
-.repasse-saldo-card.devo      { background: #fef2f2; }
+.repasse-saldo-card.devo      { background: var(--red-soft); }
 .repasse-saldo-card.ela-deve  { background: var(--green-soft); }
 .repasse-saldo-card.zerado    { background: var(--bg-card); border: 1px solid var(--border); }
 .repasse-saldo-label { font-size: 13px; color: var(--text-2); margin-bottom: 2px; }
@@ -915,7 +874,7 @@ body {
 .repasse-item { display:flex; align-items:center; gap:10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
 .repasse-item:last-child { border-bottom: none; }
 .repasse-dir-badge { font-size:11px; font-weight:700; padding: 2px 8px; border-radius:20px; flex-shrink:0; }
-.repasse-dir-badge.devo     { background:#fef2f2; color:var(--red); }
+.repasse-dir-badge.devo     { background:var(--red-soft); color:var(--red); }
 .repasse-dir-badge.ela-deve { background:var(--green-soft); color:var(--green); }
 .repasse-item-val { font-family:var(--font-mono); font-size:14px; font-weight:600; flex-shrink:0; }
 .repasse-item-val.devo     { color:var(--red); }
@@ -923,13 +882,199 @@ body {
 .perc-btn { flex:1; padding:8px 4px; border:1.5px solid var(--border); border-radius:var(--radius-md); background:var(--bg-input); color:var(--text); font-size:13px; font-weight:600; cursor:pointer; transition:all var(--transition); }
 .perc-btn.active { border-color:var(--accent); background:var(--accent-soft); color:var(--accent); }
 .dir-btn { flex:1; padding:10px 8px; border:1.5px solid var(--border); border-radius:var(--radius-md); background:var(--bg-input); color:var(--text); font-size:13px; font-weight:500; cursor:pointer; transition:all var(--transition); text-align:center; }
-.dir-btn.active.devo     { border-color:var(--red);   background:#fef2f2;             color:var(--red); }
+.dir-btn.active.devo     { border-color:var(--red);   background:var(--red-soft);     color:var(--red); }
 .dir-btn.active.ela-deve { border-color:var(--green); background:var(--green-soft);   color:var(--green); }
 .repasse-valor-preview { text-align:center; font-size:20px; font-weight:700; font-family:var(--font-mono); padding:10px 0 4px; }
 details summary::-webkit-details-marker { display:none; }
 details[open] .fatura-toggle-label { color:var(--text-1); }
 .fatura-arrow { display:inline-block; transition:transform .2s; }
 details[open] .fatura-arrow { transform:rotate(90deg); }
+
+/* ══ DASHBOARD — patrimônio como protagonista (2b) ══════════════════ */
+.hero-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 22px 22px 20px; box-shadow: var(--shadow-sm); }
+.hero-label { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3); }
+.hero-value { font-family: var(--font-mono); font-size: 40px; font-weight: 500; letter-spacing: -1.8px; line-height: 1; margin-top: 10px; color: var(--text); font-variant-numeric: tabular-nums; }
+@media (max-width: 420px) { .hero-value { font-size: 32px; letter-spacing: -1.2px; } }
+.pat-bar { display: flex; height: 10px; gap: 2px; margin: 20px 0 10px; }
+.pat-bar > div { border-radius: 3px; min-width: 3px; }
+.pat-bar-contas { background: var(--accent); }
+.pat-bar-inv { background: oklch(0.74 0.07 195); flex: 1; }
+.pat-legend { display: flex; gap: 22px; flex-wrap: wrap; }
+.pat-legend-item { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--text-2); }
+.pat-legend-item b { font-family: var(--font-mono); font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; }
+.pat-legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+.metric-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-top: 12px; }
+.metric { background: var(--bg-card); padding: 14px 16px; min-width: 0; }
+.metric-label { font-size: 9.5px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--text-3); }
+.metric-value { font-family: var(--font-mono); font-size: 17px; font-weight: 500; margin-top: 5px; color: var(--text); font-variant-numeric: tabular-nums; }
+.metric-sub { font-size: 10.5px; color: var(--text-3); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.metric.clickable { cursor: pointer; transition: background var(--transition); }
+.metric.clickable:hover { background: var(--bg-hover); }
+
+.acct-group-label { font-size: 9.5px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--text-3); padding: 14px 0 4px; }
+.acct-group-label:first-child { padding-top: 0; }
+.acct-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--bg-hover); }
+.acct-row:last-child { border-bottom: none; }
+.acct-mark { width: 3px; height: 22px; border-radius: 2px; flex-shrink: 0; }
+.acct-body { flex: 1; min-width: 0; }
+.acct-name { font-size: 12.5px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acct-sub { font-size: 10.5px; color: var(--text-3); }
+.acct-val { font-family: var(--font-mono); font-size: 12.5px; font-weight: 500; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.acct-total { display: flex; justify-content: space-between; align-items: center; padding: 12px 0 0; border-top: 1px solid var(--border-2); margin-top: 6px; }
+
+/* ══ EXTRATO — agrupado por dia, barra de magnitude (1c) ═══════════ */
+.ex-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ex-toolbar .search-wrap { flex: 1; margin-bottom: 0; }
+.ex-filter-btn { flex-shrink: 0; width: 38px; height: 38px; border: 1px solid var(--border-2); background: var(--bg-card); border-radius: var(--radius-sm); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.ex-filter-btn svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 2; }
+.ex-filter-btn:hover { background: var(--bg-hover); }
+details.ex-filters > summary { list-style: none; display: none; }
+.ex-filters-body { padding: 2px 0 4px; }
+
+.ex-day { display: flex; justify-content: space-between; align-items: center; padding: 0 12px; height: 28px; background: var(--bg-hover); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.ex-day-label { font-size: 10px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--text-3); }
+.ex-day-total { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+.ex-row { display: grid; grid-template-columns: 3px 1fr auto auto; align-items: center; gap: 12px; padding: 11px 12px; border-bottom: 1px solid var(--bg-hover); }
+.ex-row:last-child { border-bottom: none; }
+.ex-row:hover { background: var(--bg-hover); }
+.ex-mag { width: 3px; height: 28px; border-radius: 2px; }
+.ex-body { min-width: 0; }
+.ex-desc { font-size: 13.5px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-meta { font-size: 11.5px; color: var(--text-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-val { font-family: var(--font-mono); font-size: 13px; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ex-tag { font-size: 9.5px; font-weight: 500; letter-spacing: .5px; text-transform: uppercase; color: var(--text-3); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px; margin-left: 7px; }
+.ex-acts { display: flex; gap: 4px; opacity: 0; transition: opacity var(--transition); }
+.ex-row:hover .ex-acts { opacity: 1; }
+@media (max-width: 767px) { .ex-acts { opacity: 1; } }
+
+/* Desktop: descrição e meta lado a lado em vez de empilhadas */
+@media (min-width: 768px) {
+  .ex-row { grid-template-columns: 3px minmax(120px,1fr) minmax(0,200px) 112px auto; }
+  .ex-body { display: contents; }
+  .ex-meta { margin-top: 0; font-size: 12px; }
+}
+
+/* ══ FATURAS — um DOM só: tabela no desktop, lista no celular (1d) ══
+   A troca é feita por grid-template-areas, não por markup duplicado: dois
+   caminhos de markup divergem silenciosamente quando alguém edita um só. ══ */
+.fat-table { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-sm); }
+.fat-head { display: grid; align-items: center; height: 30px; padding: 0 18px; background: var(--bg-hover); border-bottom: 1px solid var(--border); }
+.fat-head > div { font-size: 10px; font-weight: 600; letter-spacing: .7px; text-transform: uppercase; color: var(--text-3); }
+.fat-row-wrap { border-bottom: 1px solid var(--bg-hover); }
+.fat-row-wrap:last-child { border-bottom: none; }
+.fat-row-wrap.paga { opacity: .6; }
+.fat-row { display: grid; align-items: center; padding: 0 18px; min-height: 52px; cursor: pointer; list-style: none; }
+.fat-row::-webkit-details-marker { display: none; }
+.fat-row:hover { background: var(--bg-hover); }
+.fat-name-cell { grid-area: nome; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fat-mark { width: 6px; height: 26px; border-radius: 2px; flex-shrink: 0; }
+.fat-name { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fat-sub { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fat-cell { font-size: 12px; color: var(--text-2); min-width: 0; overflow: hidden; }
+.fat-cell small { display: block; font-size: 10.5px; }
+.fat-fecha { grid-area: fecha; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.fat-venc { grid-area: venc; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.fat-total { grid-area: total; font-family: var(--font-mono); font-size: 13.5px; font-weight: 500; color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+.fat-limite { grid-area: limite; padding-left: 18px; }
+.fat-limite-bar { height: 4px; border-radius: 2px; background: var(--bg-input); overflow: hidden; }
+.fat-limite-bar > div { height: 100%; border-radius: 2px; transition: width .5s ease; }
+.fat-limite-txt { font-size: 10.5px; color: var(--text-3); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fat-acao { grid-area: acao; text-align: right; }
+.fat-badge { font-size: 9.5px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; border-radius: 3px; padding: 2px 6px; white-space: nowrap; }
+.fat-btn { height: 28px; padding: 0 12px; border-radius: var(--radius-sm); font-family: var(--font); font-size: 11.5px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.fat-btn.normal { border: 1px solid var(--border-2); background: var(--bg-card); color: var(--text); }
+.fat-btn.normal:hover { background: var(--bg-hover); }
+.fat-btn.urgente { border: none; background: var(--red); color: #fff; }
+.fat-arrow { display: inline-block; transition: transform .2s; color: var(--text-3); font-size: 10px; margin-right: 6px; }
+details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
+.fat-body { padding: 4px 18px 14px; background: var(--bg-hover); border-top: 1px solid var(--border); }
+.fat-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+.fat-item:last-child { border-bottom: none; }
+.fat-item-desc { flex: 1; min-width: 0; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fat-item-val { font-family: var(--font-mono); color: var(--text); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+/* Celular: quatro linhas empilhadas, rótulo de coluna vira prefixo da célula */
+.fat-head { display: none; }
+.fat-row {
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "nome nome" "fecha venc" "total total" "limite limite" "acao acao";
+  gap: 8px 12px;
+  padding: 13px 14px;
+}
+.fat-cell[data-label]::before { content: attr(data-label) " · "; color: var(--text-3); }
+.fat-total { text-align: left; }
+.fat-total::before { content: "Total · "; color: var(--text-3); font-family: var(--font); font-size: 11px; font-weight: 400; }
+.fat-limite { padding-left: 0; }
+.fat-acao { text-align: left; }
+.fat-acao .fat-btn { width: 100%; height: 36px; font-size: 12.5px; }
+
+@media (min-width: 768px) {
+  .fat-head { display: grid; }
+  .fat-head, .fat-row {
+    grid-template-columns: minmax(140px,1fr) 56px 78px 104px minmax(96px,124px) 106px;
+    grid-template-areas: "nome fecha venc total limite acao";
+    gap: 0;
+    padding: 0 18px;
+  }
+  .fat-cell[data-label]::before { content: none; }
+  .fat-total { text-align: right; }
+  .fat-total::before { content: none; }
+  .fat-limite { padding-left: 18px; }
+  .fat-acao { text-align: right; }
+  .fat-acao .fat-btn { width: auto; height: 28px; font-size: 11.5px; }
+}
+
+/* ══ CATEGORIZAÇÃO — fila com sugestão pronta e lote (1i) ══════════ */
+.cat-row { display: grid; align-items: center; gap: 10px 12px; padding: 13px 16px; border-bottom: 1px solid var(--bg-hover); }
+.cat-row:last-child { border-bottom: none; }
+.cat-row-body { grid-area: corpo; min-width: 0; }
+.cat-row-nome { font-size: 13.5px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cat-row-sub { font-size: 11.5px; color: var(--text-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cat-sug { grid-area: sug; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: var(--radius-sm); background: var(--accent-soft); border: none; cursor: pointer; font-family: var(--font); white-space: nowrap; }
+.cat-sug:hover { filter: brightness(.97); }
+.cat-sug-label { font-size: 10px; letter-spacing: .3px; text-transform: uppercase; color: var(--accent); opacity: .75; }
+.cat-sug-val { font-size: 11.5px; font-weight: 600; color: var(--accent); }
+.cat-row-val { grid-area: valor; font-family: var(--font-mono); font-size: 12.5px; font-weight: 500; color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cat-row-ctl { grid-area: ctl; display: flex; gap: 6px; align-items: center; min-width: 0; }
+.cat-row-ctl .form-select { font-size: 12px; padding: 6px 8px; min-width: 0; }
+.cat-more { grid-area: mais; width: 28px; height: 28px; border: 1px solid var(--border); background: var(--bg-card); border-radius: var(--radius-sm); color: var(--text-2); cursor: pointer; font-size: 13px; line-height: 1; flex-shrink: 0; }
+.cat-more:hover { background: var(--bg-hover); }
+.cat-detail { background: var(--bg-hover); border-top: 1px solid var(--border); padding: 6px 16px 12px; }
+.cat-detail > summary { list-style: none; display: none; }
+.cat-line { display: flex; flex-direction: column; gap: 5px; padding: 9px 0; border-top: 1px solid var(--border); }
+.cat-line:first-child { border-top: none; }
+.cat-line-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
+.cat-line-ctls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
+/* Celular: empilha; desktop: uma linha com colunas */
+.cat-row { grid-template-columns: 1fr auto; grid-template-areas: "corpo valor" "sug sug" "ctl mais"; }
+@media (min-width: 768px) {
+  .cat-row { grid-template-columns: minmax(0,1fr) auto minmax(150px,180px) 92px 28px; grid-template-areas: "corpo sug ctl valor mais"; gap: 0 12px; }
+}
+
+/* ══ RELATÓRIOS — barras pareadas em CSS + tabela do mesmo dado (2e) ══
+   Sem Chart.js aqui: o valor é legível no número da tabela, não só no
+   tooltip, e a legenda não come metade da área do gráfico. ══════════ */
+.relbar-legend { display: flex; gap: 16px; flex-wrap: wrap; }
+.relbar-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-2); }
+.relbar-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.relbar-plot { display: flex; align-items: flex-end; height: 150px; border-bottom: 1px solid var(--border); }
+.relbar-col { flex: 1; min-width: 0; display: flex; align-items: flex-end; justify-content: center; gap: 3px; height: 100%; }
+.relbar { width: 15px; max-width: 40%; border-radius: 2px 2px 0 0; transition: height .5s ease; }
+.relbar.rec { background: var(--accent); }
+.relbar.des { background: oklch(0.62 0.13 40); }
+.relbar-labels { display: flex; }
+.relbar-labels > div { flex: 1; min-width: 0; text-align: center; font-size: 10.5px; color: var(--text-3); padding-top: 7px; }
+
+.relev-grid { display: grid; grid-template-columns: 60px 1fr 1fr 1fr; align-items: center; padding: 0 18px; }
+.relev-head { height: 30px; background: var(--bg-hover); border-bottom: 1px solid var(--border); }
+.relev-head > div { font-size: 10px; font-weight: 600; letter-spacing: .7px; text-transform: uppercase; color: var(--text-3); }
+.relev-row { height: 34px; border-bottom: 1px solid var(--bg-hover); }
+.relev-row:hover { background: var(--bg-hover); }
+.relev-foot { height: 38px; background: var(--bg-hover); border-top: 1px solid var(--border-2); }
+.relev-num { font-family: var(--font-mono); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -1039,11 +1184,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
         Configurações
       </button>
-      <button class="sidebar-item" onclick="toggleTheme()" id="theme-toggle-btn" style="margin-top:auto">
-        <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
-        <svg id="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-        <span id="theme-toggle-label">Tema Claro</span>
-      </button>
+      
     </div>
   </nav>
 
@@ -1051,10 +1192,10 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
   <main class="main-content">
 
     <!-- ── DASHBOARD ─────────────────────────────────────────────── -->
-    <div class="page active" id="page-dashboard">
+    <div class="page active" id="page-dashboard" data-screen-label="Dashboard">
       <div class="page-header">
         <div>
-          <div class="page-title">Olá 👋</div>
+          <div class="page-title">Patrimônio</div>
           <div class="page-subtitle" id="dash-subtitle">Carregando...</div>
         </div>
         <div class="month-selector">
@@ -1069,73 +1210,63 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
       </div>
 
       <div class="config-banner" id="configBanner">
-        <strong>⚙️ Configure a conexão primeiro</strong>
+        <strong>Configure a conexão primeiro</strong>
         Acesse <a onclick="navigate('config')">Configurações</a> e insira a URL e a chave do seu projeto Supabase para começar.
       </div>
 
-      <!-- KPIs -->
-      <div class="kpi-grid">
-        <div class="kpi-card full">
-          <div class="kpi-label"><span class="dot" style="background:var(--accent)"></span>SALDO DO MÊS</div>
-          <div class="kpi-value" id="kpi-saldo" style="font-size:28px">R$ —</div>
-          <div class="kpi-sub" id="kpi-saldo-acum">Acumulado: R$ —</div>
+      <!-- Herói: patrimônio, com a divisão líquido x investido -->
+      <div class="hero-card">
+        <div class="hero-label" id="pat-label">Patrimônio</div>
+        <div class="hero-value" id="kpi-patrimonio">R$ —</div>
+        <div class="pat-bar">
+          <div class="pat-bar-contas" id="pat-bar-contas" style="width:0%"></div>
+          <div class="pat-bar-inv"></div>
         </div>
-        <div class="kpi-card">
-          <div class="kpi-label"><span class="dot" style="background:var(--green)"></span>RECEITAS</div>
-          <div class="kpi-value color-green" id="kpi-receita">R$ —</div>
+        <div class="pat-legend" id="kpi-patrimonio-sub"></div>
+      </div>
+
+      <!-- O que exige ação -->
+      <div class="metric-strip">
+        <div class="metric">
+          <div class="metric-label">Resultado do mês</div>
+          <div class="metric-value" id="kpi-saldo">R$ —</div>
+          <div class="metric-sub" id="kpi-saldo-acum">—</div>
         </div>
-        <div class="kpi-card">
-          <div class="kpi-label"><span class="dot" style="background:var(--red)"></span>DESPESAS</div>
-          <div class="kpi-value color-red" id="kpi-despesa">R$ —</div>
+        <div class="metric clickable" onclick="navigate('faturas')">
+          <div class="metric-label">Faturas a pagar</div>
+          <div class="metric-value" id="kpi-apagar">R$ —</div>
+          <div class="metric-sub" id="kpi-apagar-sub">—</div>
         </div>
-        <div class="kpi-card full" style="background:linear-gradient(135deg,var(--accent-soft),var(--bg-card));border-color:var(--accent)">
-          <div class="kpi-label"><span class="dot" style="background:var(--accent)"></span>PATRIMÔNIO TOTAL</div>
-          <div class="kpi-value color-accent" id="kpi-patrimonio" style="font-size:26px">R$ —</div>
-          <div class="kpi-sub" id="kpi-patrimonio-sub" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px"></div>
+        <div class="metric clickable" onclick="navigate('categorizacao')">
+          <div class="metric-label">Sem categoria</div>
+          <div class="metric-value" id="kpi-semcat">—</div>
+          <div class="metric-sub">importadas da Pluggy</div>
         </div>
       </div>
 
-      <!-- Contas -->
-      <div class="section-label">Contas Bancárias</div>
+      <!-- Entradas e saídas do mês -->
+      <div class="metric-strip">
+        <div class="metric">
+          <div class="metric-label">Entradas</div>
+          <div class="metric-value color-green" id="kpi-receita">R$ —</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Saídas</div>
+          <div class="metric-value color-red" id="kpi-despesa">R$ —</div>
+        </div>
+      </div>
+
+      <div class="section-label">Contas e caixinhas</div>
       <div class="card">
         <div id="accounts-list">
-          <div class="empty-state"><div class="emoji">🏦</div><p>Nenhuma conta configurada</p></div>
+          <div class="empty-state"><p>Nenhuma conta configurada</p></div>
         </div>
-      </div>
-
-      <!-- Caixinhas -->
-      <div class="section-label">Investimentos & Caixinhas</div>
-      <div class="card">
-        <div id="caixinhas-list">
-          <div class="empty-state"><div class="emoji">🏦</div><p>Nenhuma caixinha configurada</p></div>
-        </div>
-      </div>
-
-      <!-- Últimos lançamentos -->
-      <div class="section-label">Últimos Lançamentos</div>
-      <div class="card" style="padding:8px 6px">
-        <div class="tx-list" id="recent-tx">
-          <div class="empty-state"><div class="emoji">📋</div><p>Nenhum lançamento ainda</p></div>
-        </div>
-      </div>
-
-      <!-- Gráfico -->
-      <div class="section-label">Evolução Mensal</div>
-      <div class="card">
-        <div class="chart-wrap"><canvas id="chartEvolucao"></canvas></div>
-      </div>
-
-      <!-- Gastos por categoria -->
-      <div class="section-label">Gastos por Categoria</div>
-      <div class="card">
-        <div class="cat-list" id="cat-list">
-          <div class="empty-state"><div class="emoji">🏷️</div><p>Sem dados</p></div>
-        </div>
+        <div id="caixinhas-list"></div>
       </div>
     </div>
 
     <!-- ── EXTRATO ─────────────────────────────────────────────────── -->
-    <div class="page" id="page-extrato">
+    <div class="page" id="page-extrato" data-screen-label="Extrato">
       <div class="page-header">
         <div>
           <div class="page-title">Extrato</div>
@@ -1152,52 +1283,81 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
         </div>
       </div>
 
-      <div class="search-wrap">
-        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input class="form-input" id="searchInput" placeholder="Buscar lançamento..." oninput="filterTransactions()">
+      <div class="hero-card" style="margin-bottom:12px">
+        <div class="hero-label">Resultado do mês</div>
+        <div class="hero-value" id="extrato-hero" style="font-size:28px;letter-spacing:-1px">R$ —</div>
+        <div class="metric-sub" id="extrato-hero-sub" style="margin-top:6px">—</div>
       </div>
 
+      <div class="ex-toolbar">
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input class="form-input" id="searchInput" placeholder="Buscar lançamento..." oninput="filterTransactions()">
+        </div>
+        <button class="ex-filter-btn" onclick="toggleExtratoFiltros()" title="Filtros">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+        </button>
+        <button class="ex-filter-btn" onclick="abrirImportCSV()" title="Importar CSV">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </button>
+      </div>
+
+      <!-- Filtro de tipo fica sempre visível; conta e categoria só quando pedido,
+           senão três faixas de chips comem a tela antes da primeira transação -->
       <div class="filter-chips" id="filterChips">
         <button class="filter-chip active" onclick="setFilterTipo('todos',this)">Todos</button>
         <button class="filter-chip" onclick="setFilterTipo('despesa',this)">Despesas</button>
         <button class="filter-chip" onclick="setFilterTipo('receita',this)">Receitas</button>
       </div>
-      <div class="filter-chips" id="filterChipsContas" style="margin-top:6px"></div>
-      <div class="filter-chips" id="filterChipsCats" style="margin-top:6px"></div>
-      <div style="margin-top:8px;display:flex;justify-content:flex-end">
-        <button class="btn-secondary" style="font-size:12px;padding:5px 12px;display:flex;align-items:center;gap:5px" onclick="abrirImportCSV()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width:13px;height:13px;flex-shrink:0"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          Importar CSV
-        </button>
-      </div>
-      <div id="extrato-summary" style="display:none;margin-top:8px"></div>
+      <details class="ex-filters" id="extratoFiltros">
+        <summary></summary>
+        <div class="ex-filters-body">
+          <div class="filter-chips" id="filterChipsContas"></div>
+          <div class="filter-chips" id="filterChipsCats" style="margin-top:6px"></div>
+        </div>
+      </details>
 
-      <div class="card" style="padding:8px 6px">
-        <div class="tx-list" id="extrato-list">
-          <div class="empty-state"><div class="emoji">📋</div><p>Nenhum lançamento neste mês</p></div>
+      <div id="extrato-summary" style="display:none;margin-bottom:12px"></div>
+
+      <div class="card" style="padding:0;overflow:hidden">
+        <div id="extrato-list">
+          <div class="empty-state"><p>Nenhum lançamento neste mês</p></div>
         </div>
       </div>
     </div>
 
     <!-- ── FATURAS ──────────────────────────────────────────────────── -->
-    <div class="page" id="page-faturas">
+    <div class="page" id="page-faturas" data-screen-label="Faturas">
       <div class="page-header">
         <div>
           <div class="page-title">Faturas</div>
-          <div class="page-subtitle">Compras do mês anterior · vencimento no mês selecionado</div>
+          <div class="page-subtitle" id="faturas-subtitle">—</div>
         </div>
-        <div class="month-selector">
-          <button class="month-nav-btn" id="prevMonthF">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 18l-6-6 6-6"/></svg>
-          </button>
-          <span id="currentMonthLabelF">Mar/2026</span>
-          <button class="month-nav-btn" id="nextMonthF">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 18l6-6-6-6"/></svg>
-          </button>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end">
+          <div style="text-align:right">
+            <div class="metric-label">A pagar no mês</div>
+            <div class="font-mono" id="faturas-total" style="font-size:22px;font-weight:500;letter-spacing:-.5px;margin-top:2px">R$ —</div>
+          </div>
+          <div class="month-selector">
+            <button class="month-nav-btn" id="prevMonthF">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <span id="currentMonthLabelF">Mar/2026</span>
+            <button class="month-nav-btn" id="nextMonthF">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
         </div>
       </div>
-      <div class="credit-cards" id="faturas-list">
-        <div class="empty-state"><div class="emoji">💳</div><p>Nenhuma fatura encontrada</p></div>
+      <div class="fat-table">
+        <div class="fat-head">
+          <div>Cartão</div><div>Fecha</div><div>Vence</div>
+          <div style="text-align:right">Total</div>
+          <div style="padding-left:18px">Limite usado</div><div></div>
+        </div>
+        <div id="faturas-list">
+          <div class="empty-state"><p>Nenhuma fatura encontrada</p></div>
+        </div>
       </div>
     </div>
 
@@ -1245,16 +1405,27 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
     </div>
 
     <!-- ── CATEGORIZAÇÃO (transações importadas da Pluggy) ─────────────── -->
-    <div class="page" id="page-categorizacao">
+    <div class="page" id="page-categorizacao" data-screen-label="Categorização">
       <div class="page-header">
         <div>
           <div class="page-title">Categorização</div>
-          <div class="page-subtitle">Transações importadas da Pluggy sem categoria — enriquecimento opcional, não bloqueia nada</div>
+          <div class="page-subtitle">Transações importadas da Pluggy sem categoria</div>
         </div>
       </div>
-      <div class="text-xs text-2" id="categorizacaoContador" style="margin-bottom:12px">Carregando...</div>
-      <div id="categorizacao-list">
-        <div class="empty-state"><div class="emoji">🏷️</div><p>Carregando...</p></div>
+
+      <div class="hero-card" style="margin-bottom:12px">
+        <div class="hero-label">Pendentes</div>
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <span class="hero-value" id="categ-count" style="font-size:32px;letter-spacing:-1.2px">—</span>
+          <span class="metric-sub" id="categ-sub" style="margin:0">carregando...</span>
+        </div>
+        <button class="btn-primary" id="categ-aplicar-todas" style="margin-top:16px;display:none" onclick="aplicarTodasSugestoes()"></button>
+      </div>
+
+      <div class="card" style="padding:0;overflow:hidden">
+        <div id="categorizacao-list">
+          <div class="empty-state"><p>Carregando...</p></div>
+        </div>
       </div>
     </div>
 
@@ -1271,12 +1442,24 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
       </div>
       <div id="report-evolucao">
         <div class="card">
-          <div class="section-label" style="margin-top:0">Receita vs Despesa — 12 meses</div>
-          <div class="chart-wrap" style="height:220px"><canvas id="chartRelEvolucao"></canvas></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px">
+            <div class="relbar-legend">
+              <span class="relbar-legend-item"><span class="relbar-dot" style="background:var(--accent)"></span>Entradas</span>
+              <span class="relbar-legend-item"><span class="relbar-dot" style="background:oklch(0.62 0.13 40)"></span>Saídas</span>
+            </div>
+            <span class="text-xs text-3" id="rel-ev-periodo">—</span>
+          </div>
+          <div class="relbar-plot" id="rel-ev-plot"></div>
+          <div class="relbar-labels" id="rel-ev-labels"></div>
         </div>
-        <div class="card">
-          <div class="section-label" style="margin-top:0">Saldo Acumulado</div>
-          <div class="chart-wrap" style="height:180px"><canvas id="chartSaldo"></canvas></div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="relev-grid relev-head">
+            <div>Mês</div>
+            <div style="text-align:right">Entradas</div>
+            <div style="text-align:right">Saídas</div>
+            <div style="text-align:right">Resultado</div>
+          </div>
+          <div id="rel-ev-tabela"></div>
         </div>
       </div>
       <div id="report-categorias" style="display:none">
@@ -1521,13 +1704,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
       </div>
       Config
     </button>
-    <button class="nav-item" onclick="toggleTheme()">
-      <div class="nav-icon-wrap">
-        <svg id="theme-icon-moon-m" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
-        <svg id="theme-icon-sun-m" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-      </div>
-      Tema
-    </button>
+    
   </nav>
 
   <!-- FAB Lote -->
@@ -1931,7 +2108,7 @@ details[open] .fatura-arrow { transform:rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-10b';
+const APP_VERSION = '2026-09-12a';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -1961,8 +2138,10 @@ const CATS_RECEITA = [
   {id:'nao_classificado', emoji:'🏷️', nome:'Não classificado'},
 ];
 
-const CAT_COLORS = ['#5b7fff','#22c55e','#f59e0b','#ef4444','#8b5cf6',
-                    '#06b6d4','#f97316','#ec4899','#14b8a6','#84cc16','#a855f7','#64748b'];
+const CAT_COLORS = ['oklch(0.58 0.13 40)','oklch(0.60 0.11 195)','oklch(0.62 0.11 75)',
+                    'oklch(0.55 0.12 310)','oklch(0.58 0.10 260)','oklch(0.64 0.10 150)',
+                    'oklch(0.62 0.13 25)','oklch(0.56 0.11 340)','oklch(0.66 0.09 195)',
+                    'oklch(0.62 0.10 110)','oklch(0.56 0.12 285)','oklch(0.60 0.03 250)'];
 
 function getCurrentMonthIndex() {
   const now  = new Date();
@@ -2638,37 +2817,65 @@ function renderDashboard() {
   const patrimonio     = contasSaldo + caixinhasSaldo;
 
   document.getElementById('dash-subtitle').textContent = MESES[mi];
-  document.getElementById('kpi-receita').textContent   = fmt(receita);
-  document.getElementById('kpi-despesa').textContent   = fmt(despesa);
-  document.getElementById('kpi-saldo').textContent     = fmt(saldo);
-  document.getElementById('kpi-saldo').className = 'kpi-value ' + (saldo >= 0 ? 'color-green' : 'color-red');
-  document.getElementById('kpi-saldo-acum').textContent = 'Acumulado: ' + fmt(acum);
+  document.getElementById('pat-label').textContent = 'Patrimônio em ' + MESES[mi];
+  document.getElementById('kpi-receita').textContent = fmt(receita);
+  document.getElementById('kpi-despesa').textContent = fmt(despesa);
+
+  const elSaldo = document.getElementById('kpi-saldo');
+  elSaldo.textContent = (saldo >= 0 ? '+ ' : '− ') + fmt(Math.abs(saldo));
+  elSaldo.className = 'metric-value ' + (saldo >= 0 ? 'color-green' : 'color-red');
+  document.getElementById('kpi-saldo-acum').textContent = 'acumulado ' + fmt(acum);
 
   document.getElementById('kpi-patrimonio').textContent = fmt(patrimonio);
+
+  // Barra: fatia de contas (líquido) contra o restante (investido).
+  // Patrimônio pode ser <= 0 (conta negativa e nenhuma caixinha) — nesse caso
+  // a proporção não é definível, então a barra fica inteira como "investido".
+  const pctContas = patrimonio > 0 ? Math.max(0, Math.min(100, contasSaldo / patrimonio * 100)) : 0;
+  document.getElementById('pat-bar-contas').style.width = pctContas.toFixed(1) + '%';
   document.getElementById('kpi-patrimonio-sub').innerHTML =
-    (contasSaldo    ? `<span>Contas <b>${fmt(contasSaldo)}</b></span>`           : '') +
-    (caixinhasSaldo ? `<span>+ Investimentos <b>${fmt(caixinhasSaldo)}</b></span>` : '');
+    '<span class="pat-legend-item"><span class="pat-legend-dot" style="background:var(--accent)"></span>Em conta <b>' + fmt(contasSaldo) + '</b></span>' +
+    '<span class="pat-legend-item"><span class="pat-legend-dot" style="background:oklch(0.74 0.07 195)"></span>Investido <b>' + fmt(caixinhasSaldo) + '</b></span>';
+
+  // Faturas em aberto do mês selecionado (exclui as já marcadas como pagas)
+  const mesNome = MESES_NOMES[mi];
+  const faturasMes = (state.resumo[mi] || {}).faturas || {};
+  let aPagar = 0, nAbertas = 0;
+  state.cartoes.forEach(c => {
+    const v = faturasMes[c.nome] || 0;
+    if (v > 0 && !(state.faturasPagas || {})[c.nome + '-' + mesNome]) { aPagar += v; nAbertas++; }
+  });
+  document.getElementById('kpi-apagar').textContent = fmt(aPagar);
+  document.getElementById('kpi-apagar-sub').textContent =
+    nAbertas ? nAbertas + (nAbertas > 1 ? ' faturas abertas' : ' fatura aberta') : 'nenhuma em aberto';
+
+  // Pendências de categorização — lidas do extrato já carregado, sem query extra
+  const semCat = (state._allExtrato || []).filter(t => t.categoria === 'nao_classificado').length;
+  document.getElementById('kpi-semcat').textContent = semCat;
 
   renderAccounts();
   renderCaixinhas();
-  renderRecentTx();
-  renderEvolucaoChart();
-  renderCatList();
 }
+
+// Cor de marcação por índice — deriva da paleta de categorias, então conta nova
+// entra com cor estável sem ninguém escolher nada.
+function marcaConta(i) { return CAT_COLORS[i % CAT_COLORS.length]; }
 
 function renderAccounts() {
   const el = document.getElementById('accounts-list');
-  if (!state.contas.length) { el.innerHTML = '<div class="empty-state"><div class="emoji">🏦</div><p>Nenhuma conta configurada</p></div>'; return; }
-  el.innerHTML = state.contas.map((c,i) => `
-    <div class="account-row">
-      <div class="account-icon" style="background:${['#e8edff','#dcfce7','#fef3c7'][i%3]}">${['🏦','🏧','💳'][i%3]}</div>
-      <div class="account-info">
-        <div class="account-name">${c.nome}</div>
-        <div class="account-type">${c.banco || ''}</div>
+  if (!el) return;
+  if (!state.contas.length) {
+    el.innerHTML = '<div class="empty-state"><p>Nenhuma conta configurada</p></div>';
+    return;
+  }
+  el.innerHTML = '<div class="acct-group-label">Contas correntes</div>' + state.contas.map((c,i) => `
+    <div class="acct-row">
+      <div class="acct-mark" style="background:${marcaConta(i)}"></div>
+      <div class="acct-body">
+        <div class="acct-name">${c.nome}</div>
+        <div class="acct-sub">${c.banco || 'Conta corrente'}</div>
       </div>
-      <div class="account-balance" style="color:${(c.saldo||0)>=0?'var(--green)':'var(--red)'}">
-        ${fmt(c.saldo || 0)}
-      </div>
+      <div class="acct-val" style="color:${(c.saldo||0)>=0?'var(--text)':'var(--red)'}">${fmt(c.saldo || 0)}</div>
       <button class="tx-act-btn edit" onclick="abrirAjusteSaldo('${c.nome}',${c.saldo||0},'conta')" title="Ajustar saldo" style="opacity:1">⚖️</button>
     </div>
   `).join('');
@@ -2677,42 +2884,40 @@ function renderAccounts() {
 function renderCaixinhas() {
   const el = document.getElementById('caixinhas-list');
   if (!el) return;
-  if (!state.caixinhas.length) {
-    el.innerHTML = '<div class="empty-state"><div class="emoji">🏦</div><p>Nenhuma caixinha configurada</p></div>';
-    return;
-  }
+  if (!state.caixinhas.length) { el.innerHTML = ''; return; }
   const total = state.caixinhas.reduce((s, c) => s + (c.saldo || 0), 0);
-  el.innerHTML = state.caixinhas.map((c, i) => `
-    <div class="account-row">
-      <div class="account-icon" style="background:${['#dcfce7','#e8edff','#fef3c7','#f3e8ff'][i%4]}">${['📦','💰','📈','🏦'][i%4]}</div>
-      <div class="account-info">
-        <div class="account-name">${c.nome}</div>
-        <div class="account-type">${c.banco || ''}</div>
+  const totalGeral = total + state.contas.reduce((s, c) => s + (c.saldo || 0), 0);
+  el.innerHTML = '<div class="acct-group-label">Caixinhas e investimentos</div>' + state.caixinhas.map((c, i) => `
+    <div class="acct-row">
+      <div class="acct-mark" style="background:oklch(0.74 0.07 195)"></div>
+      <div class="acct-body">
+        <div class="acct-name">${c.nome}</div>
+        <div class="acct-sub">${c.banco || 'Caixinha'}</div>
       </div>
-      <div class="account-balance color-green">${fmt(c.saldo || 0)}</div>
+      <div class="acct-val">${fmt(c.saldo || 0)}</div>
       <button class="tx-act-btn edit" onclick="abrirAjusteSaldo('${c.nome}',${c.saldo||0},'caixinha')" title="Ajustar saldo" style="opacity:1">⚖️</button>
     </div>
   `).join('') + `
-    <div class="account-row" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px">
-      <div class="account-info"><div class="account-name" style="font-weight:700">Total Investimentos</div></div>
-      <div class="account-balance color-accent" style="font-weight:700">${fmt(total)}</div>
+    <div class="acct-total">
+      <span class="font-600" style="font-size:12.5px">Patrimônio total</span>
+      <span class="acct-val" style="font-size:14px">${fmt(totalGeral)}</span>
     </div>
   `;
 }
 
-function renderRecentTx() {
-  const el = document.getElementById('recent-tx');
-  const txs = state.lancamentos.slice(0, 8);
-  if (!txs.length) { el.innerHTML = '<div class="empty-state"><div class="emoji">📋</div><p>Nenhum lançamento ainda</p></div>'; return; }
-  el.innerHTML = txs.map(tx => txItem(tx)).join('');
-}
-
-function txItem(tx) {
+function txItem(tx, maxAbs) {
   const isReceita = tx.tipo === 'receita';
   const allCats   = [...(state.catsExtra||[]), ...CATS_DESPESA, ...CATS_RECEITA];
-  const cat       = allCats.find(c => c.id === tx.categoria) || {emoji:'📦', nome: tx.categoria||'Outros'};
+  const cat       = allCats.find(c => c.id === tx.categoria) || { nome: tx.categoria || 'Outros' };
   const isFixo    = tx.fonte === 'lancamentos';
-  const txJson    = JSON.stringify(tx).replace(/'/g,"\\'").replace(/"/g,'&quot;');
+  const abs       = Math.abs(tx.valor || 0);
+  const teto      = maxAbs || abs || 1;
+
+  // Intensidade da barra: gasto grande em relação ao conjunto fica mais forte.
+  // Receita é sempre teal; não faz sentido graduar entrada por "gravidade".
+  const magCor = isReceita
+    ? 'var(--green)'
+    : (abs / teto > 0.5 ? 'oklch(0.58 0.13 40)' : 'oklch(0.82 0.06 40)');
 
   const editBtn = isFixo
     ? `<button class="tx-act-btn edit" onclick="abrirEditFixo('${tx.id}')" title="Editar">✏️</button>`
@@ -2722,31 +2927,26 @@ function txItem(tx) {
     : `<button class="tx-act-btn del" onclick="deletarTx('${tx.id}','${tx.mes||''}',${tx.row||0},'${tx.origem}','${tx.contaCartao}',${tx.valor},'${tx.tipo}')" title="Excluir">🗑️</button>`;
 
   return `
-    <div class="tx-item">
-      <div class="tx-icon" style="background:${isReceita?'var(--green-soft)':'var(--bg-input)'}">
-        ${cat.emoji}
+    <div class="ex-row">
+      <div class="ex-mag" style="background:${magCor}"></div>
+      <div class="ex-body">
+        <div class="ex-desc">${tx.descricao || '—'}${isFixo ? '<span class="ex-tag">fixo</span>' : ''}</div>
+        <div class="ex-meta">${cat.nome} · ${tx.contaCartao || ''}</div>
       </div>
-      <div class="tx-info">
-        <div class="tx-desc">${tx.descricao || '—'} ${isFixo?'<span style="font-size:10px;color:var(--accent);background:var(--accent-soft);padding:1px 5px;border-radius:4px">fixo</span>':''}</div>
-        <div class="tx-meta">${tx.contaCartao || ''} · ${formatDate(tx.data)}</div>
+      <div class="ex-val" style="color:${isReceita ? 'var(--green)' : 'var(--text)'}">
+        ${isReceita ? '+' : '−'} ${fmt(abs)}
       </div>
-      <div class="tx-amount" style="color:${isReceita?'var(--green)':'var(--text)'}">
-        ${isReceita?'+':'−'} ${fmt(Math.abs(tx.valor||0))}
-      </div>
-      <div class="tx-actions">
-        ${editBtn}
-        ${delBtn}
-      </div>
+      <div class="ex-acts">${editBtn}${delBtn}</div>
     </div>
   `;
 }
 
 function renderEvolucaoChart() {
   const ctx = document.getElementById('chartEvolucao');
-  if (!ctx) return;
+  if (!ctx) return; // o Dashboard não tem mais este gráfico — ver Relatórios
   if (window._chartEv) window._chartEv.destroy();
 
-  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = false;
   const gridColor = isDark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.05)';
   const textColor = isDark ? '#64748b' : '#9ca3af';
 
@@ -2755,8 +2955,8 @@ function renderEvolucaoChart() {
     data: {
       labels: MESES.map(m => m.split('/')[0]),
       datasets: [
-        { label: 'Receita', data: state.resumo.map(r => r.receita||0), backgroundColor: 'rgba(34,197,94,.8)', borderRadius: 6, borderSkipped: false },
-        { label: 'Despesa', data: state.resumo.map(r => r.despesa||0), backgroundColor: 'rgba(239,68,68,.7)', borderRadius: 6, borderSkipped: false },
+        { label: 'Receita', data: state.resumo.map(r => r.receita||0), backgroundColor: 'oklch(0.60 0.11 195)', borderRadius: 6, borderSkipped: false },
+        { label: 'Despesa', data: state.resumo.map(r => r.despesa||0), backgroundColor: 'oklch(0.62 0.13 40)', borderRadius: 6, borderSkipped: false },
       ]
     },
     options: {
@@ -2772,6 +2972,7 @@ function renderEvolucaoChart() {
 
 function renderCatList() {
   const el = document.getElementById('cat-list');
+  if (!el) return; // seção saiu do Dashboard
   const cats = {};
   state.lancamentos.filter(t => t.tipo !== 'receita').forEach(t => {
     cats[t.categoria] = (cats[t.categoria] || 0) + (t.valor || 0);
@@ -2898,16 +3099,45 @@ function renderExtrato() {
     }
   }
 
-  if (!txs.length) { el.innerHTML = '<div class="empty-state"><div class="emoji">📋</div><p>Nenhum lançamento encontrado</p></div>'; return; }
+  // Herói: resultado das transações FILTRADAS, não do mês inteiro — senão o
+  // número de cima contradiz a lista de baixo quando há filtro ativo.
+  const heroRec  = txs.filter(t => t.tipo === 'receita').reduce((s,t) => s + (t.valor||0), 0);
+  const heroDesp = txs.filter(t => t.tipo !== 'receita').reduce((s,t) => s + (t.valor||0), 0);
+  const heroNet  = heroRec - heroDesp;
+  const heroEl   = document.getElementById('extrato-hero');
+  if (heroEl) {
+    heroEl.textContent = (heroNet >= 0 ? '+ ' : '− ') + fmt(Math.abs(heroNet));
+    heroEl.style.color = heroNet >= 0 ? 'var(--green)' : 'var(--red)';
+    document.getElementById('extrato-hero-sub').textContent =
+      txs.length + (txs.length === 1 ? ' lançamento' : ' lançamentos') +
+      ' · ' + fmt(heroRec) + ' entradas · ' + fmt(heroDesp) + ' saídas';
+  }
 
-  // Group by date
+  if (!txs.length) { el.innerHTML = '<div class="empty-state"><p>Nenhum lançamento encontrado</p></div>'; return; }
+
+  // Agrupa por dia. A barra de magnitude é relativa ao MAIOR valor do conjunto
+  // filtrado, então a leitura relativa continua válida dentro de qualquer filtro.
   const groups = {};
   txs.forEach(tx => { const d = tx.data||''; (groups[d]=groups[d]||[]).push(tx); });
+  const maxAbs = Math.max.apply(null, txs.map(t => Math.abs(t.valor||0)).concat([1]));
 
-  el.innerHTML = Object.entries(groups).sort((a,b)=>b[0].localeCompare(a[0])).map(([date, txList]) => `
-    <div class="tx-date-group">${formatDate(date)}</div>
-    ${txList.map(tx => txItem(tx)).join('')}
-  `).join('');
+  el.innerHTML = Object.entries(groups).sort((a,b)=>b[0].localeCompare(a[0])).map(([date, txList]) => {
+    const totalDia = txList.reduce((s,t) => s + (t.tipo === 'receita' ? (t.valor||0) : -(t.valor||0)), 0);
+    return `
+      <div class="ex-day">
+        <span class="ex-day-label">${formatDate(date)}</span>
+        <span class="ex-day-total">${totalDia >= 0 ? '+' : '−'}${fmt(Math.abs(totalDia))}</span>
+      </div>
+      ${txList.map(tx => txItem(tx, maxAbs)).join('')}
+    `;
+  }).join('');
+}
+
+// Abre/fecha as faixas de chips de conta e categoria (native <details>, então o
+// estado sobrevive a re-render sem entrar no objeto state)
+function toggleExtratoFiltros() {
+  const d = document.getElementById('extratoFiltros');
+  if (d) d.open = !d.open;
 }
 
 function setFilterTipo(tipo, btn) {
@@ -3173,12 +3403,36 @@ function renderFaturas() {
   const mesIdx = anoMes * 12 + mesNum;
   const hoje = new Date(); hoje.setHours(0,0,0,0);
 
+  const subEl = document.getElementById('faturas-subtitle');
+
   if (!state.cartoes.length) {
-    el.innerHTML = '<div class="empty-state"><div class="emoji">💳</div><p>Nenhum cartão configurado</p></div>';
+    el.innerHTML = '<div class="empty-state"><p>Nenhum cartão configurado</p></div>';
+    if (subEl) subEl.textContent = 'Nenhum cartão configurado';
+    const t0 = document.getElementById('faturas-total');
+    if (t0) t0.textContent = fmt(0);
     return;
   }
 
-  el.innerHTML = state.cartoes.map((c, i) => {
+  // Total a pagar: só faturas com valor e ainda não marcadas como pagas.
+  let totalAPagar = 0, nAbertas = 0;
+  state.cartoes.forEach(c => {
+    const v = faturas[c.nome] || 0;
+    if (v > 0 && !(state.faturasPagas || {})[c.nome + "-" + mesNome]) { totalAPagar += v; nAbertas++; }
+  });
+  const totalEl = document.getElementById('faturas-total');
+  if (totalEl) totalEl.textContent = fmt(totalAPagar);
+  if (subEl) subEl.textContent = 'Vencimento em ' + MESES[mi] + ' · ' +
+    (nAbertas ? nAbertas + (nAbertas > 1 ? ' abertas' : ' aberta') : 'nenhuma aberta') +
+    ' de ' + state.cartoes.length;
+
+  // Ordena por dia de vencimento — o que vence primeiro aparece primeiro. O
+  // índice original (i) segue state.cartoes, pra cor de marcação do cartão não
+  // mudar quando a ordem de exibição muda.
+  const ordenados = state.cartoes
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => (a.c.vencimento || 99) - (b.c.vencimento || 99));
+
+  el.innerHTML = ordenados.map(({ c, i }) => {
     const valor = faturas[c.nome] || 0;
 
     // Vencimento: dia do vencimento no mês SELECIONADO (que é o mês de vencimento).
@@ -3189,6 +3443,14 @@ function renderFaturas() {
     const dueISO  = formatarData(dueDate);
 
     const pago    = !!(state.faturasPagas || {})[`${c.nome}-${mesNome}`];
+    // Dias até vencer em dias inteiros de calendário — as duas datas já estão
+    // normalizadas pra meia-noite local, então a divisão não sofre com fuso.
+    const diasAte = Math.round((dueDate - hoje) / 86400000);
+    const diasLabel = diasAte === 0 ? 'vence hoje'
+      : diasAte === 1 ? 'amanhã'
+      : diasAte > 1 ? 'em ' + diasAte + ' dias'
+      : diasAte === -1 ? 'há 1 dia'
+      : 'há ' + Math.abs(diasAte) + ' dias';
     const vencida = !pago && valor > 0 && hoje > dueDate;
     const aVencer = !pago && valor > 0 && hoje <= dueDate;
 
@@ -3247,53 +3509,61 @@ function renderFaturas() {
     }
 
     const itens = [...itensExtrato, ...itensLan];
-    const itensList = itens.length ? `
-      <details style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
-        <summary style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--text-2);user-select:none">
-          <span class="fatura-toggle-label"><span class="fatura-arrow">&#9656;</span> ${itens.length} despesa${itens.length > 1 ? 's' : ''}</span>
-          <span style="font-family:var(--font-mono);color:var(--red)">${fmt(itens.reduce((s,t)=>s+t.valor,0))}</span>
-        </summary>
-        <div style="display:flex;flex-direction:column;gap:2px;margin-top:8px">
-          ${itens.map(t => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:13px">
-              <div style="color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;padding-right:8px">${t.descricao || '—'}</div>
-              <div style="color:var(--red);font-family:var(--font-mono);flex-shrink:0">${fmt(t.valor)}</div>
-              <button class="tx-act-btn edit" style="flex-shrink:0" onclick='${t.fonte === 'lancamentos' ? `abrirEditFixo("${t.id}")` : `editarTx(${JSON.stringify(t)})`}' title="Editar">✏️</button>
-            </div>`).join('')}
-        </div>
-      </details>` : (valor > 0 ? '' : '<div class="text-xs text-3" style="margin-top:8px">Nenhuma compra neste mês</div>');
+    const somaItens = itens.reduce((s, t) => s + t.valor, 0);
+
+    const itensHtml = itens.length
+      ? itens.map(t => `
+          <div class="fat-item">
+            <div class="fat-item-desc">${t.descricao || "—"}</div>
+            <div class="fat-item-val">${fmt(t.valor)}</div>
+            <button class="tx-act-btn edit" style="flex-shrink:0" onclick='${t.fonte === "lancamentos" ? `abrirEditFixo("${t.id}")` : `editarTx(${JSON.stringify(t)})`}' title="Editar">✏️</button>
+          </div>`).join(``) +
+        `<div class="fat-item" style="border-top:1px solid var(--border-2);border-bottom:none;margin-top:4px">
+            <div class="fat-item-desc font-600" style="color:var(--text)">${itens.length} ${itens.length > 1 ? "despesas" : "despesa"}</div>
+            <div class="fat-item-val font-600">${fmt(somaItens)}</div>
+            <div style="width:28px;flex-shrink:0"></div>
+          </div>`
+      : '<div class="text-xs text-3" style="padding:8px 0">Nenhuma compra nesta competência</div>';
+
+    // Ação: só a fatura vencida recebe o botão vermelho. Se todas fossem
+    // primárias nenhuma teria prioridade — que é o problema do painel atual.
+    let acaoHtml;
+    if (pago) {
+      acaoHtml = '<span class="fat-badge" style="color:var(--green);background:var(--green-soft)">✓ paga</span>';
+    } else if (valor > 0) {
+      acaoHtml = `<button class="fat-btn ${vencida ? "urgente" : "normal"}" onclick="event.preventDefault();event.stopPropagation();abrirModalPagarFatura('${c.nome}','${c.conta}',${valor},'${dueISO}')">${vencida ? "Pagar agora" : "Pagar"}</button>`;
+    } else {
+      acaoHtml = '<span class="text-xs text-3">sem fatura</span>';
+    }
+
+    const disp = c.limite ? calcularLimiteDisponivel(c) : 0;
+    const dispColor = !c.limite ? 'var(--text-3)' : disp < 0 ? 'var(--red)' : disp < c.limite * 0.2 ? 'var(--amber)' : 'var(--text-3)';
 
     return `
-      <div class="card" style="padding:16px;opacity:${pago ? '.75' : '1'}">
-        <div class="flex items-center gap-12">
-          <div style="background:linear-gradient(135deg,${CAT_COLORS[i%CAT_COLORS.length]},${CAT_COLORS[(i+3)%CAT_COLORS.length]});width:48px;height:30px;border-radius:6px;flex-shrink:0"></div>
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:500">
-              ${c.nome} ${badge}
+      <details class="fat-row-wrap ${pago ? "paga" : ""}">
+        <summary class="fat-row">
+          <div class="fat-name-cell">
+            <span class="fat-arrow">&#9656;</span>
+            <div class="fat-mark" style="background:${CAT_COLORS[i % CAT_COLORS.length]}"></div>
+            <div style="min-width:0">
+              <div class="fat-name">${c.nome}</div>
+              <div class="fat-sub">${itens.length} ${itens.length === 1 ? "compra" : "compras"} · ${c.conta || "sem conta"}</div>
             </div>
-            <div class="text-xs text-3">Fecha dia ${c.fechamento || '?'} · ${c.conta || ''}</div>
           </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div class="font-mono font-500" style="color:${color};text-decoration:${pago?'line-through':'none'}">${fmt(valor)}</div>
-            ${c.limite ? (() => {
-              const disp = calcularLimiteDisponivel(c);
-              const dispColor = disp < 0 ? 'var(--red)' : disp < c.limite * 0.2 ? 'var(--amber)' : 'var(--text-3)';
-              return `<div class="text-xs" style="color:var(--text-3)">Limite ${fmt(c.limite)}</div>
-                      <div class="text-xs" style="color:${dispColor}">Disponível ${fmt(disp)}</div>`;
-            })() : ''}
+          <div class="fat-cell fat-fecha" data-label="Fecha">${c.fechamento ? "dia " + c.fechamento : "—"}</div>
+          <div class="fat-cell fat-venc" data-label="Vence">${dueFmt.slice(0,5)}
+            <small style="color:${vencida ? "var(--red)" : "var(--text-3)"}">${pago ? "paga" : vencida ? "vencida " + diasLabel : diasLabel}</small>
           </div>
-        </div>
-        ${c.limite && valor > 0 ? `
-        <div style="margin-top:10px;height:4px;background:var(--bg-input);border-radius:2px">
-          <div style="height:100%;width:${pct.toFixed(0)}%;background:${color};border-radius:2px;transition:width .6s"></div>
-        </div>` : ''}
-        ${itensList}
-        ${!pago && valor > 0 ? `
-        <button class="btn-primary" style="margin-top:12px;padding:10px;font-size:13px;${vencida ? 'background:var(--red)' : ''}"
-          onclick="abrirModalPagarFatura('${c.nome}','${c.conta}',${valor},'${dueISO}')">
-          ${vencida ? '⚠ Pagar Fatura Vencida' : 'Pagar Fatura'} · ${fmt(valor)}
-        </button>` : ''}
-      </div>
+          <div class="fat-total" style="text-decoration:${pago ? "line-through" : "none"}">${fmt(valor)}</div>
+          <div class="fat-cell fat-limite">${c.limite
+            ? `<div class="fat-limite-bar"><div style="width:${pct.toFixed(0)}%;background:${color}"></div></div>
+               <div class="fat-limite-txt">${pct.toFixed(0)}% usado · <span style="color:${dispColor}">${fmt(disp)} livre</span></div>`
+            : '<div class="fat-limite-txt">limite não informado</div>'}
+          </div>
+          <div class="fat-acao">${acaoHtml}</div>
+        </summary>
+        <div class="fat-body">${itensHtml}</div>
+      </details>
     `;
   }).join('');
 }
@@ -3781,65 +4051,74 @@ function setReportTab(tab, btn) {
 
 function renderRelatorios() { renderRelEvolucao(); }
 
+// Barras pareadas + tabela, sem Chart.js. Os dois gráficos de linha antigos
+// (receita/despesa e saldo acumulado) foram substituídos por um gráfico só mais
+// a tabela: o saldo acumulado passou a ser a coluna "Resultado" somada, que é o
+// mesmo dado em forma legível, sem um segundo canvas pra manter.
 function renderRelEvolucao() {
-  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const gridColor = isDark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.05)';
-  const textColor = isDark ? '#64748b' : '#9ca3af';
+  const plot = document.getElementById('rel-ev-plot');
+  const labels = document.getElementById('rel-ev-labels');
+  const tabela = document.getElementById('rel-ev-tabela');
+  if (!plot || !labels || !tabela) return;
 
-  // Receita vs Despesa
-  const ctx1 = document.getElementById('chartRelEvolucao');
-  if (window._chartRel) window._chartRel.destroy();
-  window._chartRel = new Chart(ctx1, {
-    type: 'line',
-    data: {
-      labels: MESES.map(m => m.split('/')[0]),
-      datasets: [
-        { label:'Receita', data: state.resumo.map(r=>r.receita||0), borderColor:'#22c55e', backgroundColor:'rgba(34,197,94,.1)', fill:true, tension:.4, pointRadius:4 },
-        { label:'Despesa', data: state.resumo.map(r=>r.despesa||0), borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,.1)', fill:true, tension:.4, pointRadius:4 },
-      ]
-    },
-    options: {
-      responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{ labels:{ color:textColor, font:{size:12}, boxWidth:12 } }, tooltip:{ callbacks:{ label: ctx=>' '+fmt(ctx.raw) } } },
-      scales:{
-        x:{grid:{display:false},ticks:{color:textColor,font:{size:10}}},
-        y:{grid:{color:gridColor},ticks:{color:textColor,font:{size:10},callback:v=>'R$'+(v/1000).toFixed(0)+'k'}}
-      }
-    }
-  });
+  // Só meses com movimento. Mês inteiramente zerado é mês que ainda não
+  // aconteceu — plotar a coluna vazia só encolhe as que têm dado.
+  const meses = state.resumo
+    .map((r, i) => ({ i, rec: r.receita || 0, des: r.despesa || 0 }))
+    .filter(m => m.rec > 0 || m.des > 0);
 
-  // Saldo acumulado
+  if (!meses.length) {
+    plot.innerHTML = '';
+    labels.innerHTML = '';
+    tabela.innerHTML = '<div class="empty-state"><p>Nenhum movimento registrado ainda</p></div>';
+    document.getElementById('rel-ev-periodo').textContent = '—';
+    return;
+  }
+
+  const teto = Math.max.apply(null, meses.map(m => Math.max(m.rec, m.des)));
+
+  plot.innerHTML = meses.map(m => `
+    <div class="relbar-col" title="${MESES[m.i]} · entradas ${fmt(m.rec)} · saídas ${fmt(m.des)}">
+      <div class="relbar rec" style="height:${(m.rec / teto * 100).toFixed(1)}%"></div>
+      <div class="relbar des" style="height:${(m.des / teto * 100).toFixed(1)}%"></div>
+    </div>`).join('');
+
+  labels.innerHTML = meses.map(m => `<div>${MESES[m.i].split('/')[0].toLowerCase()}</div>`).join('');
+
+  document.getElementById('rel-ev-periodo').textContent =
+    MESES[meses[0].i] + ' – ' + MESES[meses[meses.length - 1].i];
+
   let acum = 0;
-  const saldoAcum = state.resumo.map(r => { acum += (r.receita||0)-(r.despesa||0); return acum; });
-  const ctx2 = document.getElementById('chartSaldo');
-  if (window._chartSld) window._chartSld.destroy();
-  window._chartSld = new Chart(ctx2, {
-    type: 'line',
-    data: {
-      labels: MESES.map(m => m.split('/')[0]),
-      datasets: [{ label:'Saldo', data: saldoAcum, borderColor:'#5b7fff', backgroundColor:'rgba(91,127,255,.1)', fill:true, tension:.4, pointRadius:3 }]
-    },
-    options: {
-      responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: ctx=>' '+fmt(ctx.raw) } } },
-      scales:{
-        x:{grid:{display:false},ticks:{color:textColor,font:{size:10}}},
-        y:{grid:{color:gridColor},ticks:{color:textColor,font:{size:10},callback:v=>'R$'+(v/1000).toFixed(0)+'k'}}
-      }
-    }
-  });
-}
+  const linhas = meses.map(m => {
+    const res = m.rec - m.des;
+    acum += res;
+    // Destaca o mês selecionado no seletor global, pra tabela e cabeçalho de
+    // mês não contarem histórias diferentes.
+    const atual = m.i === state.currentMonth;
+    return `
+      <div class="relev-grid relev-row" style="${atual ? `background:var(--accent-soft)` : ``}">
+        <div style="font-size:12px;font-weight:${atual ? 600 : 500};color:var(--text)">${MESES[m.i].split('/')[0].toLowerCase()}</div>
+        <div class="relev-num" style="color:var(--text-2)">${fmt(m.rec)}</div>
+        <div class="relev-num" style="color:var(--text-2)">${fmt(m.des)}</div>
+        <div class="relev-num" style="font-weight:500;color:${res >= 0 ? `var(--green)` : `var(--red)`}">${res >= 0 ? "+" : "−"}${fmt(Math.abs(res))}</div>
+      </div>`;
+  }).join('');
 
-function toggleFaturaSel(nome) {
-  if (!state._faturasSel) state._faturasSel = new Set();
-  if (state._faturasSel.has(nome)) state._faturasSel.delete(nome);
-  else state._faturasSel.add(nome);
-  renderRelFaturas();
+  const totRec = meses.reduce((s, m) => s + m.rec, 0);
+  const totDes = meses.reduce((s, m) => s + m.des, 0);
+
+  tabela.innerHTML = linhas + `
+    <div class="relev-grid relev-foot">
+      <div class="font-600" style="font-size:12px">Total</div>
+      <div class="relev-num font-500">${fmt(totRec)}</div>
+      <div class="relev-num font-500">${fmt(totDes)}</div>
+      <div class="relev-num font-500" style="color:${acum >= 0 ? `var(--green)` : `var(--red)`}">${acum >= 0 ? "+" : "−"}${fmt(Math.abs(acum))}</div>
+    </div>`;
 }
 
 function renderRelFaturas() {
   if (!state._faturasSel) state._faturasSel = new Set();
-  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = false;
   const gridColor = isDark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.05)';
   const textColor = isDark ? '#64748b' : '#9ca3af';
 
@@ -4031,7 +4310,7 @@ function renderRelCategorias() {
       options:{
         responsive:true, maintainAspectRatio:false, cutout:'65%',
         plugins:{
-          legend:{ position:'right', labels:{ color: window.matchMedia('(prefers-color-scheme: dark)').matches?'#94a3b8':'#6b7280', font:{size:11}, boxWidth:10 } },
+          legend:{ position:'right', labels:{ color: false?'#94a3b8':'#6b7280', font:{size:11}, boxWidth:10 } },
           tooltip:{ callbacks:{ label: c=>' '+fmt(c.raw)+' ('+(total?((c.raw/total)*100).toFixed(1):0)+'%)' } }
         }
       }
@@ -4152,7 +4431,7 @@ function renderCatBarChart() {
   const info    = allCats.find(c => c.id === catId) || { nome: catId, emoji: '📦' };
   const totals  = calcularCatMeses(catId);
   const labels  = MESES_NOMES.map(m => m.split('-')[0]);
-  const isDark  = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark  = false;
   const tickClr = isDark ? '#94a3b8' : '#6b7280';
   const curMes  = state.currentMonth;
 
@@ -4221,7 +4500,7 @@ function renderRelContas() {
   if (!state.contas.length) { el.innerHTML = '<div class="empty-state"><div class="emoji">🏦</div><p>Nenhuma conta</p></div>'; return; }
   el.innerHTML = state.contas.map((c,i)=>`
     <div class="account-row">
-      <div class="account-icon" style="background:${['#e8edff','#dcfce7','#fef3c7'][i%3]}">${['🏦','🏧','💳'][i%3]}</div>
+      <div class="account-icon" style="background:${['var(--accent-soft)','var(--amber-soft)','var(--bg-input)'][i%3]}">${['🏦','🏧','💳'][i%3]}</div>
       <div class="account-info">
         <div class="account-name">${c.nome}</div>
         <div class="account-type">${c.banco||''}</div>
@@ -5531,11 +5810,17 @@ async function renderCategorizacao() {
     return;
   }
   if (!pendentes || !pendentes.length) {
-    if (contadorEl) contadorEl.textContent = 'Tudo categorizado — nenhuma pendência 🎉';
-    el.innerHTML = '<div class="empty-state"><div class="emoji">✅</div><p>Nenhuma transação pendente de categorização</p></div>';
+    const cEl = document.getElementById('categ-count');
+    const sEl = document.getElementById('categ-sub');
+    const bEl = document.getElementById('categ-aplicar-todas');
+    if (cEl) cEl.textContent = '0';
+    if (sEl) sEl.textContent = 'tudo categorizado';
+    if (bEl) bEl.style.display = 'none';
+    state._catSugestoes = [];
+    el.innerHTML = '<div class="empty-state"><p>Nenhuma transação pendente de categorização</p></div>';
     return;
   }
-  if (contadorEl) contadorEl.textContent = `${pendentes.length} transação(ões) sem categoria`;
+  // contador preenchido no fim, depois dos grupos montados
 
   // Ignora o sufixo " (N/M)" de parcela (ver adição em importarPendentes())
   // tanto pra buscar sugestão quanto pra agrupar — sem isso, cada parcela
@@ -5592,69 +5877,115 @@ async function renderCategorizacao() {
     const baseOriginalAttr = _escJsAttr(JSON.stringify(descricaoBase));
     const selIdGrupo = `catgrupo-${idx}`;
     const descIdGrupo = `descgrupo-${idx}`;
+    // O `aplicar` do grupo usa a sugestão já resolvida; sem sugestão, o seletor
+    // é o único caminho — não existe mais botão OK que possa não fazer nada.
+    const sugHtml = sugestao
+      ? `<button class="cat-sug" title="Aplicar ${sugestao} nas ${itens.length} transações" onclick="categorizarGrupo('${itensGrupo}', '${sugestao}', ${baseOriginalAttr}, document.getElementById('${descIdGrupo}').value)"><span class="cat-sug-label">sugestão</span><span class="cat-sug-val">${sugestao} ✓</span></button>`
+      : '';
+
     return `
-      <div class="card" style="padding:14px;margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-          <div style="flex:1;min-width:180px">
-            <input id="${descIdGrupo}" class="form-input" style="font-weight:500;padding:4px 8px;margin-bottom:2px" value="${_escHtml(descricaoBase)}">
-            <div class="text-xs text-3">${itens.length} transação(ões) · total ${fmt(total)}${sugestao ? ` · sugestão: ${sugestao}` : ''}</div>
+      <div>
+        <div class="cat-row">
+          <div class="cat-row-body">
+            <input id="${descIdGrupo}" class="cat-row-nome" style="width:100%;border:none;background:none;outline:none;font-family:var(--font);padding:0" value="${_escHtml(descricaoBase)}">
+            <div class="cat-row-sub">${itens.length} ${itens.length === 1 ? "transação" : "transações"} · ${sugestao ? "já classificado antes" : "sem par no histórico"}</div>
           </div>
-          <div style="display:flex;gap:6px;align-items:center">
-            <select id="${selIdGrupo}" class="form-select" style="max-width:220px" onchange="categorizarGrupo('${itensGrupo}', this.value, ${baseOriginalAttr}, document.getElementById('${descIdGrupo}').value)">
-              ${_optsCategoria(tipo, sugestao)}
+          ${sugHtml}
+          <div class="cat-row-ctl">
+            <select id="${selIdGrupo}" class="form-select" onchange="categorizarGrupo('${itensGrupo}', this.value, ${baseOriginalAttr}, document.getElementById('${descIdGrupo}').value)">
+              <option value="">${sugestao ? "Outra categoria…" : "Escolher categoria…"}</option>
+              ${_optsCategoria(tipo, "")}
             </select>
-            <button class="btn-primary" style="padding:6px 14px;font-size:12px;white-space:nowrap" onclick="categorizarGrupo('${itensGrupo}', document.getElementById('${selIdGrupo}').value, ${baseOriginalAttr}, document.getElementById('${descIdGrupo}').value)">OK</button>
           </div>
+          <div class="cat-row-val">${fmt(total)}</div>
+          <button class="cat-more" title="Abrir transação por transação" onclick="const d=this.parentNode.parentNode.querySelector('details');d.open=!d.open">⋯</button>
         </div>
-        <div style="display:flex;flex-direction:column;gap:6px">
+        <details class="cat-detail"><summary></summary>
           ${itens.map(i => {
             const selIdLinha = `catlinha-${i.id}`;
             const descIdLinha = `desclinha-${i.id}`;
             return `
-            <div style="display:flex;flex-direction:column;gap:4px;padding:6px 0;border-top:1px solid var(--border)">
-              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px">
-                <span class="text-3">${_fmtDataBR(i.data)} · ${i.cartao_nome || i.conta_nome || ''}</span>
+            <div class="cat-line">
+              <div class="cat-line-head">
+                <span class="text-3">${_fmtDataBR(i.data)} · ${i.cartao_nome || i.conta_nome || ""}</span>
                 <span class="font-mono">${fmt(i.valor)}</span>
               </div>
               <input id="${descIdLinha}" class="form-input" style="font-size:12px;padding:4px 8px" value="${_escHtml(i.descricao)}">
-              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <div class="cat-line-ctls">
                 <select id="${selIdLinha}" class="form-select" style="max-width:170px;font-size:12px" onchange="categorizarLinha('${i.id}', this.value, document.getElementById('${descIdLinha}').value)">
-                  ${_optsCategoria(tipo, '')}
+                  <option value="">Categoria…</option>
+                  ${_optsCategoria(tipo, "")}
                 </select>
-                <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="categorizarLinha('${i.id}', document.getElementById('${selIdLinha}').value, document.getElementById('${descIdLinha}').value)">OK</button>
-                ${i.origem === 'conta' ? (() => {
+                ${i.origem === "conta" ? (() => {
                   const selIdTransf = `translinha-${i.id}`;
                   const selIdCartao = `fatcartao-${i.id}`;
                   const selIdMes = `fatmes-${i.id}`;
                   // Chute de mês: mesmo mês/ano da data do pagamento — não usa
                   // getVencimentoIdx (feito pra classificar COMPRA por
-                  // fechamento, não pagamento) porque o pagamento acontece
-                  // perto do vencimento, não do fechamento. É só o valor
-                  // inicial do seletor, sempre trocável antes de confirmar.
-                  const [ay, am] = i.data.split('-').map(Number);
+                  // fechamento, não pagamento). É só o valor inicial.
+                  const [ay, am] = i.data.split("-").map(Number);
                   const mesChute = `${_MES_ABREV[am - 1]}-${ay}`;
                   return `
                 <select id="${selIdTransf}" class="form-select" style="max-width:150px;font-size:11px">
                   <option value="">🔄 Transferência...</option>
                   ${_optsContasTransferencia(i.conta_nome)}
                 </select>
-                <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="marcarComoTransferencia('${i.id}', document.getElementById('${selIdTransf}').value)">OK</button>
+                <button class="btn-secondary" style="padding:5px 10px;font-size:11px;white-space:nowrap" onclick="marcarComoTransferencia('${i.id}', document.getElementById('${selIdTransf}').value)">OK</button>
                 <select id="${selIdCartao}" class="form-select" style="max-width:130px;font-size:11px">
                   ${_optsCartoes()}
                 </select>
                 <select id="${selIdMes}" class="form-select" style="max-width:100px;font-size:11px">
                   ${_optsMeses(mesChute)}
                 </select>
-                <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="marcarComoFatura('${i.id}', document.getElementById('${selIdCartao}').value, document.getElementById('${selIdMes}').value)">📋 Fatura</button>`;
-                })() : ''}
+                <button class="btn-secondary" style="padding:5px 10px;font-size:11px;white-space:nowrap" onclick="marcarComoFatura('${i.id}', document.getElementById('${selIdCartao}').value, document.getElementById('${selIdMes}').value)">📋 Fatura</button>`;
+                })() : ""}
               </div>
-            </div>
-          `;
+            </div>`;
           }).join('')}
-        </div>
-      </div>
-    `;
+        </details>
+      </div>`;
   }).join('');
+
+  // Cabeçalho e botão de lote — montados DEPOIS dos grupos, porque dependem de
+  // quantos grupos têm sugestão pronta.
+  const comSug = gruposOrdenados.filter(([base]) => sugestoes.has(base));
+  const nItensSug = comSug.reduce((s, g) => s + g[1].length, 0);
+  state._catSugestoes = comSug.map(g => ({
+    base: g[0],
+    categoria: sugestoes.get(g[0]),
+    itens: g[1].map(i => ({ id: i.id, descricao: i.descricao }))
+  }));
+
+  const cEl = document.getElementById('categ-count');
+  const sEl = document.getElementById('categ-sub');
+  const bEl = document.getElementById('categ-aplicar-todas');
+  if (cEl) cEl.textContent = pendentes.length;
+  if (sEl) sEl.textContent = 'em ' + gruposOrdenados.length + ' ' + (gruposOrdenados.length === 1 ? 'grupo' : 'grupos') + ' · ' + comSug.length + ' com sugestão pronta';
+  if (bEl) {
+    bEl.style.display = comSug.length ? 'block' : 'none';
+    bEl.textContent = 'Aplicar ' + comSug.length + ' ' + (comSug.length === 1 ? 'sugestão' : 'sugestões') + ' · ' + nItensSug + ' ' + (nItensSug === 1 ? 'transação' : 'transações');
+  }
+}
+
+// Aplica em sequência (não em paralelo) a sugestão de cada grupo que tem uma.
+// Sequencial de propósito: categorizarGrupo escreve no Supabase e recarrega o
+// estado; disparar tudo junto geraria recargas concorrentes sobre o mesmo dado.
+async function aplicarTodasSugestoes() {
+  const lista = state._catSugestoes || [];
+  if (!lista.length) return;
+  const btn = document.getElementById('categ-aplicar-todas');
+  const rotulo = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Aplicando...'; }
+  let ok = 0;
+  for (const g of lista) {
+    try {
+      await categorizarGrupo(JSON.stringify(g.itens), g.categoria, g.base, g.base);
+      ok++;
+    } catch (e) { console.error('aplicarTodasSugestoes', g.base, e); }
+  }
+  if (btn) { btn.disabled = false; btn.textContent = rotulo; }
+  showToast(ok + ' ' + (ok === 1 ? 'grupo' : 'grupos') + ' categorizado' + (ok === 1 ? '' : 's') + ' ✅');
+  await renderCategorizacao();
 }
 
 // `descricao`, quando informada, sobrescreve o texto original — permite
@@ -6597,35 +6928,8 @@ function closeIfOverlay(e, id) {
 // ════════════════════════════════════════════════════════════════════════════
 // THEME
 // ════════════════════════════════════════════════════════════════════════════
-function applyTheme(theme) {
-  document.documentElement.dataset.theme = theme;
-  const isLight = theme === 'light';
-  // Sidebar icons
-  const moonD = document.getElementById('theme-icon-moon');
-  const sunD  = document.getElementById('theme-icon-sun');
-  const lbl   = document.getElementById('theme-toggle-label');
-  if (moonD) moonD.style.display = isLight ? 'none' : '';
-  if (sunD)  sunD.style.display  = isLight ? '' : 'none';
-  if (lbl)   lbl.textContent     = isLight ? 'Tema Escuro' : 'Tema Claro';
-  // Mobile nav icons
-  const moonM = document.getElementById('theme-icon-moon-m');
-  const sunM  = document.getElementById('theme-icon-sun-m');
-  if (moonM) moonM.style.display = isLight ? 'none' : '';
-  if (sunM)  sunM.style.display  = isLight ? '' : 'none';
-}
+// Tema escuro removido a pedido do usuário — o app tem um tema só (claro).
 
-function toggleTheme() {
-  const current = document.documentElement.dataset.theme || 'dark';
-  const next = current === 'dark' ? 'light' : 'dark';
-  localStorage.setItem('theme', next);
-  applyTheme(next);
-}
-
-// Apply saved theme immediately (before render to avoid flash)
-(function() {
-  const saved = localStorage.getItem('theme');
-  if (saved) applyTheme(saved);
-})();
 
 // START
 // ════════════════════════════════════════════════════════════════════════════
