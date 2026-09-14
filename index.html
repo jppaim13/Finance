@@ -2172,7 +2172,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-12g';
+const APP_VERSION = '2026-09-13a';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -5398,16 +5398,39 @@ async function autoSincronizarEImportar() {
     const horasDesdeUltimoSync = ultimoSync?.terminado_em
       ? (Date.now() - new Date(ultimoSync.terminado_em).getTime()) / 3600000
       : Infinity;
-    if (horasDesdeUltimoSync < INTERVALO_MIN_SYNC_HORAS) return; // sincronizado recentemente, nada a fazer
 
-    const syncResult = await sincronizarPluggy({ silencioso: true });
-    if (!syncResult.ok) {
-      showToast(`Sincronização automática falhou ❌ ${syncResult.erro} — use "Sincronizar agora" pra tentar de novo`);
-      return;
+    if (horasDesdeUltimoSync >= INTERVALO_MIN_SYNC_HORAS) {
+      const syncResult = await sincronizarPluggy({ silencioso: true });
+      if (!syncResult.ok) {
+        showToast(`Sincronização automática falhou ❌ ${syncResult.erro} — use "Sincronizar agora" pra tentar de novo`);
+      } else {
+        await importarPendentes(null, { silencioso: true });
+      }
     }
-    await importarPendentes(null, { silencioso: true });
   } catch (e) {
     console.error('autoSincronizarEImportar', e);
+  }
+  await _irParaCategorizacaoSePendente();
+}
+
+// Ao abrir o app, leva direto pra Categorização se houver pendente — não só
+// o que esta rodada trouxe, qualquer backlog já existente (achado real
+// 13/09/2026: 8 despesas genuínas ficaram ~36h sem categorizar porque nada
+// avisava, a não ser abrir a tela de Sincronização/Categorização por conta
+// própria — ver Decisões no CLAUDE.md). Só desvia se ainda estiver no
+// Dashboard (a página de chegada padrão ao abrir o app) — nunca interrompe
+// o usuário no meio de outra tela, já que isto roda em segundo plano
+// (fire-and-forget) depois do app já estar visível.
+async function _irParaCategorizacaoSePendente() {
+  try {
+    if (paginaAtiva() !== 'dashboard') return;
+    const { count, error } = await _sb.from('extrato')
+      .select('id', { count: 'exact', head: true })
+      .eq('origem_dado', 'pluggy')
+      .eq('categoria', 'nao_classificado');
+    if (!error && count > 0) navigate('categorizacao');
+  } catch (e) {
+    console.error('_irParaCategorizacaoSePendente', e);
   }
 }
 
