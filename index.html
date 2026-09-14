@@ -2174,7 +2174,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-14c';
+const APP_VERSION = '2026-09-14d';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -2811,7 +2811,7 @@ async function loadData() {
   // Busca paralela de todos os dados necessários
   const [contasData, cartoesData, lanFixData, extratoMesData,
          allExtratoData, allTransfData, repassesData, catsData,
-         lancRealizadosData] = await Promise.all([
+         lancRealizadosData, pluggyFaturasData, pluggyContasData] = await Promise.all([
     sbSelect('contas',   q => q.order('criado_em')),
     sbSelect('cartoes',  q => q.order('criado_em')),
     sbSelect('lancamentos', q => q.eq('ativo', true)),
@@ -2821,7 +2821,19 @@ async function loadData() {
     sbSelect('repasses', q => q.order('criado_em')),
     Promise.resolve(undefined),
     sbSelect('lancamentos_realizados', q => q.order('ano').order('mes')),
+    sbSelect('pluggy_faturas', q => q.order('due_date')),
+    sbSelect('pluggy_contas', q => q.eq('ignorar', false).not('cartao_nome', 'is', null)),
   ]);
+  // Usado por renderFaturas() pra preferir o vencimento REAL de cada
+  // fatura (quando a Pluggy já sincronizou) em vez do dia calculado a
+  // partir de `cartoes.vencimento` — achado 14/09/2026 (ver Decisões no
+  // CLAUDE.md): só 2 dos 5 conectores realmente ajustam pra dia útil
+  // quando o dia cadastrado cai num fim de semana/feriado, os outros 3
+  // mantêm o dia literal. Não dava pra generalizar uma regra de calendário
+  // sem errar pra 3 dos 5 cartões — usar o dado real da Pluggy quando
+  // existir evita ter que acertar essa regra por conector.
+  state._pluggyFaturas = pluggyFaturasData || [];
+  state._pluggyContaPorCartao = new Map((pluggyContasData || []).map(p => [p.cartao_nome, p.pluggy_account_id]));
   // Só os CONFIRMADOS suprimem a ocorrência fantasma em calcularSaldo()/
   // calcularResumo() — os pendentes de confirmação (mês sem
   // pluggy_descricao_ref ainda aprendida) continuam contando normal até o
@@ -3703,10 +3715,17 @@ function renderFaturas() {
   el.innerHTML = ordenados.map(({ c, i }) => {
     const valor = faturas[c.nome] || 0;
 
-    // Vencimento: dia do vencimento no mês SELECIONADO (que é o mês de vencimento).
-    // Trava no último dia válido do mês — ex: vencimento dia 31 numa fatura
-    // de fevereiro não pode estourar pra março.
-    const dueDate = calcularDataVencimento(anoMes, mesNum, c.vencimento);
+    // Vencimento: prefere a data REAL que a Pluggy já sincronizou pra essa
+    // competência (quando existir) em vez de calcular a partir do dia
+    // cadastrado — achado 14/09/2026 (ver Decisões no CLAUDE.md): só 2 dos
+    // 5 conectores cobertos ajustam pra dia útil quando o dia cadastrado
+    // cai num fim de semana/feriado, os outros 3 mantêm o dia literal. Sem
+    // regra de calendário confiável pra generalizar, usar o dado real
+    // evita esse erro por completo pros cartões cobertos. Sem isso (cartão
+    // não coberto, ou mês ainda sem fatura sincronizada), cai no cálculo de
+    // sempre — trava no último dia válido do mês (ex: vencimento dia 31
+    // numa fatura de fevereiro não pode estourar pra março).
+    const dueDate = _vencimentoRealPluggy(c.nome, anoMes, mesNum) || calcularDataVencimento(anoMes, mesNum, c.vencimento);
     const dueFmt  = `${String(dueDate.getDate()).padStart(2,'0')}/${String(dueDate.getMonth()+1).padStart(2,'0')}/${dueDate.getFullYear()}`;
     const dueISO  = formatarData(dueDate);
 
@@ -5536,6 +5555,28 @@ function _pluggyCompraChave(pt) {
   return `${pt.descricao}|${Math.round(Number(pt.valor) * 100)}|${cc.totalInstallments}|${compraMes}`;
 }
 
+// Vencimento REAL de uma fatura, quando a Pluggy já a sincronizou pra essa
+// competência (`state._pluggyFaturas`, carregado em `loadData()`) — usado
+// por `renderFaturas()` em vez de `calcularDataVencimento()` (dia do mês
+// cadastrado) sempre que disponível. Ver Decisões no CLAUDE.md: só 2 dos 5
+// conectores cobertos ajustam de verdade pra dia útil (fim de semana ou
+// feriado), os outros 3 mantêm o dia literal mesmo caindo num sábado/
+// domingo — sem regra de calendário confiável que sirva pra todos, o dado
+// real evita esse erro por completo. Não distingue fatura aberta/fechada
+// de propósito (o `due_date` em si já é o vencimento real, esteja a
+// fatura fechada ou ainda em aberto) — devolve null quando o cartão não é
+// coberto ou essa competência ainda não tem fatura sincronizada.
+function _vencimentoRealPluggy(cartaoNome, ano, mes) {
+  const accountId = state._pluggyContaPorCartao?.get(cartaoNome);
+  if (!accountId) return null;
+  const fatura = (state._pluggyFaturas || []).find(f => {
+    if (f.pluggy_account_id !== accountId || !f.due_date) return false;
+    const [ay, am] = f.due_date.split('-').map(Number);
+    return ay === ano && am === mes;
+  });
+  return fatura ? parseData(fatura.due_date) : null;
+}
+
 function _diffDias(dataStr1, dataStr2) {
   return Math.abs((parseData(dataStr1) - parseData(dataStr2)) / 86400000);
 }
@@ -5974,11 +6015,17 @@ async function carregarPluggyContas() {
   const el = document.getElementById('pluggy-contas-list');
   if (!el || !_sb) return;
 
-  const [{ data: contas, error }, { data: items }, { data: ultimoLog }, { data: faturas }] = await Promise.all([
+  const [{ data: contas, error }, { data: items }, { data: ultimoLog }, { data: faturas }, { data: transacoesRecentes }] = await Promise.all([
     _sb.from('pluggy_contas').select('*').order('nome'),
     _sb.from('pluggy_items').select('*'),
     _sb.from('pluggy_sync_log').select('*').order('iniciado_em', { ascending: false }).limit(1).maybeSingle(),
     _sb.from('pluggy_faturas').select('*'),
+    // Usado só pra estimar a fatura AINDA EM ABERTO (ver `valorAberto`
+    // abaixo) — janela de 45 dias cobre qualquer ciclo mensal de cartão
+    // com folga, sem trazer o histórico inteiro.
+    _sb.from('pluggy_transacoes').select('pluggy_account_id, data, valor')
+      .eq('tipo', 'DEBIT')
+      .gte('data', formatarData(new Date(Date.now() - 45 * 86400000))),
   ]);
 
   const statusEl = document.getElementById('pluggySyncStatus');
@@ -6034,7 +6081,7 @@ async function carregarPluggyContas() {
 
   el.innerHTML = contas.map(c => {
     const banco = bancoMap[c.pluggy_item_id] || '';
-    let saldoCalc = null, diff = null, diffIndefinida = false;
+    let saldoCalc = null, diff = null, diffIndefinida = false, valorAberto = null, valorAbertoOrigem = null;
 
     if (!c.ignorar && c.conta_nome) {
       const contaApp = [...(state.contas || []), ...(state.caixinhas || [])].find(x => x.nome === c.conta_nome);
@@ -6062,6 +6109,49 @@ async function carregarPluggyContas() {
         diff = Number(faturaReal.total_amount || 0) - faturaAtual;
       } else {
         diffIndefinida = true; // sem fatura vencida da Pluggy pra essa competência ainda
+
+        // Enquanto a Pluggy não publica o total oficial (fatura fechada)
+        // pra essa competência, preenche com o melhor dado disponível em
+        // vez de deixar vazio — pedido do usuário 14/09/2026 (ver Decisões
+        // no CLAUDE.md). NUNCA substitui a "Diferença" acima (que exige
+        // fatura FECHADA, decisão deliberada da Fase 1.6) — é um valor à
+        // parte, sempre rotulado como não-oficial. "Corrige sozinho": não
+        // há nada gravado pra corrigir — a cada render, esta conta só
+        // aparece enquanto `faturaReal` continuar nulo; assim que a Pluggy
+        // publicar a fatura fechada, o bloco acima passa a rodar e este
+        // aqui some sozinho, sem nenhum passo de reconciliação.
+        //
+        // Preferência 1: a Pluggy já publicou um total pra essa competência
+        // mesmo com a fatura ainda ABERTA (comportamento observado no
+        // Inter, que atualiza `total_amount` continuamente antes do
+        // vencimento passar) — dado real do emissor, não é estimativa.
+        const faturaAberta = (faturas || []).find(f => {
+          if (f.pluggy_account_id !== c.pluggy_account_id || !f.due_date) return false;
+          const [ay, am] = f.due_date.split('-').map(Number);
+          return ay === anoComp && am === mesComp;
+        });
+        if (faturaAberta) {
+          valorAberto = Number(faturaAberta.total_amount || 0);
+          valorAbertoOrigem = 'pluggy';
+        } else {
+          // Preferência 2: sem nenhum registro de fatura ainda (os outros
+          // 4 cartões antes do ciclo fechar) — estima somando compras
+          // (DEBIT) desde o último fechamento CONHECIDO. Precisão medida
+          // e documentada como variável por conector (ver Decisões no
+          // CLAUDE.md, 14/09/2026: bate exato no C6, erra em Mercado Pago
+          // e XP) — por isso SEMPRE rotulado "estimado", nunca tratado
+          // como o valor real.
+          const fechadas = (faturas || [])
+            .filter(f => f.pluggy_account_id === c.pluggy_account_id && f.due_date && f.due_date < hojeStr && f.closing_date)
+            .sort((a, b) => b.due_date.localeCompare(a.due_date));
+          const ultimaFechada = fechadas[0];
+          if (ultimaFechada) {
+            valorAberto = (transacoesRecentes || [])
+              .filter(t => t.pluggy_account_id === c.pluggy_account_id && t.data > ultimaFechada.closing_date)
+              .reduce((s, t) => s + Number(t.valor || 0), 0);
+            valorAbertoOrigem = 'estimado';
+          }
+        }
       }
     }
 
@@ -6109,6 +6199,12 @@ async function carregarPluggyContas() {
               ? '<span class="text-xs text-3" style="text-align:right">— sem fatura vencida da Pluggy<br>pra essa competência ainda</span>'
               : `<span class="font-mono" style="color:${diffColor}">${fmt(diff)}</span>`}
           </div>
+          ${valorAberto !== null ? `
+            <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:13px">
+              <span class="text-2">Fatura em aberto${valorAbertoOrigem === 'estimado' ? ' (estimado)' : ' (Pluggy)'}</span>
+              <span class="font-mono" style="color:var(--text-3)">${fmt(valorAberto)}</span>
+            </div>
+          ` : ''}
         ` : c.ignorar
           ? ''
           : '<div class="text-xs text-3" style="margin-top:8px">Sem mapeamento — selecione uma conta ou cartão acima</div>'}
