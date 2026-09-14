@@ -147,6 +147,17 @@ Deno.serve(async (req) => {
   let processadas = 0;
   const atualizadas = 0;
   const errosPorConta: string[] = [];
+  // Diagnóstico (14/09/2026, ver Decisões no CLAUDE.md): achado real de um
+  // buraco de ~3 semanas nas transações do Inter que sobreviveu a uma
+  // reconexão do usuário sem se resolver — a sincronização de conta/saldo/
+  // fatura continuava "ok" porque `/accounts` respondia normal, mas nunca
+  // checávamos a SAÚDE do item em si (`GET /items/{id}`, status/
+  // executionStatus). Gravado em `erro` mesmo numa sincronização bem-
+  // sucedida (status continua 'ok', a tela de Sincronização só mostra
+  // `erro` quando status é 'erro'/'parcial' — isto fica invisível pro
+  // usuário, só consultável via SQL) — não é erro de verdade, é
+  // diagnóstico barato que já devia existir.
+  const itemStatuses: string[] = [];
 
   try {
     const apiKey = await pluggyAuth(clientId, clientSecret);
@@ -159,6 +170,15 @@ Deno.serve(async (req) => {
       .from("pluggy_items").select("*").eq("app_id", app.id);
 
     for (const item of items ?? []) {
+      try {
+        const info = await get(`${PLUGGY}/items/${item.pluggy_item_id}`, apiKey);
+        itemStatuses.push(
+          `${item.banco}=${info.status}/${info.executionStatus}` +
+          (info.lastUpdatedAt ? `@${String(info.lastUpdatedAt).slice(0, 16)}` : "")
+        );
+      } catch (eItem) {
+        itemStatuses.push(`${item.banco}=falha ao consultar item: ${String(eItem)}`);
+      }
       const contas = await get(
         `${PLUGGY}/accounts?itemId=${item.pluggy_item_id}`, apiKey);
 
@@ -333,10 +353,12 @@ Deno.serve(async (req) => {
     }
 
     const status = errosPorConta.length ? "parcial" : "ok";
+    const erroFinal = [itemStatuses.join(" | "), errosPorConta.join(" | ")]
+      .filter(Boolean).join(" || ") || null;
     await admin.from("pluggy_sync_log").update({
       terminado_em: new Date().toISOString(),
       status, criadas: processadas, atualizadas,
-      erro: errosPorConta.length ? errosPorConta.join(" | ") : null,
+      erro: erroFinal,
     }).eq("id", log!.id);
 
     return new Response(JSON.stringify({ ok: true, processadas, erros: errosPorConta }), {
@@ -344,9 +366,10 @@ Deno.serve(async (req) => {
     });
 
   } catch (e) {
+    const erroFinal = [itemStatuses.join(" | "), String(e)].filter(Boolean).join(" || ");
     await admin.from("pluggy_sync_log").update({
       terminado_em: new Date().toISOString(),
-      status: "erro", erro: String(e), criadas: processadas, atualizadas,
+      status: "erro", erro: erroFinal, criadas: processadas, atualizadas,
     }).eq("id", log!.id);
 
     return new Response(JSON.stringify({ ok: false, erro: String(e) }), {
