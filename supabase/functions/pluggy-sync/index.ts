@@ -212,9 +212,24 @@ Deno.serve(async (req) => {
           }, { onConflict: "pluggy_account_id" });
 
           // --- 3. transações, incremental por data -------------------------
+          // BUG REAL corrigido aqui (14/09/2026, ver Decisões no CLAUDE.md):
+          // esta consulta pegava a MAIOR `data` salva pra essa conta, sem
+          // excluir transações FUTURAS — a Pluggy pré-carrega parcelas de um
+          // parcelamento já comprometido meses à frente (ex: Inter reporta
+          // assinaturas recorrentes com `data` até abril/2027). Sem o filtro
+          // `<= hoje`, a "última transação" virava uma parcela futura, o
+          // `dateFrom` calculado ficava também no futuro, e toda sincronização
+          // seguinte pedia a Pluggy "transações a partir de 2027" — pulando
+          // por completo o passado recente (achado real: ~3 semanas de
+          // agosto e todo o mês de setembro do Inter Prime nunca mais foram
+          // buscadas, mesmo com o usuário confirmando ver essas transações
+          // normalmente no Meu Pluggy — o dado nunca esteve indisponível do
+          // lado da Pluggy, só nunca foi pedido de novo por essa conta).
+          const hojeStr = new Date().toISOString().slice(0, 10);
           const { data: ultima } = await admin
             .from("pluggy_transacoes")
             .select("data").eq("pluggy_account_id", c.id)
+            .lte("data", hojeStr)
             .order("data", { ascending: false }).limit(1).maybeSingle();
 
           // 30 dias de sobreposição: PENDING vira POSTED e valores mudam
