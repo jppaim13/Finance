@@ -108,27 +108,36 @@ Deno.serve(async (req) => {
   // Guarda contra sincronizações sobrepostas. O botão no front já fica
   // desabilitado durante a chamada, mas isso só cobre clique duplo na MESMA
   // aba — reload de página ou aba duplicada durante uma sincronização em
-  // andamento não passa por ali. Recusa iniciar se já existir um log sem
-  // status (em andamento) recente pra esse app; 5 min de janela porque uma
-  // execução que travou de verdade (crash, deploy no meio) não deve travar
-  // sincronizações futuras pra sempre.
-  const { data: emAndamento } = await admin
+  // andamento não passa por ali.
+  //
+  // CORRIGIDO (14/09/2026, ver Decisões no CLAUDE.md): a versão anterior
+  // fazia um SELECT pra checar "já tem uma em andamento?" e só DEPOIS um
+  // INSERT pra marcar a própria execução — não atômico, mesmo padrão que
+  // duplicou 8 despesas reais no guard equivalente da importação (client-side).
+  // Aqui nunca causou dano visível (o upsert do espelho é idempotente por
+  // pluggy_id — uma segunda execução concorrente só reprocessaria o mesmo
+  // dado, sem duplicar nada), mas era o mesmo bug por sorte de timing, não
+  // por desenho à prova de corrida. Migration 015 criou um índice único
+  // parcial em `pluggy_sync_log (app_id) where tipo='sync' and status is
+  // null` — agora o próprio Postgres recusa atomicamente a segunda tentativa
+  // de INSERT "em andamento", a checagem abaixo só libera uma execução
+  // travada de verdade (crash, deploy no meio) antes de tentar.
+  await admin
     .from("pluggy_sync_log")
-    .select("id, iniciado_em")
+    .update({ status: "erro", erro: "travada (>5min) — liberada por execução seguinte", terminado_em: new Date().toISOString() })
     .eq("app_id", app.id)
+    .eq("tipo", "sync")
     .is("status", null)
-    .gte("iniciado_em", new Date(Date.now() - 5 * 60 * 1000).toISOString())
-    .limit(1)
-    .maybeSingle();
-  if (emAndamento) {
+    .lt("iniciado_em", new Date(Date.now() - 5 * 60 * 1000).toISOString());
+
+  const { data: log, error: erroLog } = await admin
+    .from("pluggy_sync_log").insert({ app_id: app.id }).select().single();
+  if (erroLog) {
     return new Response(
-      JSON.stringify({ erro: `já existe uma sincronização em andamento desde ${emAndamento.iniciado_em}` }),
+      JSON.stringify({ erro: "já existe uma sincronização em andamento pra este app" }),
       { status: 409, headers: { ...cors, "Content-Type": "application/json" } },
     );
   }
-
-  const { data: log } = await admin
-    .from("pluggy_sync_log").insert({ app_id: app.id }).select().single();
 
   // `atualizadas` fica sempre 0 de propósito (ver comentário mais abaixo,
   // onde `processadas` é somado) — não dá pra distinguir insert de update
