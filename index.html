@@ -2172,7 +2172,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-14a';
+const APP_VERSION = '2026-09-14b';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -5598,25 +5598,38 @@ function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
 // Guard de concorrência da importação — o upsert do espelho (pluggy_transacoes)
 // é idempotente por pluggy_id, mas a inserção em extrato não tem essa
 // garantia. Duas rodadas simultâneas (dois aparelhos abertos ao mesmo tempo,
-// ou reload no meio de uma rodada) podem inserir a mesma transação duas
-// vezes antes de qualquer uma marcar transacao_id. Mesmo padrão de guard já
-// usado na Edge Function pra sincronização (janela de 5min pra uma execução
-// travada não bloquear pra sempre) — ver Decisões no CLAUDE.md.
+// reload no meio de uma rodada, ou a automação ao abrir o app cruzando com
+// um clique manual em "Importar pendentes" logo em seguida) podem inserir
+// a mesma transação duas vezes antes de qualquer uma marcar transacao_id.
+//
+// CORRIGIDO (14/09/2026, ver Decisões no CLAUDE.md): a versão anterior daqui
+// fazia um SELECT pra checar "já tem uma em andamento?" e só DEPOIS um
+// INSERT pra marcar a própria execução como em andamento — duas operações
+// separadas, não atômicas. Duas chamadas quase simultâneas passavam pelo
+// SELECT antes que qualquer uma terminasse o INSERT, e as duas seguiam em
+// frente ao mesmo tempo — foi exatamente isso que duplicou 8 despesas reais
+// nessa data. Migration 014 criou um índice único parcial em
+// `pluggy_sync_log (app_id) where tipo='import' and status is null` — agora
+// é o próprio Postgres que recusa atomicamente a segunda tentativa de
+// INSERT, não importa o quão perto as chamadas cheguem uma da outra.
 async function _importGuardIniciar() {
   const { data: app } = await _sb.from('pluggy_apps').select('id').limit(1).maybeSingle();
   if (!app) return { logId: null, appId: null }; // sem app cadastrado, sem guard possível
 
-  const { data: emAndamento } = await _sb.from('pluggy_sync_log')
-    .select('id')
+  // Libera uma execução que travou de verdade (crash, deploy no meio) antes
+  // de tentar começar — mesma janela de tolerância de sempre (5min). Sem
+  // isso, o índice único da migration 014 bloquearia pra sempre depois de
+  // uma execução que nunca chegou a marcar status='ok'/'erro'.
+  await _sb.from('pluggy_sync_log')
+    .update({ status: 'erro', erro: 'travada (>5min) — liberada por execução seguinte', terminado_em: new Date().toISOString() })
     .eq('app_id', app.id)
     .eq('tipo', 'import')
     .is('status', null)
-    .gte('iniciado_em', new Date(Date.now() - 5 * 60 * 1000).toISOString())
-    .limit(1).maybeSingle();
-  if (emAndamento) return { logId: 'ocupado', appId: app.id };
+    .lt('iniciado_em', new Date(Date.now() - 5 * 60 * 1000).toISOString());
 
-  const { data: log } = await _sb.from('pluggy_sync_log')
+  const { data: log, error } = await _sb.from('pluggy_sync_log')
     .insert({ app_id: app.id, tipo: 'import' }).select().single();
+  if (error) return { logId: 'ocupado', appId: app.id }; // índice único recusou — outra execução venceu a corrida
   return { logId: log?.id || null, appId: app.id };
 }
 
