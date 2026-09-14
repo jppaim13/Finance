@@ -158,6 +158,7 @@ Deno.serve(async (req) => {
   // usuário, só consultável via SQL) — não é erro de verdade, é
   // diagnóstico barato que já devia existir.
   const itemStatuses: string[] = [];
+  const diagTransacoes: string[] = [];
 
   try {
     const apiKey = await pluggyAuth(clientId, clientSecret);
@@ -242,8 +243,21 @@ Deno.serve(async (req) => {
           let proxima: string | null =
             `${baseTransacoes}?accountId=${c.id}&dateFrom=${desde}`;
 
+          // Diagnóstico (14/09/2026, ver Decisões no CLAUDE.md): achado real
+          // de um buraco nas transações do Inter que o usuário confirma
+          // enxergar normalmente no Meu Pluggy — ou seja, o dado existe do
+          // lado da Pluggy, mas não está chegando pela API de client
+          // credentials que esta função usa. Registra quantas transações a
+          // API efetivamente devolveu por conta nesta rodada, pra distinguir
+          // "API não devolveu nada" de "devolveu e algo no nosso código
+          // descartou" antes de qualquer outra hipótese.
+          let recebidasNestaConta = 0;
+          let totalReportadoApi: number | null = null;
+
           while (proxima) {
             const pg = await get(proxima, apiKey);
+            recebidasNestaConta += (pg.results ?? []).length;
+            if (typeof pg.total === "number") totalReportadoApi = pg.total;
 
             // Upsert em LOTE (uma chamada por página, não uma por transação).
             // Antes eram ~1.858 round-trips numa sincronização só (5 bancos) —
@@ -296,6 +310,10 @@ Deno.serve(async (req) => {
             // entre conectores.
             proxima = pg.next ? new URL(pg.next, baseTransacoes).href : null;
           }
+          diagTransacoes.push(
+            `${c.name}: dateFrom=${desde}, recebidas=${recebidasNestaConta}` +
+            (totalReportadoApi !== null ? `, total_api=${totalReportadoApi}` : "")
+          );
 
           // --- 4. faturas reais do emissor (Fase 1.6, só contas de cartão) --
           // GET /bills?accountId=...&page=N — paginação por número de página
@@ -353,7 +371,7 @@ Deno.serve(async (req) => {
     }
 
     const status = errosPorConta.length ? "parcial" : "ok";
-    const erroFinal = [itemStatuses.join(" | "), errosPorConta.join(" | ")]
+    const erroFinal = [itemStatuses.join(" | "), diagTransacoes.join(" | "), errosPorConta.join(" | ")]
       .filter(Boolean).join(" || ") || null;
     await admin.from("pluggy_sync_log").update({
       terminado_em: new Date().toISOString(),
@@ -366,7 +384,7 @@ Deno.serve(async (req) => {
     });
 
   } catch (e) {
-    const erroFinal = [itemStatuses.join(" | "), String(e)].filter(Boolean).join(" || ");
+    const erroFinal = [itemStatuses.join(" | "), diagTransacoes.join(" | "), String(e)].filter(Boolean).join(" || ");
     await admin.from("pluggy_sync_log").update({
       terminado_em: new Date().toISOString(),
       status: "erro", erro: erroFinal, criadas: processadas, atualizadas,
