@@ -2172,7 +2172,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-13a';
+const APP_VERSION = '2026-09-14a';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -5403,10 +5403,19 @@ async function autoSincronizarEImportar() {
       const syncResult = await sincronizarPluggy({ silencioso: true });
       if (!syncResult.ok) {
         showToast(`Sincronização automática falhou ❌ ${syncResult.erro} — use "Sincronizar agora" pra tentar de novo`);
-      } else {
-        await importarPendentes(null, { silencioso: true });
       }
     }
+    // Importação roda SEMPRE que o app abre, independente do intervalo do
+    // sync acima — achado real 13-14/09/2026 (ver Decisões no CLAUDE.md):
+    // um clique manual em "Sincronizar agora" (que ignora o intervalo de
+    // propósito) reseta o relógio de "última sincronização", e como esse
+    // mesmo relógio também controlava se a importação rodava, a importação
+    // ficou travada por dias mesmo com sincronizações acontecendo — nenhum
+    // erro, só nada de novo nunca chegando no extrato. A importação já tem
+    // seu próprio guard de concorrência (`_importGuardIniciar`, janela de
+    // 5min) — não precisa do intervalo do sync pra ser segura, e sem nada
+    // pendente ela só confirma "nenhuma novidade" rápido.
+    await importarPendentes(null, { silencioso: true });
   } catch (e) {
     console.error('autoSincronizarEImportar', e);
   }
