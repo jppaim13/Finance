@@ -999,6 +999,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 .fat-body { padding: 4px 18px 14px; background: var(--bg-hover); border-top: 1px solid var(--border); }
 .fat-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
 .fat-item:last-child { border-bottom: none; }
+.fat-item-data { width: 38px; flex-shrink: 0; color: var(--text-3); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .fat-item-desc { flex: 1; min-width: 0; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fat-item-val { font-family: var(--font-mono); color: var(--text); flex-shrink: 0; font-variant-numeric: tabular-nums; }
 
@@ -2175,7 +2176,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-19b';
+const APP_VERSION = '2026-09-19c';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -3789,24 +3790,29 @@ function renderFaturas() {
         const vIdx = getInstVencIdx(lan, n, fec, ven);
         if (vIdx === mesIdx) {
           const parc = tipo === 'parcelado' ? ` (${n+1}/${lan.parcelas})` : '';
-          itensLan.push({ id: lan.id, descricao: lan.descricao + parc, valor: Number(lan.valor), fonte: 'lancamentos' });
+          const occIdx = startIdx + n - 1, occAno = Math.floor(occIdx / 12), occMes = occIdx % 12;
+          const occDia = Math.min(Number(lan.dia_ini || 1), new Date(occAno, occMes + 1, 0).getDate());
+          const occData = `${occAno}-${String(occMes + 1).padStart(2,'0')}-${String(occDia).padStart(2,'0')}`;
+          itensLan.push({ id: lan.id, data: occData, descricao: lan.descricao + parc, valor: Number(lan.valor), fonte: 'lancamentos' });
           break;
         }
         if (vIdx > mesIdx) break;
       }
     }
 
-    const itens = [...itensExtrato, ...itensLan];
+    const itens = [...itensExtrato, ...itensLan].sort((a, b) => String(a.data || '').localeCompare(String(b.data || '')));
     const somaItens = itens.reduce((s, t) => s + t.valor, 0);
 
     const itensHtml = itens.length
       ? itens.map(t => `
           <div class="fat-item">
+            <div class="fat-item-data">${t.data ? String(t.data).slice(8, 10) + '/' + String(t.data).slice(5, 7) : '—'}</div>
             <div class="fat-item-desc">${t.descricao || "—"}</div>
             <div class="fat-item-val">${fmt(t.valor)}</div>
             <button class="tx-act-btn edit" style="flex-shrink:0" onclick='${t.fonte === "lancamentos" ? `abrirEditFixo("${t.id}")` : `editarTx(${JSON.stringify(t)})`}' title="Editar">✏️</button>
           </div>`).join(``) +
         `<div class="fat-item" style="border-top:1px solid var(--border-2);border-bottom:none;margin-top:4px">
+            <div class="fat-item-data"></div>
             <div class="fat-item-desc font-600" style="color:var(--text)">${itens.length} ${itens.length > 1 ? "despesas" : "despesa"}</div>
             <div class="fat-item-val font-600">${fmt(somaItens)}</div>
             <div style="width:28px;flex-shrink:0"></div>
