@@ -1966,6 +1966,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 
     <p class="text-sm text-2" style="margin:12px 0 6px">Aplicar alteração em:</p>
     <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn-secondary" id="btnEfSomenteEssa" onclick="executarEditFixo('atual')">Alterar somente essa</button>
       <button class="btn-primary" onclick="executarEditFixo('futuros')">Este mês em diante</button>
       <button class="btn-secondary" onclick="executarEditFixo('todos')">Todos os meses</button>
     </div>
@@ -2174,7 +2175,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-19a';
+const APP_VERSION = '2026-09-19b';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -7036,6 +7037,8 @@ function abrirEditFixo(lanId) {
   const isParcelado = lan.tipo === 'Parcelado';
   document.getElementById('editFixo-title').textContent =
     isParcelado ? 'Editar parcelado' : 'Editar lançamento fixo';
+  // "Somente essa" não se aplica a parcelado (ver executarEditFixo)
+  document.getElementById('btnEfSomenteEssa').style.display = isParcelado ? 'none' : '';
 
   document.getElementById('efValor').value = lan.valor || '';
   document.getElementById('efDesc').value  = lan.descricao || '';
@@ -7092,8 +7095,97 @@ async function executarEditFixo(escopo) {
     return;
   }
 
-  // 'futuros': encerra registro atual e cria novo a partir deste mês
   const [anoAtual, mesAtual] = mesNomeToAnoMes(MESES_NOMES[state.currentMonth]);
+
+  // 'atual' ("Alterar somente essa"): só a ocorrência do mês selecionado muda;
+  // o resto da série continua com os valores originais. Como a série é UM
+  // registro (mes_ini..mes_fim), a ocorrência é destacada num registro próprio
+  // de um mês só e a série original é partida em antes/depois dela. Parcelado
+  // fica de fora (cada parcela já é uma ocorrência distinta do mesmo compromisso).
+  if (escopo === 'atual') {
+    if (lan.tipo === 'Parcelado') { showToast('Parcelado só pode ser alterado em todas ou daqui em diante'); return; }
+
+    const idxM   = anoAtual * 12 + mesAtual;
+    const idxIni = Number(lan.ano_ini) * 12 + Number(lan.mes_ini);
+    const idxFim = (lan.ano_fim && lan.mes_fim) ? Number(lan.ano_fim) * 12 + Number(lan.mes_fim) : Infinity;
+    const deIdx  = idx => { const m = ((idx - 1) % 12) + 1; return { ano: (idx - m) / 12, mes: m }; };
+
+    const comecaAqui = idxIni >= idxM;   // este mês é o primeiro da série
+    const terminaAqui = idxFim <= idxM;  // este mês é o último da série (fim conhecido)
+
+    // Série de um mês só: nada a partir — é só editar o próprio registro.
+    if (comecaAqui && terminaAqui) {
+      const ok = await sbUpdate('lancamentos', lan.id, campos);
+      if (ok) { showToast('Atualizado só neste mês! ✅'); await loadData(); }
+      else showToast('Erro ao atualizar ❌');
+      return;
+    }
+
+    const copiaOriginal = {
+      tipo: lan.tipo, valor: lan.valor, descricao: lan.descricao, categoria: lan.categoria,
+      origem: lan.origem, conta_nome: lan.conta_nome, dia_ini: lan.dia_ini || 1,
+      parcelas: lan.parcelas || 0, ativo: true, pluggy_descricao_ref: lan.pluggy_descricao_ref || null,
+    };
+
+    // 1) a ocorrência editada, num registro só dela
+    const soEsta = await sbInsert('lancamentos', {
+      ...campos, tipo: lan.tipo, dia_ini: lan.dia_ini || 1, parcelas: lan.parcelas || 0, ativo: true,
+      pluggy_descricao_ref: lan.pluggy_descricao_ref || null,
+      mes_ini: mesAtual, ano_ini: anoAtual, mes_fim: mesAtual, ano_fim: anoAtual,
+    });
+    if (!soEsta) { showToast('Erro ao criar a ocorrência alterada ❌'); return; }
+
+    // 2) o que vem DEPOIS (só se a série começava antes e continua depois)
+    let continuacao = null;
+    if (!comecaAqui && !terminaAqui) {
+      const prox = deIdx(idxM + 1);
+      continuacao = await sbInsert('lancamentos', {
+        ...copiaOriginal, mes_ini: prox.mes, ano_ini: prox.ano,
+        mes_fim: lan.mes_fim || null, ano_fim: lan.ano_fim || null,
+      });
+      if (!continuacao) {
+        await sbDelete('lancamentos', soEsta.id);
+        showToast('Erro ao criar a continuação da série ❌');
+        return;
+      }
+    }
+
+    // 3) o registro original passa a cobrir só o ANTES (ou, se a série começava
+    // aqui, só o DEPOIS — vira a própria continuação)
+    let alteracaoOriginal;
+    if (comecaAqui) {
+      const prox = deIdx(idxM + 1);
+      alteracaoOriginal = { mes_ini: prox.mes, ano_ini: prox.ano };
+    } else {
+      const ant = deIdx(idxM - 1);
+      alteracaoOriginal = { mes_fim: ant.mes, ano_fim: ant.ano };
+    }
+    const okOrig = await sbUpdate('lancamentos', lan.id, alteracaoOriginal);
+    if (!okOrig) {
+      await sbDelete('lancamentos', soEsta.id);
+      if (continuacao) await sbDelete('lancamentos', continuacao.id);
+      showToast('Erro ao ajustar a série original ❌');
+      return;
+    }
+
+    // 4) vínculos com o realizado da Pluggy (`lancamentos_realizados`, chave
+    // lancamento_id+ano+mes) acompanham a ocorrência: sem isso, um mês já
+    // reconhecido como pago voltaria a contar em dobro (transação real no
+    // extrato + a ocorrência "fantasma" sem vínculo).
+    await _sb.from('lancamentos_realizados').update({ lancamento_id: soEsta.id })
+      .eq('lancamento_id', lan.id).eq('ano', anoAtual).eq('mes', mesAtual);
+    if (continuacao) {
+      await _sb.from('lancamentos_realizados').update({ lancamento_id: continuacao.id })
+        .eq('lancamento_id', lan.id)
+        .or(`ano.gt.${anoAtual},and(ano.eq.${anoAtual},mes.gt.${mesAtual})`);
+    }
+
+    showToast('Alterado somente neste mês ✅');
+    await loadData();
+    return;
+  }
+
+  // 'futuros': encerra registro atual e cria novo a partir deste mês
   let mesFim = mesAtual - 1;
   let anoFim = anoAtual;
   if (mesFim === 0) { mesFim = 12; anoFim -= 1; }
