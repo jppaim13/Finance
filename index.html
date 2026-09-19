@@ -2174,7 +2174,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-14d';
+const APP_VERSION = '2026-09-19a';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -5595,10 +5595,27 @@ function _valorIgual(a, b) {
 // do lado da XP ser marcado como transferência, então o casamento por
 // `categoria='nao_classificado'` nunca viu os dois ao mesmo tempo).
 // Retorna { fonte, id } se já existe, ou null se é candidata real a importação.
+//
+// Duas travas no casamento contra `extrato` (achado real 19/09/2026, ver
+// Decisões no CLAUDE.md — 3 pares de entrada/saída de mesmo valor viraram uma
+// linha só na Conta Nubank JP, e rendimentos diários de R$0,02 do Mercado
+// Pago JP viraram uma linha só): (1) DIREÇÃO — a linha do app precisa ser do
+// mesmo sentido da transação (CREDIT↔receita, DEBIT↔despesa); antes, valor+data
+// bastavam, e uma saída de R$15.000 casava com a entrada de R$15.000 de dois
+// dias antes, sumindo silenciosamente; (2) UMA LINHA POR TRANSAÇÃO — linha já
+// reivindicada por outra transação da Pluggy (`cache.reivindicados`, ids de
+// extrato já apontados por algum `pluggy_transacoes.transacao_id`, mais os
+// casados/inseridos nesta rodada) não casa de novo. Sem (2), duas compras
+// idênticas no mesmo dia (ou rendimentos iguais em dias seguidos) colapsam.
+// Só linha MANUAL (nunca vinculada) ainda pode ser "a que já existe".
 function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
   const extratoRows = cache.extrato.get(nome) || [];
-  const matchAvista = extratoRows.find(e => _valorIgual(e.valor, valor) && _diffDias(e.data, pt.data) <= 3);
-  if (matchAvista) return { fonte: 'extrato', id: matchAvista.id };
+  const tipoEsperado = pt.tipo === 'CREDIT' ? 'receita' : 'despesa';
+  const matchAvista = extratoRows.find(e =>
+    e.tipo === tipoEsperado &&
+    !cache.reivindicados?.has(e.id) &&
+    _valorIgual(e.valor, valor) && _diffDias(e.data, pt.data) <= 3);
+  if (matchAvista) { cache.reivindicados?.add(matchAvista.id); return { fonte: 'extrato', id: matchAvista.id }; }
 
   // Transferência de CONTA já lançada (manual ou já convertida antes) — só
   // faz sentido pra transação de conta, nunca de cartão. Direção: CREDIT
@@ -5761,6 +5778,13 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
     const { data: categoriasCompra } = await _sb.from('pluggy_categorias_compra').select('*');
     const categoriaPorCompra = new Map((categoriasCompra || []).map(c => [c.compra_chave, c.categoria]));
 
+    // Linhas de extrato já reivindicadas por alguma transação da Pluggy
+    // (ver comentário em `_pluggyJaExisteNoApp`) — buscado uma vez, fora do
+    // loop por conta; compartilhado por todas as contas/cartões da rodada.
+    const { data: vinculosExtrato } = await _sb.from('pluggy_transacoes')
+      .select('transacao_id').eq('transacao_fonte', 'extrato').not('transacao_id', 'is', null);
+    const reivindicados = new Set((vinculosExtrato || []).map(v => v.transacao_id));
+
     let importadas = 0, casadas = 0, suspeitas = 0, planejadas = 0, transferidas = 0;
     const avisos = [];
 
@@ -5809,6 +5833,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
         lancamentos: new Map([[nome, lancRows || []]]),
         transferencias: new Map([[nome, transfResult.data || []]]),
         faturas: faturasMap,
+        reivindicados,
       };
 
       // Rastreia, por compra parcelada (chave via _pluggyCompraChave — ver
@@ -5892,6 +5917,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
             .eq('pluggy_id', pt.pluggy_id);
           importadas++;
           cache.extrato.get(nome).push(inserida); // evita duplicar dentro do mesmo run
+          reivindicados.add(inserida.id);          // ...mas sem deixar outra transação idêntica casar com ela
         }
       }
 
