@@ -2176,7 +2176,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-09-19c';
+const APP_VERSION = '2026-10-02a';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -6332,9 +6332,15 @@ async function renderCategorizacao() {
   const contadorEl = document.getElementById('categorizacaoContador');
   if (!el || !_sb) return;
 
+  // Lista TODA linha de extrato não classificada, não só a importada pela
+  // Pluggy (origem_dado='pluggy') — pedido do usuário pra cobrir também
+  // lançamento manual (cartões da esposa, fora da Pluggy por desenho). Ver
+  // Decisões no CLAUDE.md: a tela nasceu 100% Pluggy, mas a restrição nunca
+  // foi de segurança, só escopo original. Não cobre `lancamentos` (Parcelado/
+  // Fixo) — essa tabela não tem id/estrutura compatível com o resto da tela
+  // (grupo, sugestão, transferência), fora de escopo desta mudança.
   const { data: pendentes, error } = await _sb.from('extrato')
     .select('*')
-    .eq('origem_dado', 'pluggy')
     .eq('categoria', 'nao_classificado')
     .order('data', { ascending: false });
 
@@ -6623,18 +6629,18 @@ async function _converterExtratoEmTransferencia(tx, contaOrigem, contaDest, cont
   return true;
 }
 
-// Transação de CONTA importada da Pluggy (nunca cartão — compra de cartão
-// não é transferência), convertida em `transferencias` a partir da conta
-// escolhida à mão. Direção: despesa nesta conta = dinheiro SAINDO
-// (conta_origem = a própria, conta_dest = a escolhida); receita = dinheiro
-// ENTRANDO (o contrário).
+// Transação de CONTA (importada da Pluggy OU lançada manualmente — ver
+// Decisões no CLAUDE.md, a tela de Categorização deixou de ser Pluggy-only),
+// nunca cartão (compra de cartão não é transferência), convertida em
+// `transferencias` a partir da conta escolhida à mão. Direção: despesa
+// nesta conta = dinheiro SAINDO (conta_origem = a própria, conta_dest = a
+// escolhida); receita = dinheiro ENTRANDO (o contrário).
 //
-// Rede de segurança: se a OUTRA conta também for coberta pela Pluggy, o
-// outro lado da mesma transferência pode já estar pendente de categorizar
-// (mesmo valor, tipo oposto, ~mesma data) — sem casar os dois, marcar cada
-// lado separadamente criaria DUAS linhas em `transferencias` pro mesmo
-// evento, duplicando o efeito no saldo. Quando acha o par, funde os dois
-// numa transferência só.
+// Rede de segurança: se a OUTRA conta também tiver essa transferência
+// pendente de categorizar (mesmo valor, tipo oposto, ~mesma data, qualquer
+// origem) — sem casar os dois, marcar cada lado separadamente criaria DUAS
+// linhas em `transferencias` pro mesmo evento, duplicando o efeito no
+// saldo. Quando acha o par, funde os dois numa transferência só.
 async function marcarComoTransferencia(extratoId, outraConta) {
   if (!outraConta) { showToast('Selecione a conta de origem/destino'); return; }
 
@@ -6649,7 +6655,6 @@ async function marcarComoTransferencia(extratoId, outraConta) {
     .select('*')
     .eq('conta_nome', outraConta)
     .eq('origem', 'conta')
-    .eq('origem_dado', 'pluggy')
     .eq('categoria', 'nao_classificado')
     .neq('id', tx.id);
   const contraparte = (candidatos || []).find(c =>
