@@ -937,3 +937,7 @@ Opus revisou a sequência acima e pediu verificação de dois pontos, não aceit
 **Risco aceito.** As 3 compras do XP Visa com parcelas futuras: se alguma parcela chegar duplicada, corrige-se aquela compra específica.
 
 **Ideia registrada, não implementada.** Checagem contínua barata no resumo pós-importação (mesmo espírito da detecção de órfãs): chaves gravadas em `lancamentos`/`pluggy_categorias_compra` que não correspondem a nenhuma chave calculável a partir do espelho atual. Normalmente zero; se aparecer, é sinal de que algum conector mudou de novo.
+
+### AUTO MECANICA DOU — proveniência do lançamento manual resolvida (11/10/2026)
+
+Decisão do João: o lançamento manual de 19/09 representa a compra **mais próxima da data de criação** (26/08/2026, não 09/01). Conferido nos dados antes de gravar: o lançamento (R$173,34, 3/3) bate exatamente com a compra de 26/08 (parcela de R$173,34, 3x); a de 09/01 é outra (R$332,66/332,68, já na última parcela). `lancamentos.pluggy_compra_chave` do lançamento `5d2bcaa7…` foi gravada com `2026-08-26T13:22:00.000Z` (UPDATE de uma linha, guardado por `pluggy_compra_chave is null`). Com isso o casamento em `_pluggyJaExisteNoApp()` reconhece a cobertura dessa compra e a duplicata prevista deixa de ser risco para esse caso. Dos 5 lançamentos sem chave, restam 4.
