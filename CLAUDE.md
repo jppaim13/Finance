@@ -844,3 +844,13 @@ Levado ao Opus pra revisão depois das duas mudanças acima (exclusão do headli
 3. **Headline parou de reconciliar com a lista visível na mesma tela** — corrigido com a sugestão do próprio Opus: quando há fatura excluída no mês, o subtítulo abaixo do headline ganha "· Saídas não incluem R$X de pagamento de fatura" — mesmo princípio do rótulo "competência de fatura" já implementado pro seletor de modo.
 
 Sem ressalva nos demais itens da rodada anterior (tag "previsto", seletor não persistido, Dashboard sem seletor) — ficam como estavam.
+
+### Empréstimo deixa de ser categoria neutra (11/10/2026)
+
+Comparativo pedido pelo usuário pra setembro (Dashboard vs. Extrato por data vs. Extrato por competência), rodado com o código real (`calcularResumo`/`montarLancamentosMes` extraídos verbatim + `date-utils.js`, executados em Node contra os dados reais — não reimplementado à mão) revelou uma quarta divergência, não coberta pelas correções anteriores: `montarLancamentosMes()`/`heroDesp` (Extrato) nunca aplicou o filtro de categoria `neutro` que `calcularResumo()` (Dashboard) sempre aplicou — `emprstimo`/`emprstimo_devoluo` (R$1.452,15 em setembro, competência) contavam em "Saídas" do Extrato e ficavam de fora do Dashboard.
+
+- **Medido antes de decidir o que corrigir**: sem essa soma, Extrato por competência batia exato com o Dashboard (23.168,59 ⇔ 21.716,44 + 1.452,15) — confirmando que essa era a única causa restante da diferença entre os dois modos de competência.
+- **Decisão do usuário**: não ajustar o código do Extrato pra também excluir categoria neutra — em vez disso, `emprstimo`/`emprstimo_devoluo` **deixam de ser neutras** (`categorias.neutro = false` pras duas, dado direto via SQL, sem migration — não é mudança de schema). Motivo dado: o dinheiro de fato sai e entra na conta, então é despesa/receita real, não deveria ter sido neutro desde o início.
+- **Efeito confirmado**: Dashboard e Extrato por competência agora batem exatos (R$23.168,59 em setembro) — zero código mudado, só o dado.
+- **Retroativo e ao vivo** — `neutro` é lido no momento do cálculo, não gravado por mês/transação. A mudança vale pra **todos os meses**, passados e futuros, não só setembro — qualquer relatório/Dashboard de mês anterior que o usuário conferir agora vai mostrar empréstimo contando como despesa/receita real, diferente de como contava antes desta mudança.
+- **A divergência que sobra entre data calendário e competência (R$18.691,27 vs. R$23.168,59 em setembro) é só a diferença intencional já registrada** (compra de cartão por data da compra vs. por fatura) — nada mais escondido atrás dela, confirmado pelo mesmo comparativo.
