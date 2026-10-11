@@ -952,6 +952,7 @@ details.ex-filters > summary { list-style: none; display: none; }
 .ex-meta { font-size: 11.5px; color: var(--text-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ex-val { font-family: var(--font-mono); font-size: 13px; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ex-tag { font-size: 9.5px; font-weight: 500; letter-spacing: .5px; text-transform: uppercase; color: var(--text-3); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px; margin-left: 7px; }
+.ex-tag-previsto { color: var(--amber); border-color: var(--amber); background: var(--amber-soft); }
 .ex-acts { display: flex; gap: 4px; opacity: 0; transition: opacity var(--transition); }
 .ex-row:hover .ex-acts { opacity: 1; }
 @media (max-width: 767px) { .ex-acts { opacity: 1; } }
@@ -1333,6 +1334,10 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
         <div class="hero-label">Resultado do mês</div>
         <div class="hero-value" id="extrato-hero" style="font-size:28px;letter-spacing:-1px">R$ —</div>
         <div class="metric-sub" id="extrato-hero-sub" style="margin-top:6px">—</div>
+        <div style="margin-top:10px;display:flex;gap:6px" title="Só muda o Extrato — o Dashboard sempre usa competência de fatura">
+          <button class="filter-chip active" id="btnModoCalendario" onclick="setModoCompetencia(false)">📅 Data</button>
+          <button class="filter-chip" id="btnModoCompetencia" onclick="setModoCompetencia(true)">🧾 Competência de fatura</button>
+        </div>
       </div>
 
       <div class="ex-toolbar">
@@ -2176,7 +2181,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-02a';
+const APP_VERSION = '2026-10-11a';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -2247,6 +2252,12 @@ let state = {
   filterContas: new Set(),
   filterCats: new Set(),
   loading: false,
+  // Alterna só a tela de Extrato entre classificar por data calendário
+  // (padrão) ou competência de fatura — nunca persistido (reseta a cada
+  // sessão/reload), de propósito. Ver Decisões no CLAUDE.md ("filtro de
+  // competência no Extrato"): o Dashboard usa sempre competência, sem
+  // alternância — esse campo não afeta calcularResumo().
+  extratoModoCompetencia: false,
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2562,13 +2573,49 @@ async function exportarTudoJSON() {
 //  getVencimentoIdx, getInstVencIdx, calcularSaldo vêm de date-utils.js)
 // ════════════════════════════════════════════════════════════════════════════
 
-// Monta a lista de lançamentos visíveis para o mês selecionado
-function montarLancamentosMes(mesNome, extratoMes, allLancamentos) {
+// Monta a lista de lançamentos visíveis para o mês selecionado.
+//
+// `allExtrato` precisa ser o conjunto INTEIRO (não pré-filtrado pelo mês
+// calendário) — em modo competência, uma compra de cartão datada no mês
+// anterior pode pertencer à fatura deste mês, e vice-versa; filtrar antes
+// de chamar perderia essas linhas. `cartoes` só é usado quando
+// `modoCompetencia` é true (fechamento/vencimento pra classificar cartão).
+//
+// `lancamentosRealizados`: mesmo formato que calcularResumo() recebe (já
+// filtrado pelo chamador só pros CONFIRMADOS) — usado pra não listar a
+// ocorrência fantasma de um Fixo/Variável cuja transação real já está na
+// lista (ver Decisões no CLAUDE.md, "ocorrência fantasma no Extrato"). Só
+// Fixo/Variável: Parcelado nunca duplicava (o casamento da Pluggy na
+// importação já reconhece a parcela pela estrutura e nunca cria linha nova
+// em extrato pra uma parcela já coberta por lançamento).
+//
+// `modoCompetencia`: false (padrão, nunca persistido) classifica tudo por
+// data calendário, byte-idêntico ao comportamento anterior a este
+// parâmetro existir. true usa competência de fatura (mesma regra de
+// calcularResumo()) só pra item de CARTÃO — extrato/lançamento de conta não
+// tem esse conceito e continua por calendário nos dois modos. Ver Decisões
+// no CLAUDE.md ("filtro de competência no Extrato").
+function montarLancamentosMes(mesNome, allExtrato, allLancamentos, lancamentosRealizados, cartoes, modoCompetencia) {
   const [anoAtual, mesAtual] = mesNomeToAnoMes(mesNome);
   const mesIdx = anoAtual * 12 + mesAtual;
   const result = [];
+  const realizadosSet = new Set((lancamentosRealizados || []).map(r => `${r.lancamento_id}|${r.ano}-${r.mes}`));
+  const cartaoMap = {};
+  (cartoes || []).forEach(c => { cartaoMap[c.nome] = c; });
 
-  for (const tx of extratoMes) {
+  for (const tx of allExtrato) {
+    if (!tx.data) continue;
+    const [a, m] = tx.data.split('-').map(Number);
+
+    let pertenceAoMes;
+    if (modoCompetencia && tx.origem === 'cartao' && tx.tipo !== 'receita') {
+      const cartao = cartaoMap[tx.cartao_nome] || {};
+      pertenceAoMes = getVencimentoIdx(tx.data, cartao.fechamento, cartao.vencimento) === mesIdx;
+    } else {
+      pertenceAoMes = a === anoAtual && m === mesAtual;
+    }
+    if (!pertenceAoMes) continue;
+
     // Espalha a linha inteira primeiro — qualquer coluna nova em `extrato`
     // (ex: campos que a integração Pluggy vier a trazer) chega até a tela
     // automaticamente, em vez de precisar ser adicionada aqui manualmente.
@@ -2586,16 +2633,64 @@ function montarLancamentosMes(mesNome, extratoMes, allLancamentos) {
 
   for (const lan of allLancamentos) {
     if (!lan.ativo) continue;
-    const mesIni   = Number(lan.mes_ini || 1);
-    const anoIni   = Number(lan.ano_ini || anoAtual);
-    const startIdx = anoIni * 12 + mesIni;
-    if (mesIdx < startIdx) continue;
+    const mesIni    = Number(lan.mes_ini || 1);
+    const anoIni     = Number(lan.ano_ini || anoAtual);
+    const startIdx   = anoIni * 12 + mesIni;
+    const tipo       = (lan.tipo || '').toLowerCase().trim();
+    const isReceita  = tipo === 'receita' || tipo === 'receita única' || tipo === 'receita unica';
+    const isCartaoLan = lan.origem === 'cartao';
+    const exclusaoKey = `${lan.id}-${mesNome}`;
+    if ((state.exclusoesFixo || []).includes(exclusaoKey)) continue;
 
+    if (modoCompetencia && isCartaoLan && !isReceita) {
+      // Mesma varredura de offset que calcularResumo() usa pra cartão: acha
+      // a parcela/ocorrência cuja COMPETÊNCIA bate com o mês selecionado,
+      // não a que o calendário bateria.
+      const cartao    = cartaoMap[lan.conta_nome] || {};
+      const fec       = cartao.fechamento || 1;
+      const ven       = cartao.vencimento || 10;
+      const maxOffset = tipo === 'parcelado' ? Number(lan.parcelas || 1) : 999;
+      const endFimIdx = lan.ano_fim && lan.mes_fim
+        ? Number(lan.ano_fim) * 12 + Number(lan.mes_fim) : Infinity;
+
+      let offsetAchado = -1;
+      for (let n = 0; n < maxOffset; n++) {
+        if (startIdx + n > endFimIdx) break;
+        const vIdx = getInstVencIdx(lan, n, fec, ven);
+        if (vIdx === mesIdx) { offsetAchado = n; break; }
+        if (vIdx > mesIdx)   break;
+      }
+      if (offsetAchado === -1) continue;
+
+      const absIdx      = startIdx + offsetAchado;
+      const ocMes        = ((absIdx - 1) % 12) + 1;
+      const ocAno        = (absIdx - ocMes) / 12;
+      const diaLan        = Math.min(lan.dia_ini || 1, new Date(ocAno, ocMes, 0).getDate());
+      const dataOcorrencia = `${ocAno}-${String(ocMes).padStart(2,'0')}-${String(diaLan).padStart(2,'0')}`;
+      const parcelaAtual  = tipo === 'parcelado' ? (offsetAchado + 1) : null;
+      const totalParcelas = tipo === 'parcelado' ? Number(lan.parcelas || 1) : null;
+
+      result.push({
+        ...lan,
+        data:        dataOcorrencia,
+        descricao:   lan.descricao + (parcelaAtual ? ` (${parcelaAtual}/${totalParcelas})` : ''),
+        valor:       Number(lan.valor),
+        tipo:        'despesa',
+        origem:      'cartao',
+        contaCartao: lan.conta_nome,
+        dataObj:     parseData(dataOcorrencia),
+        mes:         mesNome,
+        fonte:       'lancamentos',
+      });
+      continue;
+    }
+
+    // Calendário (padrão, e sempre pra item de conta mesmo em competência)
+    // — comportamento histórico, inalterado.
+    if (mesIdx < startIdx) continue;
     if (lan.ano_fim && lan.mes_fim) {
       if (mesIdx > Number(lan.ano_fim) * 12 + Number(lan.mes_fim)) continue;
     }
-
-    const tipo = (lan.tipo || '').toLowerCase().trim();
 
     if (tipo === 'receita única' || tipo === 'receita unica') {
       if (mesIdx !== startIdx) continue;
@@ -2606,10 +2701,14 @@ function montarLancamentosMes(mesNome, extratoMes, allLancamentos) {
       if (mesIdx - startIdx >= parcelas) continue;
     }
 
-    const exclusaoKey = `${lan.id}-${mesNome}`;
-    if ((state.exclusoesFixo || []).includes(exclusaoKey)) continue;
+    // Ocorrência fantasma de Fixo/Variável já confirmada como realizada não
+    // entra — a transação real já está na lista (loop de extrato acima) e é
+    // a verdade; listar as duas duplicava "Saídas" e arriscava o usuário
+    // editar/categorizar a fantasma achando que era a real (achado real,
+    // setembro/2026 — dois aluguéis no mesmo mês).
+    const isFixoVariavel = !isReceita && tipo !== 'parcelado';
+    if (isFixoVariavel && realizadosSet.has(`${lan.id}|${anoAtual}-${mesAtual}`)) continue;
 
-    const isReceita     = tipo === 'receita' || tipo === 'receita única' || tipo === 'receita unica';
     const parcelaAtual  = tipo === 'parcelado' ? (mesIdx - startIdx + 1) : null;
     const totalParcelas = tipo === 'parcelado' ? Number(lan.parcelas || 1) : null;
 
@@ -2627,6 +2726,10 @@ function montarLancamentosMes(mesNome, extratoMes, allLancamentos) {
       dataObj:     parseData(dataOcorrencia),
       mes:         mesNome,
       fonte:       'lancamentos',
+      // Marca visualmente como previsto/pendente (nunca aparece já
+      // realizado — esse caso foi filtrado acima) — só Fixo/Variável, ver
+      // comentário da função.
+      previsto:    isFixoVariavel,
     });
   }
 
@@ -2902,8 +3005,16 @@ async function loadData() {
   localStorage.setItem('financeCartoes',   JSON.stringify(state.cartoes));
   localStorage.setItem('financeCaixinhas', JSON.stringify(state.caixinhas));
 
-  // Monta lançamentos do mês (extrato + fixos aplicáveis)
-  state.lancamentos = montarLancamentosMes(mesNome, extratoMesData, lanFixData);
+  // Monta lançamentos do mês (extrato + fixos aplicáveis) — `allExtratoData`
+  // (não `extratoMesData`) porque modo competência precisa enxergar meses
+  // vizinhos; `extratoMesData` (consulta já filtrada por calendário) fica
+  // sem uso aqui, mantida só porque outro código ainda pode vir a precisar
+  // — custo de rede desprezível, não vale o risco de reindexar o
+  // Promise.all pra remover agora.
+  state.lancamentos = montarLancamentosMes(
+    mesNome, allExtratoData, lanFixData, lancRealizadosConfirmados,
+    cartoesData, state.extratoModoCompetencia
+  );
 
   // Calcula resumo dos 12 meses
   state.resumo = calcularResumo(lanFixData, allExtratoData, cartoesData, lancRealizadosConfirmados);
@@ -3212,7 +3323,7 @@ function txItem(tx, maxAbs) {
     <div class="ex-row">
       <div class="ex-mag" style="background:${magCor}"></div>
       <div class="ex-body">
-        <div class="ex-desc">${tx.descricao || '—'}${isFixo ? '<span class="ex-tag">fixo</span>' : ''}</div>
+        <div class="ex-desc">${tx.descricao || '—'}${isFixo ? '<span class="ex-tag">fixo</span>' : ''}${tx.previsto ? '<span class="ex-tag ex-tag-previsto">previsto</span>' : ''}</div>
         <div class="ex-meta">${cat.nome} · ${tx.contaCartao || ''}</div>
       </div>
       <div class="ex-val" style="color:${isReceita ? 'var(--green)' : 'var(--text)'}">
@@ -3278,9 +3389,33 @@ function renderCatList() {
 // ════════════════════════════════════════════════════════════════════════════
 // EXTRATO
 // ════════════════════════════════════════════════════════════════════════════
+// Alterna o modo de classificação do Extrato (calendário ↔ competência de
+// fatura) — só essa tela, nunca o Dashboard (ver Decisões no CLAUDE.md).
+// Reconstrói `state.lancamentos` localmente a partir do que já está em
+// cache (sem round-trip ao Supabase) e re-renderiza; `loadData()` também
+// passa `state.extratoModoCompetencia` então trocar de mês preserva o modo
+// dentro da sessão — só reseta num reload novo, de propósito.
+function setModoCompetencia(competencia) {
+  if (state.extratoModoCompetencia === competencia) return;
+  state.extratoModoCompetencia = competencia;
+  state.lancamentos = montarLancamentosMes(
+    MESES_NOMES[state.currentMonth], state._allExtrato, state._allLancamentos,
+    (state._lancRealizados || []).filter(r => r.confirmado_em),
+    state.cartoes, competencia
+  );
+  renderExtrato();
+}
+
 function renderExtrato() {
   const el = document.getElementById('extrato-list');
-  document.getElementById('extrato-subtitle').textContent = MESES[state.currentMonth];
+  document.getElementById('extrato-subtitle').textContent =
+    MESES[state.currentMonth] + (state.extratoModoCompetencia ? ' — competência de fatura' : '');
+  const btnCal  = document.getElementById('btnModoCalendario');
+  const btnComp = document.getElementById('btnModoCompetencia');
+  if (btnCal && btnComp) {
+    btnCal.classList.toggle('active', !state.extratoModoCompetencia);
+    btnComp.classList.toggle('active', state.extratoModoCompetencia);
+  }
 
   let txs = [...state.lancamentos];
 
