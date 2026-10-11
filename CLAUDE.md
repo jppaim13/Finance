@@ -834,3 +834,13 @@ Usuário desconfiou, ao comparar Extrato com Dashboard, que pagamento de fatura 
 ### Extrato — destaque visual pra pagamento de fatura (11/10/2026)
 
 Complemento visual do achado acima: linha `categoria='fatura'` na lista do Extrato (`txItem()`) ganhou cor verde (barra de magnitude + valor, mesma cor de receita) e tag "fatura" (`.ex-tag-fatura`, verde), pra distinguir visualmente de despesa comum sem precisar abrir e conferir a categoria — mesmo motivo da exclusão do headline: não é gasto novo, é quitação. Só estilo, não mexe em soma nenhuma.
+
+### Revisão do Opus sobre o achado de fatura no Extrato — 3 pontos, 1 bug real (11/10/2026)
+
+Levado ao Opus pra revisão depois das duas mudanças acima (exclusão do headline + destaque verde). Três pontos levantados, verificados contra o código antes de aceitar:
+
+1. **Cor verde podia confundir com o resumo por conta (`netOf()`)** — verificado: `netOf()` soma `desp` por `tx.tipo`, nunca por cor; a cor era puramente CSS (`style="color:..."`), nunca tocava `tipo`/`valor`. **Não era bug de cálculo** — uma conta cujo único movimento do mês foi pagar fatura já mostrava o total negativo corretamente ali. Mas o Opus tinha razão no risco de confusão: "−R$3.342" em verde lê como entrada. **Revertido**: pagamento de fatura volta à cor normal de despesa (barra + valor); a tag "fatura" sozinha já identifica a linha sem essa ambiguidade.
+2. **Fatura precisa estar fora dos dois lados do headline** — verificado: toda criação de linha `categoria='fatura'` (`confirmarPagarFatura`, `autoDetectarPagamentosFatura`) fixa `tipo: 'despesa'` explicitamente, exceto uma: **`marcarComoFatura()` (o escape hatch manual na Categorização) nunca checava `tx.tipo`** — um clique na linha errada (uma receita) criaria `categoria='fatura'` com `tipo='receita'`, inflando "Saídas" em vez de corrigir (exatamente o risco que o Opus descreveu). **Bug real, corrigido**: `marcarComoFatura()` agora recusa qualquer `tx.tipo !== 'despesa'`. `autoDetectarPagamentosFatura()` já tinha essa guarda desde que foi escrita, só o caminho manual tinha o buraco.
+3. **Headline parou de reconciliar com a lista visível na mesma tela** — corrigido com a sugestão do próprio Opus: quando há fatura excluída no mês, o subtítulo abaixo do headline ganha "· Saídas não incluem R$X de pagamento de fatura" — mesmo princípio do rótulo "competência de fatura" já implementado pro seletor de modo.
+
+Sem ressalva nos demais itens da rodada anterior (tag "previsto", seletor não persistido, Dashboard sem seletor) — ficam como estavam.

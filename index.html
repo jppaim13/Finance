@@ -2182,7 +2182,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-11c';
+const APP_VERSION = '2026-10-11d';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -3309,11 +3309,13 @@ function txItem(tx, maxAbs) {
   const teto      = maxAbs || abs || 1;
 
   // Intensidade da barra: gasto grande em relação ao conjunto fica mais forte.
-  // Receita é sempre teal; pagamento de fatura também — não é despesa nova
-  // (já contou quando a compra virou despesa de cartão, ver Decisões no
-  // CLAUDE.md), então fica com a mesma cor "neutra" da receita em vez do
-  // laranja de despesa comum, pra ficar claro visualmente que é quitação.
-  const magCor = (isReceita || isFatura)
+  // Receita é sempre teal; pagamento de fatura NÃO (achado do Opus,
+  // 11/10/2026): é dinheiro saindo da conta de verdade, o resumo por conta
+  // logo acima (netOf()) soma certo como despesa — colorir de verde dizia
+  // "entrada" bem na hora que o número ao lado diz "−R$X", confuso mesmo
+  // sem ser bug de cálculo. A tag "fatura" abaixo já identifica a linha sem
+  // essa ambiguidade; despesa de fatura usa a cor normal de despesa.
+  const magCor = isReceita
     ? 'var(--green)'
     : (abs / teto > 0.5 ? 'oklch(0.58 0.13 40)' : 'oklch(0.82 0.06 40)');
 
@@ -3331,7 +3333,7 @@ function txItem(tx, maxAbs) {
         <div class="ex-desc">${tx.descricao || '—'}${isFixo ? '<span class="ex-tag">fixo</span>' : ''}${tx.previsto ? '<span class="ex-tag ex-tag-previsto">previsto</span>' : ''}${isFatura ? '<span class="ex-tag ex-tag-fatura">fatura</span>' : ''}</div>
         <div class="ex-meta">${cat.nome} · ${tx.contaCartao || ''}</div>
       </div>
-      <div class="ex-val" style="color:${(isReceita || isFatura) ? 'var(--green)' : 'var(--text)'}">
+      <div class="ex-val" style="color:${isReceita ? 'var(--green)' : 'var(--text)'}">
         ${isReceita ? '+' : '−'} ${fmt(abs)}
       </div>
       <div class="ex-acts">${editBtn}${delBtn}</div>
@@ -3532,13 +3534,19 @@ function renderExtrato() {
   const heroRec  = txs.filter(t => t.tipo === 'receita').reduce((s,t) => s + (t.valor||0), 0);
   const heroDesp = txs.filter(t => t.tipo !== 'receita' && t.categoria !== 'fatura').reduce((s,t) => s + (t.valor||0), 0);
   const heroNet  = heroRec - heroDesp;
+  // Soma do que ficou de fora de "Saídas" — mostrada explícita no subtítulo
+  // quando > 0, senão o headline deixa de reconciliar com a soma das linhas
+  // visíveis na lista (achado do Opus, 11/10/2026: a tag "fatura" identifica
+  // a linha, mas nada dizia que ela está excluída do número de cima).
+  const heroFaturaExcluida = txs.filter(t => t.categoria === 'fatura').reduce((s,t) => s + (t.valor||0), 0);
   const heroEl   = document.getElementById('extrato-hero');
   if (heroEl) {
     heroEl.textContent = (heroNet >= 0 ? '+ ' : '− ') + fmt(Math.abs(heroNet));
     heroEl.style.color = heroNet >= 0 ? 'var(--green)' : 'var(--red)';
     document.getElementById('extrato-hero-sub').textContent =
       txs.length + (txs.length === 1 ? ' lançamento' : ' lançamentos') +
-      ' · ' + fmt(heroRec) + ' entradas · ' + fmt(heroDesp) + ' saídas';
+      ' · ' + fmt(heroRec) + ' entradas · ' + fmt(heroDesp) + ' saídas' +
+      (heroFaturaExcluida > 0 ? ` · Saídas não incluem ${fmt(heroFaturaExcluida)} de pagamento de fatura` : '');
   }
 
   if (!txs.length) { el.innerHTML = '<div class="empty-state"><p>Nenhum lançamento encontrado</p></div>'; return; }
@@ -6826,6 +6834,13 @@ async function marcarComoFatura(extratoId, cartaoNome, mesNome) {
   const { data: tx, error } = await _sb.from('extrato').select('*').eq('id', extratoId).maybeSingle();
   if (error || !tx) { showToast('Erro ao carregar transação ❌'); return; }
   if (tx.origem !== 'conta') { showToast('Só transação de conta pode virar pagamento de fatura ❌'); return; }
+  // Pagamento de fatura é sempre despesa — nunca receita (dinheiro saindo
+  // pra quitar o cartão). Sem essa checagem, um clique na linha errada
+  // criaria `categoria='fatura'` com `tipo='receita'`, inflando "Saídas"
+  // (que exclui fatura só do lado despesa) em vez de corrigir — mesma
+  // checagem que autoDetectarPagamentosFatura() já fazia automaticamente,
+  // só faltava aqui no caminho manual. Achado do Opus, 11/10/2026.
+  if (tx.tipo !== 'despesa') { showToast('Só despesa pode virar pagamento de fatura ❌'); return; }
 
   const key = `${cartaoNome}-${mesNome}`;
   const ok = await sbUpdate('extrato', tx.id, { categoria: 'fatura', cartao_nome: cartaoNome, parcela: key });
