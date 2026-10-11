@@ -953,6 +953,7 @@ details.ex-filters > summary { list-style: none; display: none; }
 .ex-val { font-family: var(--font-mono); font-size: 13px; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ex-tag { font-size: 9.5px; font-weight: 500; letter-spacing: .5px; text-transform: uppercase; color: var(--text-3); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px; margin-left: 7px; }
 .ex-tag-previsto { color: var(--amber); border-color: var(--amber); background: var(--amber-soft); }
+.ex-tag-fatura { color: var(--green); border-color: var(--green); background: var(--green-soft); }
 .ex-acts { display: flex; gap: 4px; opacity: 0; transition: opacity var(--transition); }
 .ex-row:hover .ex-acts { opacity: 1; }
 @media (max-width: 767px) { .ex-acts { opacity: 1; } }
@@ -2181,7 +2182,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-11b';
+const APP_VERSION = '2026-10-11c';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -3300,6 +3301,7 @@ function renderCaixinhas() {
 
 function txItem(tx, maxAbs) {
   const isReceita = tx.tipo === 'receita';
+  const isFatura  = tx.categoria === 'fatura';
   const allCats   = [...(state.catsExtra||[]), ...CATS_DESPESA, ...CATS_RECEITA];
   const cat       = allCats.find(c => c.id === tx.categoria) || { nome: tx.categoria || 'Outros' };
   const isFixo    = tx.fonte === 'lancamentos';
@@ -3307,8 +3309,11 @@ function txItem(tx, maxAbs) {
   const teto      = maxAbs || abs || 1;
 
   // Intensidade da barra: gasto grande em relação ao conjunto fica mais forte.
-  // Receita é sempre teal; não faz sentido graduar entrada por "gravidade".
-  const magCor = isReceita
+  // Receita é sempre teal; pagamento de fatura também — não é despesa nova
+  // (já contou quando a compra virou despesa de cartão, ver Decisões no
+  // CLAUDE.md), então fica com a mesma cor "neutra" da receita em vez do
+  // laranja de despesa comum, pra ficar claro visualmente que é quitação.
+  const magCor = (isReceita || isFatura)
     ? 'var(--green)'
     : (abs / teto > 0.5 ? 'oklch(0.58 0.13 40)' : 'oklch(0.82 0.06 40)');
 
@@ -3323,10 +3328,10 @@ function txItem(tx, maxAbs) {
     <div class="ex-row">
       <div class="ex-mag" style="background:${magCor}"></div>
       <div class="ex-body">
-        <div class="ex-desc">${tx.descricao || '—'}${isFixo ? '<span class="ex-tag">fixo</span>' : ''}${tx.previsto ? '<span class="ex-tag ex-tag-previsto">previsto</span>' : ''}</div>
+        <div class="ex-desc">${tx.descricao || '—'}${isFixo ? '<span class="ex-tag">fixo</span>' : ''}${tx.previsto ? '<span class="ex-tag ex-tag-previsto">previsto</span>' : ''}${isFatura ? '<span class="ex-tag ex-tag-fatura">fatura</span>' : ''}</div>
         <div class="ex-meta">${cat.nome} · ${tx.contaCartao || ''}</div>
       </div>
-      <div class="ex-val" style="color:${isReceita ? 'var(--green)' : 'var(--text)'}">
+      <div class="ex-val" style="color:${(isReceita || isFatura) ? 'var(--green)' : 'var(--text)'}">
         ${isReceita ? '+' : '−'} ${fmt(abs)}
       </div>
       <div class="ex-acts">${editBtn}${delBtn}</div>
