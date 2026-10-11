@@ -2182,7 +2182,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-11e';
+const APP_VERSION = '2026-10-11f';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -5931,14 +5931,6 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
       return true;
     });
 
-    // Categoria pertence à COMPRA, não à parcela (pedido do usuário — "não
-    // preciso categorizar a mesma despesa todo mês"): buscado uma vez só,
-    // fora do loop por conta/cartão, porque uma compra pode ter parcelas
-    // vencendo em cartões/meses diferentes dentro da mesma rodada de
-    // importação. Ver Decisões no CLAUDE.md.
-    const { data: categoriasCompra } = await _sb.from('pluggy_categorias_compra').select('*');
-    const categoriaPorCompra = new Map((categoriasCompra || []).map(c => [c.compra_chave, c.categoria]));
-
     // Linhas de extrato já reivindicadas por alguma transação da Pluggy
     // (ver comentário em `_pluggyJaExisteNoApp`) — buscado uma vez, fora do
     // loop por conta; compartilhado por todas as contas/cartões da rodada.
@@ -6055,13 +6047,14 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
           ? ` (${cc.installmentNumber}/${cc.totalInstallments})` : '';
         const descricaoFinal = `${pt.descricao}${sufixoParcela}`;
 
-        // Se essa COMPRA já foi categorizada antes (qualquer parcela dela),
-        // a parcela nova já entra com a mesma categoria — nunca cai em "não
-        // classificado" pra passar de novo pela tela de Categorização.
-        const categoriaConhecida = compraChavePt ? categoriaPorCompra.get(compraChavePt) : null;
-
+        // Correção de princípio (pedido do usuário, 11/10/2026): categoria
+        // aprendida NUNCA aplica sozinha, nem na parcela atual nem no
+        // lançamento das futuras — vira recomendação pré-preenchida na
+        // tela de Categorização, sempre esperando confirmação explícita.
+        // Antes disso, uma compra já categorizada pulava a tela inteira —
+        // revertido. Ver Decisões no CLAUDE.md.
         const linha = ehCartao ? {
-          data: pt.data, descricao: descricaoFinal, categoria: categoriaConhecida || 'nao_classificado',
+          data: pt.data, descricao: descricaoFinal, categoria: 'nao_classificado',
           valor, tipo: 'despesa', conta_nome: '', origem: 'cartao', cartao_nome: nome,
           origem_dado: 'pluggy', pluggy_compra_chave: compraChavePt || null,
         } : {
@@ -6116,17 +6109,16 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
         let mesIni = am + 1, anoIni = ay;
         if (mesIni > 12) { mesIni = 1; anoIni++; }
 
-        // Mesmo aprendizado "categoria por compra" que já se aplicava só à
-        // linha de extrato da parcela atual (ver `categoriaConhecida` acima)
-        // — sem isso, toda parcela futura nascia 'nao_classificado' mesmo
-        // quando a compra já tinha categoria aprendida, inflando "Saídas"
-        // não classificadas pra sempre (achado real: 18 ocorrências,
-        // R$1.918,99 em outubro/2026, confirmado batendo exato com
-        // Relatórios — ver Decisões no CLAUDE.md).
-        const categoriaLan = categoriaPorCompra.get(g.compraChave) || 'nao_classificado';
-
+        // Sempre nasce 'nao_classificado' — categoria aprendida nunca
+        // aplica sozinha, nem aqui nem na parcela atual (ver comentário
+        // acima, mesma correção de princípio, 11/10/2026). O gap real era
+        // não aparecer em lugar nenhum pra confirmar (achado: 18 ocorrências,
+        // R$1.918,99 em outubro/2026, invisível até o usuário notar no
+        // Relatórios) — resolvido incluindo `lancamentos` na tela de
+        // Categorização, não auto-aplicando a categoria. Ver Decisões no
+        // CLAUDE.md.
         const novoLan = {
-          descricao: g.descricaoBase, categoria: categoriaLan, tipo: 'parcelado',
+          descricao: g.descricaoBase, categoria: 'nao_classificado', tipo: 'parcelado',
           valor: g.valor, parcelas: g.instTot - g.maxInstNum,
           mes_ini: mesIni, ano_ini: anoIni, dia_ini: ad,
           conta_nome: nome, origem: 'cartao', ativo: true,
@@ -6495,17 +6487,36 @@ async function renderCategorizacao() {
   const contadorEl = document.getElementById('categorizacaoContador');
   if (!el || !_sb) return;
 
-  // Lista TODA linha de extrato não classificada, não só a importada pela
-  // Pluggy (origem_dado='pluggy') — pedido do usuário pra cobrir também
-  // lançamento manual (cartões da esposa, fora da Pluggy por desenho). Ver
-  // Decisões no CLAUDE.md: a tela nasceu 100% Pluggy, mas a restrição nunca
-  // foi de segurança, só escopo original. Não cobre `lancamentos` (Parcelado/
-  // Fixo) — essa tabela não tem id/estrutura compatível com o resto da tela
-  // (grupo, sugestão, transferência), fora de escopo desta mudança.
-  const { data: pendentes, error } = await _sb.from('extrato')
-    .select('*')
-    .eq('categoria', 'nao_classificado')
-    .order('data', { ascending: false });
+  // Lista TODA linha não classificada, de `extrato` E de `lancamentos`
+  // (Parcelado criado pela Pluggy pra "lançar despesa futura" nascia
+  // nao_classificado quando a compra ainda não tinha categoria aprendida —
+  // ver Decisões no CLAUDE.md). Normaliza os dois pra um formato comum
+  // (`fonte`, `tipo` em 'despesa'/'receita', `data` sintética pra
+  // lançamento a partir de ano_ini/mes_ini/dia_ini, cartao_nome/conta_nome
+  // derivados de `origem`) — o resto da tela (agrupamento, sugestão,
+  // renomear) não precisa saber a diferença; só `categorizarLinha`/
+  // `categorizarGrupo` roteiam pra tabela certa via `fonte`.
+  const pad2 = n => String(n).padStart(2, '0');
+  const [{ data: pendExtrato, error: errExtrato }, { data: pendLan, error: errLan }] = await Promise.all([
+    _sb.from('extrato').select('*').eq('categoria', 'nao_classificado'),
+    _sb.from('lancamentos').select('*').eq('categoria', 'nao_classificado').eq('ativo', true),
+  ]);
+  const error = errExtrato || errLan;
+  const pendentes = [
+    ...(pendExtrato || []).map(p => ({ ...p, fonte: 'extrato' })),
+    ...(pendLan || []).map(p => {
+      const tipoNorm = ['receita', 'receita única', 'receita unica'].includes((p.tipo || '').toLowerCase().trim())
+        ? 'receita' : 'despesa';
+      const ehCartao = p.origem === 'cartao';
+      return {
+        ...p, fonte: 'lancamentos', tipo: tipoNorm,
+        data: `${p.ano_ini}-${pad2(p.mes_ini || 1)}-${pad2(p.dia_ini || 1)}`,
+        cartao_nome: ehCartao ? p.conta_nome : '',
+        conta_nome: ehCartao ? '' : p.conta_nome,
+      };
+    }),
+  ];
+  pendentes.sort((a, b) => (b.data || '').localeCompare(a.data || ''));
 
   if (error) {
     console.error('renderCategorizacao', error);
@@ -6548,6 +6559,21 @@ async function renderCategorizacao() {
     });
   }
 
+  // Sugestão mais forte: identidade da COMPRA (`pluggy_compra_chave`), não
+  // texto — mesma fonte que já pré-categorizava sozinho a parcela nova e o
+  // lançamento das futuras. Deixou de aplicar sozinho (pedido do usuário,
+  // 11/10/2026: "todas devem cair em categorização... eu devo confirmar ou
+  // não") — agora só pré-preenche aqui, com prioridade sobre a sugestão por
+  // descrição quando as duas existem (identidade de compra é mais confiável
+  // que texto igual por coincidência).
+  const chavesBusca = [...new Set(pendentes.map(p => p.pluggy_compra_chave).filter(Boolean))];
+  const sugestoesPorChave = new Map();
+  if (chavesBusca.length) {
+    const { data: aprendidas } = await _sb.from('pluggy_categorias_compra')
+      .select('compra_chave, categoria').in('compra_chave', chavesBusca);
+    (aprendidas || []).forEach(a => sugestoesPorChave.set(a.compra_chave, a.categoria));
+  }
+
   // Agrupar por descrição (assinatura, mercado, posto costumam repetir o
   // mesmo texto) — grupo maior primeiro, pra categorizar em bloco o que
   // rende mais rápido. Ignora o sufixo " (N/M)" de parcela na CHAVE de
@@ -6565,7 +6591,11 @@ async function renderCategorizacao() {
   el.innerHTML = gruposOrdenados.map(([descricaoBase, itens], idx) => {
     const tipo = itens[0].tipo;
     const total = itens.reduce((s, i) => s + Number(i.valor || 0), 0);
-    const sugestao = sugestoes.get(descricaoBase);
+    // Prioridade: identidade da compra (qualquer item do grupo que bata)
+    // antes da sugestão por texto — ver comentário acima.
+    const sugestaoPorChave = itens.map(i => i.pluggy_compra_chave).filter(Boolean)
+      .map(ch => sugestoesPorChave.get(ch)).find(Boolean);
+    const sugestao = sugestaoPorChave || sugestoes.get(descricaoBase);
     // JSON.stringify de ids/descrição (com aspas duplas de string) embutido
     // cru dentro de onclick/onchange (que também usa aspas duplas) truncava
     // o atributo na primeira aspa — bug real já corrigido. `_escJsAttr`
@@ -6573,12 +6603,16 @@ async function renderCategorizacao() {
     // do atributo HTML, via entidade &quot;), reusado em todo texto que vai
     // dentro de um onclick/onchange.
     const _escJsAttr = s => String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
-    // {id, descricao, pluggy_compra_chave} de cada item — não só id — porque
-    // renomear o grupo precisa do texto ORIGINAL de cada linha (preservar o
-    // sufixo "(N/M)"), e `pluggy_compra_chave` é o que permite categorizar
-    // uma compra parcelada inteira de uma vez (aprende pra parcelas futuras,
-    // ver Decisões no CLAUDE.md — "categoria por compra, não por parcela").
-    const itensGrupo = _escJsAttr(JSON.stringify(itens.map(i => ({ id: i.id, descricao: i.descricao, pluggy_compra_chave: i.pluggy_compra_chave || null }))));
+    // {id, descricao, pluggy_compra_chave, fonte} de cada item — não só id —
+    // porque renomear o grupo precisa do texto ORIGINAL de cada linha
+    // (preservar o sufixo "(N/M)"), `pluggy_compra_chave` é o que permite
+    // categorizar uma compra parcelada inteira de uma vez (aprende pra
+    // parcelas futuras, ver Decisões no CLAUDE.md — "categoria por compra,
+    // não por parcela"), e `fonte` ('extrato'|'lancamentos') é o que diz pra
+    // `categorizarGrupo()` qual tabela atualizar — um grupo pode misturar
+    // os dois (a parcela atual em `extrato`, o lançamento das futuras em
+    // `lancamentos`, mesma compra).
+    const itensGrupo = _escJsAttr(JSON.stringify(itens.map(i => ({ id: i.id, descricao: i.descricao, pluggy_compra_chave: i.pluggy_compra_chave || null, fonte: i.fonte }))));
     const baseOriginalAttr = _escJsAttr(JSON.stringify(descricaoBase));
     const selIdGrupo = `catgrupo-${idx}`;
     const descIdGrupo = `descgrupo-${idx}`;
@@ -6612,16 +6646,16 @@ async function renderCategorizacao() {
             return `
             <div class="cat-line">
               <div class="cat-line-head">
-                <span class="text-3">${_fmtDataBR(i.data)} · ${i.cartao_nome || i.conta_nome || ""}</span>
+                <span class="text-3">${_fmtDataBR(i.data)} · ${i.cartao_nome || i.conta_nome || ""}${i.fonte === "lancamentos" ? '<span class="ex-tag">lançamento</span>' : ""}</span>
                 <span class="font-mono">${fmt(i.valor)}</span>
               </div>
               <input id="${descIdLinha}" class="form-input" style="font-size:12px;padding:4px 8px" value="${_escHtml(i.descricao)}">
               <div class="cat-line-ctls">
-                <select id="${selIdLinha}" class="form-select" style="max-width:170px;font-size:12px" onchange="categorizarLinha('${i.id}', this.value, document.getElementById('${descIdLinha}').value, ${i.pluggy_compra_chave ? `'${_escJsAttr(i.pluggy_compra_chave)}'` : 'null'})">
+                <select id="${selIdLinha}" class="form-select" style="max-width:170px;font-size:12px" onchange="categorizarLinha('${i.id}', this.value, document.getElementById('${descIdLinha}').value, ${i.pluggy_compra_chave ? `'${_escJsAttr(i.pluggy_compra_chave)}'` : 'null'}, '${i.fonte}')">
                   <option value="">Categoria…</option>
                   ${_optsCategoria(tipo, "")}
                 </select>
-                ${i.origem === "conta" ? (() => {
+                ${(i.fonte === "extrato" && i.origem === "conta") ? (() => {
                   const selIdTransf = `translinha-${i.id}`;
                   const selIdCartao = `fatcartao-${i.id}`;
                   const selIdMes = `fatmes-${i.id}`;
@@ -6658,7 +6692,11 @@ async function renderCategorizacao() {
   state._catSugestoes = comSug.map(g => ({
     base: g[0],
     categoria: sugestoes.get(g[0]),
-    itens: g[1].map(i => ({ id: i.id, descricao: i.descricao }))
+    // pluggy_compra_chave/fonte precisam vir junto — sem eles, "aplicar
+    // todas" nunca ensinava `pluggy_categorias_compra` (gap pré-existente,
+    // achado junto desta mudança) nem sabia rotear lançamento pra tabela
+    // certa.
+    itens: g[1].map(i => ({ id: i.id, descricao: i.descricao, pluggy_compra_chave: i.pluggy_compra_chave || null, fonte: i.fonte }))
   }));
 
   const cEl = document.getElementById('categ-count');
@@ -6714,19 +6752,30 @@ async function aplicarTodasSugestoes() {
 // (pra toda parcela futura importar já categorizada) e aplica retroativo
 // nas parcelas irmãs que já estão pendentes agora ('nao_classificado') —
 // sem isso, o usuário só veria efeito nos próximos meses, não neste.
+// Atualiza `extrato` E `lancamentos`: um lançamento criado pra rastrear
+// parcelas futuras da mesma compra tem a MESMA chave — categorizar uma
+// parcela precisa corrigir o lançamento irmão também, não só outras linhas
+// de extrato (achado real: 11/10/2026, ver Decisões no CLAUDE.md).
 async function _aplicarCategoriaPorCompra(compraChave, categoria) {
   if (!compraChave) return;
   await _sb.from('pluggy_categorias_compra')
     .upsert({ compra_chave: compraChave, categoria, atualizado_em: new Date().toISOString() });
   await _sb.from('extrato')
     .update({ categoria }).eq('pluggy_compra_chave', compraChave).eq('categoria', 'nao_classificado');
+  await _sb.from('lancamentos')
+    .update({ categoria }).eq('pluggy_compra_chave', compraChave).eq('categoria', 'nao_classificado');
 }
 
-async function categorizarLinha(id, categoria, descricao, compraChave) {
+// `fonte` ('extrato'|'lancamentos', default 'extrato' por compat com
+// chamadas antigas) diz qual tabela atualizar — a tela de Categorização
+// agora também lista lançamento Parcelado criado pela Pluggy sem categoria
+// (ver Decisões no CLAUDE.md).
+async function categorizarLinha(id, categoria, descricao, compraChave, fonte) {
   if (!categoria) return;
+  const tabela = fonte === 'lancamentos' ? 'lancamentos' : 'extrato';
   const changes = { categoria };
   if (descricao != null && descricao.trim()) changes.descricao = descricao.trim();
-  const ok = await sbUpdate('extrato', id, changes);
+  const ok = await sbUpdate(tabela, id, changes);
   if (!ok) { showToast('Erro ao categorizar ❌'); return; }
   if (compraChave) await _aplicarCategoriaPorCompra(compraChave, categoria);
   showToast('Categorizado ✅');
@@ -6735,7 +6784,10 @@ async function categorizarLinha(id, categoria, descricao, compraChave) {
 
 // Categoriza TODAS as pendentes de um grupo de uma vez, por id — não por
 // descrição (a descrição varia por linha quando há sufixo de parcela " (N/M)",
-// então casar por texto exato deixaria de pegar o grupo inteiro).
+// então casar por texto exato deixaria de pegar o grupo inteiro). Um grupo
+// pode misturar `extrato` (parcela atual) e `lancamentos` (parcelas futuras
+// da mesma compra) — cada item roteia pra sua própria tabela via `fonte`
+// ('extrato' quando ausente, compat com chamadas antigas).
 // `novoBase`, quando diferente de `baseOriginal`, renomeia a parte comum do
 // grupo em cada linha, preservando o que vem depois dela (sufixo de parcela
 // ou texto extra do banco) — troca só o prefixo, não o texto inteiro.
@@ -6747,7 +6799,8 @@ async function categorizarGrupo(itensJson, categoria, baseOriginal, novoBase) {
   const resultados = await Promise.all(itens.map(i => {
     const changes = { categoria };
     if (renomear) changes.descricao = baseNova + i.descricao.slice(baseOriginal.length);
-    return _sb.from('extrato').update(changes).eq('id', i.id);
+    const tabela = i.fonte === 'lancamentos' ? 'lancamentos' : 'extrato';
+    return _sb.from(tabela).update(changes).eq('id', i.id);
   }));
   const erro = resultados.find(r => r.error);
   if (erro) { console.error('categorizarGrupo', erro.error); showToast('Erro ao categorizar grupo ❌'); return; }
