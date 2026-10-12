@@ -2182,7 +2182,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-11h';
+const APP_VERSION = '2026-10-12a';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -5528,21 +5528,41 @@ async function sincronizarPluggy(opts = {}) {
     const { data: { session } } = await _sb.auth.getSession();
     if (!session) throw new Error('sem sessão ativa');
 
-    const res = await fetch(`${state.supabaseUrl}/functions/v1/pluggy-sync`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({ apelido: 'jp' }),
-    });
-    const json = await res.json();
-    if (!res.ok || json.ok === false) {
-      resultado = { ok: false, processadas: 0, erro: json.erro || res.statusText };
+    // Uma execução por aplicação Pluggy cadastrada (uma por pessoa/credencial);
+    // a falha de uma não impede as outras. Sem nenhuma linha em pluggy_apps
+    // cai no 'jp', como era quando só existia ele.
+    const { data: apps } = await _sb.from('pluggy_apps').select('apelido').order('criado_em', { ascending: true });
+    const apelidos = (apps && apps.length) ? apps.map(a => a.apelido) : ['jp'];
+    const varios = apelidos.length > 1;
+    let processadas = 0;
+    const erros = [];
+    for (const apelido of apelidos) {
+      try {
+        const res = await fetch(`${state.supabaseUrl}/functions/v1/pluggy-sync`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ apelido }),
+        });
+        const json = await res.json();
+        if (!res.ok || json.ok === false) {
+          const msg = json.erro || res.statusText;
+          erros.push(varios ? `${apelido}: ${msg}` : msg);
+        } else {
+          processadas += json.processadas || 0;
+        }
+      } catch (e) {
+        erros.push(varios ? `${apelido}: ${e.message}` : e.message);
+      }
+    }
+    if (erros.length) {
+      resultado = { ok: false, processadas, erro: erros.join(' | ') };
       if (!silencioso) showToast(`Erro na sincronização ❌ ${resultado.erro}`);
     } else {
-      resultado = { ok: true, processadas: json.processadas || 0, erro: null };
-      if (!silencioso) showToast(`Sincronizado ✅ — ${json.processadas} transação(ões) processada(s)`);
+      resultado = { ok: true, processadas, erro: null };
+      if (!silencioso) showToast(`Sincronizado ✅ — ${processadas} transação(ões) processada(s)`);
     }
   } catch (e) {
     resultado = { ok: false, processadas: 0, erro: e.message };
@@ -5633,16 +5653,26 @@ const INTERVALO_MIN_SYNC_HORAS = 4;
 async function autoSincronizarEImportar() {
   if (!_sb) return;
   try {
-    const { data: ultimoSync } = await _sb.from('pluggy_sync_log')
-      .select('terminado_em')
-      .eq('tipo', 'sync')
-      .in('status', ['ok', 'parcial'])
-      .order('terminado_em', { ascending: false })
-      .limit(1).maybeSingle();
-
-    const horasDesdeUltimoSync = ultimoSync?.terminado_em
-      ? (Date.now() - new Date(ultimoSync.terminado_em).getTime()) / 3600000
-      : Infinity;
+    // Pior caso entre as aplicações: se QUALQUER uma está sem sync bem-sucedido
+    // há mais de INTERVALO_MIN_SYNC_HORAS (ou nunca teve), sincroniza todas —
+    // senão a falha de uma ficaria escondida pelo sucesso recente da outra.
+    const [{ data: apps }, { data: logsOk }] = await Promise.all([
+      _sb.from('pluggy_apps').select('id'),
+      _sb.from('pluggy_sync_log')
+        .select('app_id, terminado_em')
+        .eq('tipo', 'sync')
+        .in('status', ['ok', 'parcial'])
+        .order('terminado_em', { ascending: false })
+        .limit(50),
+    ]);
+    const ultimoPorApp = new Map();
+    for (const l of (logsOk || [])) if (!ultimoPorApp.has(l.app_id)) ultimoPorApp.set(l.app_id, l.terminado_em);
+    let horasDesdeUltimoSync = apps && apps.length ? 0 : Infinity;
+    for (const a of (apps || [])) {
+      const t = ultimoPorApp.get(a.id);
+      const h = t ? (Date.now() - new Date(t).getTime()) / 3600000 : Infinity;
+      horasDesdeUltimoSync = Math.max(horasDesdeUltimoSync, h);
+    }
 
     await atualizarPluggyAgora({ silencioso: true, forcarSync: horasDesdeUltimoSync >= INTERVALO_MIN_SYNC_HORAS });
   } catch (e) {
@@ -5881,7 +5911,11 @@ function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
 // é o próprio Postgres que recusa atomicamente a segunda tentativa de
 // INSERT, não importa o quão perto as chamadas cheguem uma da outra.
 async function _importGuardIniciar() {
-  const { data: app } = await _sb.from('pluggy_apps').select('id').limit(1).maybeSingle();
+  // A importação é GLOBAL (percorre as contas de todas as aplicações Pluggy),
+  // então o guard também é um só: sempre a aplicação mais antiga, de forma
+  // determinística — sem `order`, com mais de um app o guard poderia cair em
+  // apps diferentes a cada chamada e deixar de proteger.
+  const { data: app } = await _sb.from('pluggy_apps').select('id').order('criado_em', { ascending: true }).limit(1).maybeSingle();
   if (!app) return { logId: null, appId: null }; // sem app cadastrado, sem guard possível
 
   // Libera uma execução que travou de verdade (crash, deploy no meio) antes
@@ -6221,10 +6255,11 @@ async function carregarPluggyContas() {
   const el = document.getElementById('pluggy-contas-list');
   if (!el || !_sb) return;
 
-  const [{ data: contas, error }, { data: items }, { data: ultimoLog }, { data: faturas }, { data: transacoesRecentes }] = await Promise.all([
+  const [{ data: contas, error }, { data: items }, { data: logsRecentes }, { data: appsLista }, { data: faturas }, { data: transacoesRecentes }] = await Promise.all([
     _sb.from('pluggy_contas').select('*').order('nome'),
     _sb.from('pluggy_items').select('*'),
-    _sb.from('pluggy_sync_log').select('*').order('iniciado_em', { ascending: false }).limit(1).maybeSingle(),
+    _sb.from('pluggy_sync_log').select('*').order('iniciado_em', { ascending: false }).limit(30),
+    _sb.from('pluggy_apps').select('id, apelido').order('criado_em', { ascending: true }),
     _sb.from('pluggy_faturas').select('*'),
     // Usado só pra estimar a fatura AINDA EM ABERTO (ver `valorAberto`
     // abaixo) — janela de 45 dias cobre qualquer ciclo mensal de cartão
@@ -6236,25 +6271,27 @@ async function carregarPluggyContas() {
 
   const statusEl = document.getElementById('pluggySyncStatus');
   if (statusEl) {
-    if (!ultimoLog) {
-      statusEl.textContent = 'Nunca sincronizado';
-    } else {
+    const p = n => String(n).padStart(2, '0');
+    const textoLog = (ultimoLog) => {
+      if (!ultimoLog) return 'Nunca sincronizado';
       const quando = new Date(ultimoLog.terminado_em || ultimoLog.iniciado_em);
-      const p = n => String(n).padStart(2, '0');
       const quandoFmt = `${p(quando.getDate())}/${p(quando.getMonth()+1)}/${quando.getFullYear()} ${p(quando.getHours())}:${p(quando.getMinutes())}`;
-      if (ultimoLog.status === 'erro') {
-        statusEl.textContent = `Última sincronização: ${quandoFmt} — erro: ${ultimoLog.erro || '?'}`;
-      } else if (!ultimoLog.terminado_em) {
-        statusEl.textContent = `Sincronizando desde ${quandoFmt}...`;
-      } else if (ultimoLog.status === 'parcial') {
-        // algumas contas sincronizaram, outras falharam nesse run — não é
-        // erro total nem sucesso total, ver Decisões no CLAUDE.md
-        statusEl.textContent = `Última sincronização: ${quandoFmt} — ${ultimoLog.criadas || 0} transação(ões) processada(s), com falhas: ${ultimoLog.erro || '?'}`;
-      } else {
-        // ultimoLog.criadas guarda o total processado (insert+update juntos,
-        // ver Decisões no CLAUDE.md sobre por que não distinguimos os dois)
-        statusEl.textContent = `Última sincronização: ${quandoFmt} — ${ultimoLog.criadas || 0} transação(ões) processada(s)`;
-      }
+      if (ultimoLog.status === 'erro') return `Última sincronização: ${quandoFmt} — erro: ${ultimoLog.erro || '?'}`;
+      if (!ultimoLog.terminado_em) return `Sincronizando desde ${quandoFmt}...`;
+      // 'parcial': algumas contas sincronizaram, outras falharam nesse run —
+      // não é erro total nem sucesso total, ver Decisões no CLAUDE.md.
+      // `criadas` guarda o total processado (insert+update juntos).
+      if (ultimoLog.status === 'parcial') return `Última sincronização: ${quandoFmt} — ${ultimoLog.criadas || 0} transação(ões) processada(s), com falhas: ${ultimoLog.erro || '?'}`;
+      return `Última sincronização: ${quandoFmt} — ${ultimoLog.criadas || 0} transação(ões) processada(s)`;
+    };
+    // Um log (o mais recente) por aplicação; com uma só, o texto é o de sempre.
+    if (appsLista && appsLista.length > 1) {
+      statusEl.innerHTML = appsLista.map(a => {
+        const log = (logsRecentes || []).find(l => l.app_id === a.id);
+        return `<div><strong>${_escHtml(a.apelido)}</strong> — ${_escHtml(textoLog(log))}</div>`;
+      }).join('');
+    } else {
+      statusEl.textContent = textoLog((logsRecentes || [])[0]);
     }
   }
 
