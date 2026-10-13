@@ -1,11 +1,11 @@
 ---
 name: codex-finance
-description: Delega tarefas do app de finanças ao Codex (OpenAI) pelo modo não interativo do próprio Codex CLI (`codex exec`). Use quando o João ou o Opus pedirem para "mandar ao Codex", "o Codex investigar", "o Codex implementar" ou "o Codex revisar".
+description: Delega tarefas do app de finanças ao Codex (OpenAI) pelo modo não interativo do próprio Codex CLI (`codex exec`). Use quando o João ou o Opus pedirem para "mandar ao Codex", "o Codex investigar" ou "o Codex revisar".
 ---
 
 # codex-finance
 
-Delega trabalho ao Codex chamando `codex exec` pelo terminal, seguindo as regras deste projeto. O Codex executa; **o Claude Code continua sendo quem revisa, commita e publica.**
+Delega INVESTIGAÇÃO e REVISÃO (somente leitura) ao Codex chamando `codex exec` pelo terminal, seguindo as regras deste projeto. O Codex executa; **o Claude Code continua sendo quem revisa, commita e publica.**
 
 ## Estado verificado neste computador (13/10/2026) — LER ANTES DE USAR
 
@@ -30,19 +30,15 @@ Investigação ou revisão (padrão):
 codex exec -s read-only -c 'windows.sandbox="unelevated"' -C "<caminho do clone>" - < prompt.txt
 ```
 
-Implementação (ver "modo patch" abaixo — `workspace-write` não funciona neste computador; mantido aqui só como referência para um sandbox elevado):
+**REGRA DE USO (decisão de 13/10/2026): o Codex só INVESTIGA e REVISA, em leitura, em `-s read-only` — "leia muito e diga o que achou". MUDANÇAS DE CÓDIGO o Claude Code faz direto.** Motivo medido: na investigação da lista de meses houve economia real (o Codex leu o código inteiro, ~45,6 mil tokens dele contra ~15 mil do Claude Code); na implementação dos filtros do Extrato não houve (~52 mil do Codex em duas tentativas + ~13 mil do Claude Code, que leu os mesmos trechos para revisar, aplicou o patch à mão e corrigiu um defeito). Sem `workspace-write` aqui, o fluxo patch → aplicação manual → revisão custa mais que fazer direto.
 
-```
-codex exec -s workspace-write -c 'windows.sandbox="unelevated"' -C "<caminho do clone>" - < prompt.txt
-```
+Por que não há `workspace-write`: com `windows.sandbox="unelevated"` o Codex recusa com `windows unelevated restricted-token sandbox cannot enforce split writable root sets directly; refusing to run unsandboxed` (mesmo com `exclude_tmpdir_env_var`/`exclude_slash_tmp`: o problema são as subpastas protegidas dentro da pasta gravável). Só voltaria com o sandbox elevado (administrador); se isso mudar, reavaliar esta regra.
 
-**Implementação neste computador = modo patch (verificado em 13/10/2026).** `-s workspace-write` NÃO funciona com `windows.sandbox="unelevated"`: o Codex recusa com `windows unelevated restricted-token sandbox cannot enforce split writable root sets directly; refusing to run unsandboxed` (mesmo com `exclude_tmpdir_env_var`/`exclude_slash_tmp`, que deixam uma só pasta gravável — o problema são as subpastas protegidas dentro dela). Só voltaria a funcionar com o sandbox elevado (administrador). Por isso a implementação é feita em **`-s read-only` pedindo o PATCH** (unified diff num bloco ```diff, caminhos `a/…`/`b/…`) no relatório; o Claude Code aplica no clone, revisa linha a linha e publica. Os cabeçalhos `@@` e o contexto dos patches gerados costumam estar levemente errados (`git apply --check --recount --ignore-whitespace` primeiro; se falhar, aplicar os hunks à mão — o que também serve de revisão).
-
-**Correções.** O Claude Code pode devolver correções ao Codex (nova chamada com o patch, o problema encontrado e o que mudar) — vale para correções maiores ou de lógica. Ajustes pequenos (um defeito pontual, hunks que não casam) são mais baratos de fazer direto; nesse caso, registrar em Decisões o que foi mudado em relação ao patch.
+Se um dia for preciso gerar patch mesmo assim: `-s read-only` pedindo um unified diff no relatório; os cabeçalhos `@@` costumam vir errados (`git apply --check --recount --ignore-whitespace`; se falhar, aplicar à mão). Correções ao Codex: nova chamada com o problema encontrado e o que mudar.
 
 Regras dos parâmetros:
 
-- `-s read-only` é o padrão. `workspace-write` só para implementação aprovada.
+- Sempre `-s read-only`. Não usar `workspace-write` (não funciona aqui; ver regra de uso).
 - **Nunca** use `--dangerously-bypass-approvals-and-sandbox`, nem libere acesso de rede ao sandbox. Este computador tem o Supabase CLI ligado ao banco de produção; com rede, o Codex conseguiria rodar `supabase db query` contra dados reais.
 - Passe o prompt **sempre pelo stdin** (arquivo temporário fora do repositório, `-` no fim do comando). Verificado: prompt com aspas duplas direto na linha de comando quebra no atalho `codex.cmd` do npm no Windows (`unexpected argument`). No PowerShell: `Get-Content prompt.txt -Raw | codex exec ... -`.
 - O prompt precisa ser autossuficiente. O Codex não conhece a conversa: inclua contexto, caminhos e trechos necessários.
@@ -66,6 +62,7 @@ Regras dos parâmetros:
 
 ## Quando não usar
 
+- **Mudanças de código** (o Claude Code faz direto — ver regra de uso).
 - Investigações em andamento que dependem do contexto da conversa (o Codex começa do zero).
 - Qualquer coisa que toque dados de produção.
 - Tarefas no mesmo trecho de código que o Claude Code esteja editando ao mesmo tempo.
