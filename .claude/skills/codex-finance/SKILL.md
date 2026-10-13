@@ -30,11 +30,15 @@ Investigação ou revisão (padrão):
 codex exec -s read-only -c 'windows.sandbox="unelevated"' -C "<caminho do clone>" - < prompt.txt
 ```
 
-Implementação (só quando a tarefa pedir mudança de arquivo):
+Implementação (ver "modo patch" abaixo — `workspace-write` não funciona neste computador; mantido aqui só como referência para um sandbox elevado):
 
 ```
 codex exec -s workspace-write -c 'windows.sandbox="unelevated"' -C "<caminho do clone>" - < prompt.txt
 ```
+
+**Implementação neste computador = modo patch (verificado em 13/10/2026).** `-s workspace-write` NÃO funciona com `windows.sandbox="unelevated"`: o Codex recusa com `windows unelevated restricted-token sandbox cannot enforce split writable root sets directly; refusing to run unsandboxed` (mesmo com `exclude_tmpdir_env_var`/`exclude_slash_tmp`, que deixam uma só pasta gravável — o problema são as subpastas protegidas dentro dela). Só voltaria a funcionar com o sandbox elevado (administrador). Por isso a implementação é feita em **`-s read-only` pedindo o PATCH** (unified diff num bloco ```diff, caminhos `a/…`/`b/…`) no relatório; o Claude Code aplica no clone, revisa linha a linha e publica. Os cabeçalhos `@@` e o contexto dos patches gerados costumam estar levemente errados (`git apply --check --recount --ignore-whitespace` primeiro; se falhar, aplicar os hunks à mão — o que também serve de revisão).
+
+**Correções.** O Claude Code pode devolver correções ao Codex (nova chamada com o patch, o problema encontrado e o que mudar) — vale para correções maiores ou de lógica. Ajustes pequenos (um defeito pontual, hunks que não casam) são mais baratos de fazer direto; nesse caso, registrar em Decisões o que foi mudado em relação ao patch.
 
 Regras dos parâmetros:
 

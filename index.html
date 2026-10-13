@@ -819,6 +819,27 @@ body {
 }
 .filter-chip.active { background: var(--accent-soft); color: var(--accent); }
 
+/* Filtros selecionáveis do Extrato (conta/cartão e categoria) */
+.ex-select-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.ex-filter-select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+}
+@media (min-width: 600px) {
+  .ex-select-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* ── Search ─────────────────────────────────────────────────────── */
 .search-wrap { position: relative; margin-bottom: 14px; }
 .search-wrap svg {
@@ -1364,8 +1385,10 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
       <details class="ex-filters" id="extratoFiltros">
         <summary></summary>
         <div class="ex-filters-body">
-          <div class="filter-chips" id="filterChipsContas"></div>
-          <div class="filter-chips" id="filterChipsCats" style="margin-top:6px"></div>
+          <div class="ex-select-filters">
+            <select class="ex-filter-select" id="filterSelectContas" onchange="setFilterContaExtrato(this)"></select>
+            <select class="ex-filter-select" id="filterSelectCats" onchange="setFilterCatExtrato(this.value)"></select>
+          </div>
         </div>
       </details>
 
@@ -2182,7 +2205,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-12b';
+const APP_VERSION = '2026-10-13a';
 const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
                'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
 const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
@@ -3451,15 +3474,18 @@ function renderExtrato() {
     txs = txs.filter(t => state.filterCats.has(t.categoria));
   }
 
-  // Rebuild chips de categoria com as categorias presentes no mês
-  const chipsEl = document.getElementById('filterChipsCats');
-  if (chipsEl) {
+  // Opções de categoria = categorias presentes no mês. A categoria já selecionada
+  // entra sempre, mesmo ausente deste mês: senão o menu mostraria "Todas as
+  // categorias" com o filtro ainda ativo, escondendo lançamentos sem explicação.
+  const catsEl = document.getElementById('filterSelectCats');
+  if (catsEl) {
     const allCats = [...(state.catsExtra||[]), ...CATS_DESPESA, ...CATS_RECEITA];
+    const selectedCat = state.filterCats.values().next().value || '';
     const catIds  = [...new Set(state.lancamentos.map(t => t.categoria).filter(Boolean))];
-    chipsEl.innerHTML = catIds.map(id => {
-      const info   = allCats.find(c => c.id === id) || { emoji: '📦', nome: id };
-      const active = state.filterCats.has(id) ? 'active' : '';
-      return `<button class="filter-chip ${active}" onclick="toggleFilterCat('${id}',this)">${info.emoji} ${info.nome}</button>`;
+    if (selectedCat && !catIds.includes(selectedCat)) catIds.push(selectedCat);
+    catsEl.innerHTML = `<option value="">Todas as categorias</option>` + catIds.map(id => {
+      const info = allCats.find(c => c.id === id) || { emoji: '📦', nome: id };
+      return `<option value="${_escHtml(id)}"${id === selectedCat ? ' selected' : ''}>${info.emoji} ${_escHtml(info.nome)}</option>`;
     }).join('');
   }
 
@@ -3583,25 +3609,18 @@ function setFilterTipo(tipo, btn) {
   renderExtrato();
 }
 
-function toggleFilterConta(key, btn) {
-  if (state.filterContas.has(key)) {
-    state.filterContas.delete(key);
-    btn.classList.remove('active');
-  } else {
-    state.filterContas.add(key);
-    btn.classList.add('active');
-  }
+// Filtros de conta/cartão e de categoria: seleção ÚNICA (menu). A chave guardada em
+// state.filterContas continua "conta:<nome>" / "cartao:<nome>", como renderExtrato() espera.
+function setFilterContaExtrato(select) {
+  state.filterContas.clear();
+  const selected = select.options[select.selectedIndex];
+  if (select.value) state.filterContas.add(`${selected.dataset.tipo}:${select.value}`);
   renderExtrato();
 }
 
-function toggleFilterCat(catId, btn) {
-  if (state.filterCats.has(catId)) {
-    state.filterCats.delete(catId);
-    btn.classList.remove('active');
-  } else {
-    state.filterCats.add(catId);
-    btn.classList.add('active');
-  }
+function setFilterCatExtrato(catId) {
+  state.filterCats.clear();
+  if (catId) state.filterCats.add(catId);
   renderExtrato();
 }
 
@@ -7628,16 +7647,19 @@ function buildSelectores() {
   if (origSel) origSel.innerHTML = transOpts();
   if (destSel) destSel.innerHTML = transOpts();
 
-  // Chips de conta/cartão no extrato
-  const chipsEl = document.getElementById('filterChipsContas');
-  if (chipsEl) {
-    const contaChips = (state.contas || []).map(c =>
-      `<button class="filter-chip" onclick="toggleFilterConta('conta:${c.nome}',this)">🏦 ${c.nome}</button>`
+  // Menu de conta/cartão no extrato; o value de cada opção é o nome EXATO (casamento por igualdade de string).
+  const contasEl = document.getElementById('filterSelectContas');
+  if (contasEl) {
+    const selectedKey = state.filterContas.values().next().value || '';
+    const contaOptions = (state.contas || []).map(c =>
+      `<option data-tipo="conta" value="${_escHtml(c.nome)}"${selectedKey === `conta:${c.nome}` ? ' selected' : ''}>🏦 ${_escHtml(c.nome)}</option>`
     ).join('');
-    const cartaoChips = (state.cartoes || []).map(c =>
-      `<button class="filter-chip" onclick="toggleFilterConta('cartao:${c.nome}',this)">💳 ${c.nome}</button>`
+    const cartaoOptions = (state.cartoes || []).map(c =>
+      `<option data-tipo="cartao" value="${_escHtml(c.nome)}"${selectedKey === `cartao:${c.nome}` ? ' selected' : ''}>💳 ${_escHtml(c.nome)}</option>`
     ).join('');
-    chipsEl.innerHTML = contaChips + cartaoChips;
+    contasEl.innerHTML = `<option value="">Todas as contas</option>` +
+      (contaOptions ? `<optgroup label="Contas">${contaOptions}</optgroup>` : '') +
+      (cartaoOptions ? `<optgroup label="Cartões">${cartaoOptions}</optgroup>` : '');
   }
 }
 
