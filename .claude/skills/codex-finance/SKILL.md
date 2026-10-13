@@ -9,11 +9,12 @@ Delega trabalho ao Codex chamando `codex exec` pelo terminal, seguindo as regras
 
 ## Estado verificado neste computador (13/10/2026) — LER ANTES DE USAR
 
-O sandbox do Codex no Windows **não está funcional**: `codex exec -s read-only` falha em qualquer comando com `Failed to create unified exec process: helper_unknown_error: setup refresh had errors`, e `codex doctor` aponta `✗ sandbox — elevated Windows sandbox provisioning recorded a structured failure` (além de aviso de exclusões do Microsoft Defender e de pouco espaço em disco, 4,6 GiB livres). Consequências:
+O backend padrão do sandbox do Codex no Windows ("elevated") **falha ao provisionar** aqui (`codex doctor`: `✗ sandbox — elevated Windows sandbox provisioning recorded a structured failure`; exige administrador). Sem corrigir isso, `codex exec` não executa comando nenhum. **Contorno adotado: todo `codex exec` leva `-c 'windows.sandbox="unelevated"'`** (modo restricted-token, sem administrador), passado na chamada — não mexemos no `config.toml` global do Codex, que o app desktop também usa.
 
-- Hoje o Codex **não consegue nem ler o `CLAUDE.md`** (ler arquivo também é um comando). Não delegar nada até o `codex doctor` ficar sem `✗`.
-- Isso **não prova** que `read-only` bloqueia escrita: o teste de criar arquivo falhou antes de chegar ao sandbox de verdade. Depois de corrigido, repetir o teste (criar `teste.txt` num diretório temporário fora do repositório com `-s read-only`) e registrar o resultado aqui. Se o arquivo for criado, o `read-only` não segura no Windows e a única proteção passa a ser a revisão de `git status`/`git diff` — tarefas com risco de rede ficam fora do Codex.
-- Corrigir o provisionamento exige privilégio de administrador e exclusões no Defender: é decisão e ação do João, não do Claude Code.
+O que foi testado com esse modo (nada persistido):
+- **Escrita:** `-s read-only` tentou criar `teste.txt` num diretório temporário fora do repositório e foi **negado** (`PermissionDenied`); nenhum arquivo apareceu.
+- **Rede:** um `Invoke-WebRequest` para `https://api.pluggy.ai/` dentro do sandbox teve a conexão derrubada, enquanto o mesmo comando fora do sandbox chega ao servidor (HTTP 403). Um único teste: **não é garantia** de bloqueio em todos os caminhos — o modo "unelevated" não usa as regras de firewall do modo elevado. Por isso as proibições abaixo (sem `--dangerously-bypass…`, sem `supabase`/`psql`/rede no prompt) continuam valendo e a revisão de `git status`/`git diff` continua obrigatória.
+- Avisos do `codex doctor` ainda abertos, que o João pode tratar quando quiser: exclusões do Microsoft Defender não verificadas e pouco espaço em disco (4,6 GiB livres; aviso abaixo de 5 GiB).
 
 ## Pré-requisito
 
@@ -26,20 +27,20 @@ Sempre no **clone git** do repositório `jppaim13/Finance` (o mesmo usado para c
 Investigação ou revisão (padrão):
 
 ```
-codex exec -s read-only -C "<caminho do clone>" "<prompt>"
+codex exec -s read-only -c 'windows.sandbox="unelevated"' -C "<caminho do clone>" - < prompt.txt
 ```
 
 Implementação (só quando a tarefa pedir mudança de arquivo):
 
 ```
-codex exec -s workspace-write -C "<caminho do clone>" "<prompt>"
+codex exec -s workspace-write -c 'windows.sandbox="unelevated"' -C "<caminho do clone>" - < prompt.txt
 ```
 
 Regras dos parâmetros:
 
 - `-s read-only` é o padrão. `workspace-write` só para implementação aprovada.
 - **Nunca** use `--dangerously-bypass-approvals-and-sandbox`, nem libere acesso de rede ao sandbox. Este computador tem o Supabase CLI ligado ao banco de produção; com rede, o Codex conseguiria rodar `supabase db query` contra dados reais.
-- Prompts longos: grave o texto num arquivo temporário fora do repositório e passe pelo stdin (`codex exec ... - < prompt.txt`), para evitar problemas de aspas no shell.
+- Passe o prompt **sempre pelo stdin** (arquivo temporário fora do repositório, `-` no fim do comando). Verificado: prompt com aspas duplas direto na linha de comando quebra no atalho `codex.cmd` do npm no Windows (`unexpected argument`). No PowerShell: `Get-Content prompt.txt -Raw | codex exec ... -`.
 - O prompt precisa ser autossuficiente. O Codex não conhece a conversa: inclua contexto, caminhos e trechos necessários.
 
 ## Bloco fixo no início de todo prompt
