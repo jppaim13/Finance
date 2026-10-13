@@ -1587,7 +1587,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
       <div id="report-faturas" style="display:none">
         <div class="card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <div class="section-label" style="margin:0">Evolução de Faturas — 12 meses</div>
+            <div class="section-label" style="margin:0">Evolução de Faturas</div>
           </div>
           <div class="filter-chips" id="faturaCartaoChips" style="margin-bottom:12px"></div>
           <div class="chart-wrap" style="height:220px"><canvas id="chartFaturaEvolucao"></canvas></div>
@@ -2205,11 +2205,18 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-13a';
-const MESES = ['Mar/2026','Abr/2026','Mai/2026','Jun/2026','Jul/2026','Ago/2026',
-               'Set/2026','Out/2026','Nov/2026','Dez/2026','Jan/2027','Fev/2027'];
-const MESES_NOMES = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
-                     'Set-2026','Out-2026','Nov-2026','Dez-2026','Jan-2027','Fev-2027'];
+const APP_VERSION = '2026-10-13b';
+// Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
+// (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
+// 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
+const { MESES, MESES_NOMES } = gerarListaMeses(new Date(), 12);
+
+// Rótulo curto de mês para eixos de gráfico: "Mar" enquanto a lista cabe em um
+// ano; "Mar/26" depois, senão dois "Mar" ficam indistinguíveis.
+function _rotuloMesCurto(i) {
+  const [ab, ano] = MESES_NOMES[i].split('-');
+  return MESES_NOMES.length > 12 ? `${ab}/${ano.slice(2)}` : ab;
+}
 
 const CATS_DESPESA = [
   {id:'alimentacao', emoji:'🍔', nome:'Alimentação'},
@@ -2265,7 +2272,7 @@ let state = {
   faturasPagas: {},
   metas: [],
   lancamentos: [],   // cache do mês atual (extrato + fixos)
-  resumo: [],        // 12 meses calculado em JS
+  resumo: [],        // um item por mês da lista (MESES_NOMES), calculado em JS
   // cache global para cálculo de saldos
   _allExtrato: [],
   _allLancamentos: [],
@@ -2509,7 +2516,7 @@ function navigate(page) {
 // MONTH
 // ════════════════════════════════════════════════════════════════════════════
 function changeMonth(dir, ctx) {
-  state.currentMonth = Math.max(0, Math.min(11, state.currentMonth + dir));
+  state.currentMonth = Math.max(0, Math.min(MESES_NOMES.length - 1, state.currentMonth + dir));
   updateMonthLabels();
   loadData();
 }
@@ -2761,7 +2768,7 @@ function montarLancamentosMes(mesNome, allExtrato, allLancamentos, lancamentosRe
   return result;
 }
 
-// Calcula resumo de receitas/despesas/faturas para todos os 12 meses
+// Calcula resumo de receitas/despesas/faturas para todos os meses da lista (MESES_NOMES)
 // `lancamentosRealizados`: mesmo array de {lancamento_id, ano, mes} (já
 // filtrado pelo chamador só pros CONFIRMADOS) que `calcularSaldo()` recebe
 // — ver comentário lá e Decisões no CLAUDE.md ("conciliar Fixo/Parcelado
@@ -3040,7 +3047,7 @@ async function loadData() {
     cartoesData, state.extratoModoCompetencia
   );
 
-  // Calcula resumo dos 12 meses
+  // Calcula resumo de todos os meses da lista
   state.resumo = calcularResumo(lanFixData, allExtratoData, cartoesData, lancRealizadosConfirmados);
 
   buildSelectores();
@@ -3376,7 +3383,7 @@ function renderEvolucaoChart() {
   window._chartEv = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: MESES.map(m => m.split('/')[0]),
+      labels: MESES.map((_, i) => _rotuloMesCurto(i)),
       datasets: [
         { label: 'Receita', data: state.resumo.map(r => r.receita||0), backgroundColor: 'oklch(0.60 0.11 195)', borderRadius: 6, borderSkipped: false },
         { label: 'Despesa', data: state.resumo.map(r => r.despesa||0), backgroundColor: 'oklch(0.62 0.13 40)', borderRadius: 6, borderSkipped: false },
@@ -4550,7 +4557,7 @@ function renderRelEvolucao() {
       <div class="relbar des" style="height:${(m.des / teto * 100).toFixed(1)}%"></div>
     </div>`).join('');
 
-  labels.innerHTML = meses.map(m => `<div>${MESES[m.i].split('/')[0].toLowerCase()}</div>`).join('');
+  labels.innerHTML = meses.map(m => `<div>${_rotuloMesCurto(m.i).toLowerCase()}</div>`).join('');
 
   document.getElementById('rel-ev-periodo').textContent =
     MESES[meses[0].i] + ' – ' + MESES[meses[meses.length - 1].i];
@@ -4564,7 +4571,7 @@ function renderRelEvolucao() {
     const atual = m.i === state.currentMonth;
     return `
       <div class="relev-grid relev-row" style="${atual ? `background:var(--accent-soft)` : ``}">
-        <div style="font-size:12px;font-weight:${atual ? 600 : 500};color:var(--text)">${MESES[m.i].split('/')[0].toLowerCase()}</div>
+        <div style="font-size:12px;font-weight:${atual ? 600 : 500};color:var(--text)">${_rotuloMesCurto(m.i).toLowerCase()}</div>
         <div class="relev-num" style="color:var(--text-2)">${fmt(m.rec)}</div>
         <div class="relev-num" style="color:var(--text-2)">${fmt(m.des)}</div>
         <div class="relev-num" style="font-weight:500;color:${res >= 0 ? `var(--green)` : `var(--red)`}">${res >= 0 ? "+" : "−"}${fmt(Math.abs(res))}</div>
@@ -4638,7 +4645,7 @@ function renderRelFaturas() {
   if (ctx) {
     window._chartFatEv = new Chart(ctx, {
       type: 'line',
-      data: { labels: MESES.map(m => m.split('/')[0]), datasets },
+      data: { labels: MESES.map((_, i) => _rotuloMesCurto(i)), datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: {
@@ -4756,7 +4763,7 @@ function calcularCatsPorMes(mi) {
 
 function pieMesNav(dir) {
   if (state._pieMes == null) state._pieMes = state.currentMonth;
-  state._pieMes = Math.max(0, Math.min(11, state._pieMes + dir));
+  state._pieMes = Math.max(0, Math.min(MESES_NOMES.length - 1, state._pieMes + dir));
   renderRelCategorias();
 }
 
@@ -4838,7 +4845,7 @@ function calcularCatMeses(catId) {
   const maxIdx  = Math.max(...mesIdxs);
   const toI     = vIdx => mesIdxs.indexOf(vIdx);
 
-  const totals = new Array(12).fill(0);
+  const totals = new Array(MESES_NOMES.length).fill(0);
 
   // 1. Extrato
   for (const tx of (state._allExtrato || [])) {
@@ -4908,7 +4915,7 @@ function renderCatBarChart() {
   const allCats = [...(state.catsExtra||[]), ...CATS_DESPESA, ...CATS_RECEITA];
   const info    = allCats.find(c => c.id === catId) || { nome: catId, emoji: '📦' };
   const totals  = calcularCatMeses(catId);
-  const labels  = MESES_NOMES.map(m => m.split('-')[0]);
+  const labels  = MESES_NOMES.map((_, i) => _rotuloMesCurto(i));
   const isDark  = false;
   const tickClr = isDark ? '#94a3b8' : '#6b7280';
   const curMes  = state.currentMonth;
@@ -4943,7 +4950,7 @@ function renderCatBarChart() {
 }
 
 function buildCatBarChips() {
-  // Coleta categorias que têm alguma despesa nos 12 meses
+  // Coleta categorias que têm alguma despesa em algum mês da lista
   const catSet = new Set();
   for (const tx of (state._allExtrato || [])) {
     if ((tx.tipo||'') !== 'receita' && tx.categoria) catSet.add(tx.categoria);

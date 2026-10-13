@@ -216,3 +216,33 @@ function calcularSaldo(conta, lancamentos, extrato, transferencias, hoje = new D
 
   return saldo;
 }
+
+// ─── Lista de meses da navegação ────────────────────────────────────────────
+// INÍCIO FIXO em Mar/2026: o índice 0 é Mar/2026 para sempre, então todo código
+// que usa o índice do mês (state.currentMonth, chave de fatura, acumulado do
+// patrimônio desde o índice 0...) continua apontando para o mesmo mês de
+// antes. O FIM acompanha o relógio: mês de `hoje` + `mesesFuturos` — antes eram
+// 12 literais (Mar/2026–Fev/2027) e o app parava de funcionar em 01/03/2027.
+// Uma janela móvel foi descartada de propósito: faria o índice mudar de
+// significado ao longo do tempo (ver Decisões no CLAUDE.md).
+// Formato de texto igual ao dos literais antigos: MESES = "Mar/2026" (rótulo),
+// MESES_NOMES = "Mar-2026" (chave; entra em extrato.parcela e no localStorage).
+const _ABREV_MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const _LISTA_MESES_INI_ANO = 2026;
+const _LISTA_MESES_INI_MES = 3; // 1-based
+
+function gerarListaMeses(hoje = new Date(), mesesFuturos = 12) {
+  const iniIdx = _LISTA_MESES_INI_ANO * 12 + (_LISTA_MESES_INI_MES - 1);
+  const fimIdx = hoje.getFullYear() * 12 + hoje.getMonth() + mesesFuturos;
+  // Nunca menor que os 12 meses originais (relógio errado/antes de 2026).
+  const total = Math.max(fimIdx - iniIdx + 1, 12);
+  const MESES = [], MESES_NOMES = [];
+  for (let k = 0; k < total; k++) {
+    const idx = iniIdx + k;
+    const ano = Math.floor(idx / 12);
+    const ab = _ABREV_MESES[idx % 12];
+    MESES.push(`${ab}/${ano}`);
+    MESES_NOMES.push(`${ab}-${ano}`);
+  }
+  return { MESES, MESES_NOMES };
+}

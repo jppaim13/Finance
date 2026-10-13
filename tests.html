@@ -212,6 +212,57 @@ assertEqual(getVencimentoIdx('2026-12-28', 25, 5), 2027 * 12 + 2,
   assertEqual(d.getDate(), 29, 'vencimento dia 31 em fevereiro/2028 (bissexto): trava no dia 29');
 }
 
+// ─── gerarListaMeses: lista de meses com início FIXO em Mar/2026 ───────────
+{
+  const ANTIGA = ['Mar-2026','Abr-2026','Mai-2026','Jun-2026','Jul-2026','Ago-2026',
+                  'Set-2026','Out-2026','Nov-2026','Dez-2026','Jan-2027','Fev-2027'];
+  const nomes = d => gerarListaMeses(d).MESES_NOMES;
+  const hojes = [new Date(2025, 0, 1), new Date(2026, 2, 1), new Date(2026, 9, 13),
+                 new Date(2027, 1, 28), new Date(2027, 2, 1), new Date(2030, 11, 31)];
+
+  for (const h of hojes) {
+    const l = gerarListaMeses(h);
+    const rot = formatarData(h);
+    assertEqual(l.MESES_NOMES[0], 'Mar-2026', `lista (${rot}): índice 0 é sempre Mar-2026`);
+    assertEqual(l.MESES[0], 'Mar/2026', `lista (${rot}): rótulo do índice 0 é Mar/2026`);
+    assertEqual(l.MESES.length, l.MESES_NOMES.length, `lista (${rot}): MESES e MESES_NOMES têm o mesmo tamanho`);
+    assertEqual(l.MESES_NOMES.length >= 12, true, `lista (${rot}): nunca menor que os 12 meses originais`);
+    const atual = `${_ABREV_MESES[h.getMonth()]}-${h.getFullYear()}`;
+    // antes de mar/2026 o mês atual não existe na lista (ela começa em Mar/2026)
+    if (h.getFullYear() > 2026 || (h.getFullYear() === 2026 && h.getMonth() >= 2))
+      assertEqual(l.MESES_NOMES.includes(atual), true, `lista (${rot}): o mês atual (${atual}) está na lista`);
+    // sequência sem buracos nem repetição: cada item é o mês seguinte do anterior
+    let seq = true;
+    for (let k = 1; k < l.MESES_NOMES.length; k++) {
+      const [a0, m0] = mesNomeToAnoMes(l.MESES_NOMES[k - 1]);
+      const [a1, m1] = mesNomeToAnoMes(l.MESES_NOMES[k]);
+      if (a1 * 12 + m1 !== a0 * 12 + m0 + 1) seq = false;
+    }
+    assertEqual(seq, true, `lista (${rot}): meses consecutivos, sem buraco nem repetição`);
+  }
+
+  // Compatibilidade: os 12 primeiros meses são EXATAMENTE os literais antigos,
+  // então chave de fatura e localStorage continuam batendo.
+  assertEqual(nomes(new Date(2026, 9, 13)).slice(0, 12).join(','), ANTIGA.join(','),
+    'lista: os 12 primeiros meses são iguais aos literais antigos (chaves compatíveis)');
+  assertEqual(nomes(new Date(2025, 0, 1)).join(','), ANTIGA.join(','),
+    'lista: data anterior a 2026 devolve exatamente os 12 meses originais');
+
+  // O bug que motivou a mudança: a partir de 01/03/2027 o mês atual não pode cair no índice 0.
+  const l27 = nomes(new Date(2027, 2, 1));
+  assertEqual(l27.indexOf('Mar-2027'), 12, 'simulando 01/03/2027: Mar-2027 está no índice 12 (não cai em 0)');
+  assertEqual(l27.indexOf('Mar-2027') !== 0, true, 'simulando 01/03/2027: índice do mês atual ≠ 0');
+
+  // Futuro à frente do mês atual
+  const l26 = nomes(new Date(2026, 9, 13));
+  assertEqual(l26[l26.length - 1], 'Out-2027', 'out/2026 + 12 meses: a lista termina em Out-2027');
+  assertEqual(gerarListaMeses(new Date(2026, 9, 13), 6).MESES_NOMES.slice(-1)[0], 'Abr-2027',
+    'mesesFuturos configurável: out/2026 + 6 termina em Abr-2027');
+
+  // Formato "Mar-2027" continua legível pelo mesmo parser dos outros testes
+  assertEqual(mesNomeToAnoMes('Mar-2027').join('/'), '2027/3', 'mesNomeToAnoMes lê meses além de Fev/2027');
+}
+
 // ─── Render ─────────────────────────────────────────────────────────────────
 const el = document.getElementById('results');
 el.innerHTML =
