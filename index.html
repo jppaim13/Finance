@@ -1077,6 +1077,21 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 .cat-line { display: flex; flex-direction: column; gap: 5px; padding: 9px 0; border-top: 1px solid var(--border); }
 .cat-line:first-child { border-top: none; }
 .cat-line-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
+/* Titular (JP | My): seção da Categorização e selo de origem de cada despesa */
+:root {
+  --titular-jp: oklch(0.50 0.14 250);   --titular-jp-bg: oklch(0.95 0.03 250);
+  --titular-my: oklch(0.50 0.17 350);   --titular-my-bg: oklch(0.95 0.035 350);
+}
+.cat-titular { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 20px 0 4px; padding: 9px 14px; border-radius: var(--radius-sm); border-left: 5px solid; font-size: 14px; font-weight: 700; letter-spacing: .04em; }
+.cat-titular:first-child { margin-top: 0; }
+.cat-titular-meta { font-size: 11.5px; font-weight: 500; letter-spacing: 0; opacity: .85; }
+.cat-titular-jp { background: var(--titular-jp-bg); color: var(--titular-jp); border-color: var(--titular-jp); }
+.cat-titular-my { background: var(--titular-my-bg); color: var(--titular-my); border-color: var(--titular-my); }
+.cat-titular-outros { background: var(--bg-input); color: var(--text-2); border-color: var(--border-2); }
+.cat-origem { display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; padding: 1px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; vertical-align: middle; }
+.cat-origem-jp { background: var(--titular-jp-bg); color: var(--titular-jp); }
+.cat-origem-my { background: var(--titular-my-bg); color: var(--titular-my); }
+.cat-origem-outros { background: var(--bg-input); color: var(--text-2); }
 .cat-line-ctls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
 /* Celular: empilha; desktop: uma linha com colunas */
@@ -2194,7 +2209,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-10-15c"></script>
+<script src="date-utils.js?v=2026-10-15d"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2227,7 +2242,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-15c';
+const APP_VERSION = '2026-10-15d';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -5245,7 +5260,8 @@ function editarCartao(nome) {
         <input class="form-input" id="crud-fech" type="number" min="1" max="31" value="${c.fechamento||10}"></div>
       <div class="form-group"><label class="form-label">Dia vencimento</label>
         <input class="form-input" id="crud-venc" type="number" min="1" max="31" value="${c.vencimento||20}"></div>
-    </div>`;
+    </div>
+    ${_titularSelectHtml(c.titular)}`;
   document.getElementById('modalCrud').classList.add('open');
 }
 
@@ -5276,6 +5292,11 @@ function editarCategoria(id, tipoHint) {
   document.getElementById('modalCrud').classList.add('open');
 }
 
+// Titular (JP | My) da conta/cartão — separa a Categorização por pessoa.
+function _titularSelectHtml(valor) {
+  return `<div class="form-group"><label class="form-label">Titular</label><select class="form-select" id="crud-titular"><option value="jp"${valor !== 'my' ? ' selected' : ''}>JP</option><option value="my"${valor === 'my' ? ' selected' : ''}>My</option></select></div>`;
+}
+
 function openCrudModal(tipo) {
   _crudTipo   = tipo;
   _crudEditId = null;
@@ -5287,11 +5308,13 @@ function openCrudModal(tipo) {
     conta: `
       <div class="form-group"><label class="form-label">Nome</label><input class="form-input" id="crud-nome" placeholder="Ex: Nubank"></div>
       <div class="form-group"><label class="form-label">Banco / Instituição</label><input class="form-input" id="crud-banco" placeholder="Ex: Nubank"></div>
-      <div class="form-group"><label class="form-label">Saldo Inicial (R$)</label><input class="form-input" id="crud-saldo" type="number" step="0.01" placeholder="0,00"></div>`,
+      <div class="form-group"><label class="form-label">Saldo Inicial (R$)</label><input class="form-input" id="crud-saldo" type="number" step="0.01" placeholder="0,00"></div>
+      ${_titularSelectHtml('jp')}`,
     caixinha: `
       <div class="form-group"><label class="form-label">Nome</label><input class="form-input" id="crud-nome" placeholder="Ex: Reserva de Emergência"></div>
       <div class="form-group"><label class="form-label">Instituição</label><input class="form-input" id="crud-banco" placeholder="Ex: Tesouro Direto"></div>
-      <div class="form-group"><label class="form-label">Saldo Atual (R$)</label><input class="form-input" id="crud-saldo" type="number" step="0.01" placeholder="0,00"></div>`,
+      <div class="form-group"><label class="form-label">Saldo Atual (R$)</label><input class="form-input" id="crud-saldo" type="number" step="0.01" placeholder="0,00"></div>
+      ${_titularSelectHtml('jp')}`,
     cartao: `
       <div class="form-group"><label class="form-label">Nome</label><input class="form-input" id="crud-nome" placeholder="Ex: Nubank Roxinho"></div>
       <div class="form-group"><label class="form-label">Bandeira</label><input class="form-input" id="crud-bandeira" placeholder="Visa / Mastercard"></div>
@@ -5302,7 +5325,8 @@ function openCrudModal(tipo) {
       <div class="form-row">
         <div class="form-group"><label class="form-label">Dia fechamento</label><input class="form-input" id="crud-fech" type="number" min="1" max="31" placeholder="10"></div>
         <div class="form-group"><label class="form-label">Dia vencimento</label><input class="form-input" id="crud-venc" type="number" min="1" max="31" placeholder="20"></div>
-      </div>`,
+      </div>
+      ${_titularSelectHtml('jp')}`,
     categoria: `
       <div class="form-group"><label class="form-label">Nome</label><input class="form-input" id="crud-nome" placeholder="Ex: Academia"></div>
       <div class="form-group"><label class="form-label">Emoji</label><input class="form-input" id="crud-emoji" placeholder="🏋️" maxlength="4"></div>
@@ -5356,7 +5380,9 @@ async function salvarCrud() {
     row.banco         = document.getElementById('crud-banco')?.value.trim() || '';
     row.saldo_inicial = parseFloat(document.getElementById('crud-saldo')?.value || 0);
     row.tipo          = tipo;
+    row.titular       = document.getElementById('crud-titular')?.value || 'jp';
   } else if (tipo === 'cartao') {
+    row.titular    = document.getElementById('crud-titular')?.value || 'jp';
     row.bandeira   = document.getElementById('crud-bandeira')?.value.trim() || '';
     row.limite     = parseFloat(document.getElementById('crud-limite')?.value || 0);
     row.conta_nome = document.getElementById('crud-conta')?.value || '';
@@ -6741,21 +6767,45 @@ async function renderCategorizacao() {
     (aprendidas || []).forEach(a => sugestoesPorChave.set(a.compra_chave, a.categoria));
   }
 
+  // Titular (JP | My) de cada conta/cartão: separa a tela em seções por pessoa e
+  // deixa explícito DE QUEM é cada despesa. Qualquer um dos dois categoriza a do
+  // outro — as duas seções aparecem sempre, sem filtro por quem está logado.
+  const [{ data: titContas }, { data: titCartoes }] = await Promise.all([
+    _sb.from('contas').select('nome, titular'),
+    _sb.from('cartoes').select('nome, titular'),
+  ]);
+  const titularPorOrigem = new Map();
+  (titContas || []).forEach(c => titularPorOrigem.set('conta:' + c.nome, c.titular));
+  (titCartoes || []).forEach(c => titularPorOrigem.set('cartao:' + c.nome, c.titular));
+  const titularDe = p => (p.cartao_nome
+    ? titularPorOrigem.get('cartao:' + p.cartao_nome)
+    : titularPorOrigem.get('conta:' + p.conta_nome)) || 'outros';
+  const SECOES_TITULAR = [['jp', 'JP'], ['my', 'My'], ['outros', 'Origem não identificada']];
+  // Selo destacado da origem (cartão ou conta), na cor do titular.
+  const _origemChip = i => {
+    const nome = i.cartao_nome || i.conta_nome || 'origem desconhecida';
+    return `<span class="cat-origem cat-origem-${i._tit}" title="${i.cartao_nome ? 'Cartão' : 'Conta'}">${i.cartao_nome ? '💳' : '🏦'} ${_escHtml(nome)}</span>`;
+  };
+
   // Agrupar por descrição (assinatura, mercado, posto costumam repetir o
   // mesmo texto) — grupo maior primeiro, pra categorizar em bloco o que
   // rende mais rápido. Ignora o sufixo " (N/M)" de parcela na CHAVE de
   // agrupamento (senão cada parcela de uma mesma compra viraria grupo de 1,
   // já que o texto muda por linha) — cada linha individual continua
   // mostrando seu próprio sufixo.
+  // A chave inclui o titular: a mesma descrição de JP e de My vira dois grupos.
   const grupos = new Map();
   pendentes.forEach(p => {
-    const chave = _semParcela(p.descricao) || '(sem descrição)';
-    if (!grupos.has(chave)) grupos.set(chave, []);
-    grupos.get(chave).push(p);
+    p._tit = titularDe(p);
+    const base = _semParcela(p.descricao) || '(sem descrição)';
+    const chave = p._tit + '\u0001' + base;
+    if (!grupos.has(chave)) grupos.set(chave, { tit: p._tit, base, itens: [] });
+    grupos.get(chave).itens.push(p);
   });
-  const gruposOrdenados = [...grupos.entries()].sort((a, b) => b[1].length - a[1].length);
+  const gruposOrdenados = [...grupos.values()].sort((a, b) => b.itens.length - a.itens.length);
 
-  el.innerHTML = gruposOrdenados.map(([descricaoBase, itens], idx) => {
+  const renderGrupo = (g, idx) => {
+    const descricaoBase = g.base, itens = g.itens;
     const tipo = itens[0].tipo;
     const total = itens.reduce((s, i) => s + Number(i.valor || 0), 0);
     // Prioridade: identidade da compra (qualquer item do grupo que bata)
@@ -6785,6 +6835,10 @@ async function renderCategorizacao() {
     const descIdGrupo = `descgrupo-${idx}`;
     // O `aplicar` do grupo usa a sugestão já resolvida; sem sugestão, o seletor
     // é o único caminho — não existe mais botão OK que possa não fazer nada.
+    // Selos das origens distintas do grupo (cartão/conta), até 3 + "+N".
+    const origens = [...new Map(itens.map(i => [(i.cartao_nome ? 'c:' : 'a:') + (i.cartao_nome || i.conta_nome), i])).values()];
+    const origensChips = origens.slice(0, 3).map(_origemChip).join('') +
+      (origens.length > 3 ? `<span class="cat-origem cat-origem-${g.tit}">+${origens.length - 3}</span>` : '');
     const sugHtml = sugestao
       ? `<button class="cat-sug" title="Aplicar ${sugestao} nas ${itens.length} transações" onclick="categorizarGrupo('${itensGrupo}', '${sugestao}', ${baseOriginalAttr}, document.getElementById('${descIdGrupo}').value)"><span class="cat-sug-label">sugestão</span><span class="cat-sug-val">${sugestao} ✓</span></button>`
       : '';
@@ -6794,7 +6848,7 @@ async function renderCategorizacao() {
         <div class="cat-row">
           <div class="cat-row-body">
             <input id="${descIdGrupo}" class="cat-row-nome" style="width:100%;border:none;background:none;outline:none;font-family:var(--font);padding:0" value="${_escHtml(descricaoBase)}">
-            <div class="cat-row-sub">${itens.length} ${itens.length === 1 ? "transação" : "transações"} · ${sugestao ? "já classificado antes" : "sem par no histórico"}</div>
+            <div class="cat-row-sub">${origensChips}${itens.length} ${itens.length === 1 ? "transação" : "transações"} · ${sugestao ? "já classificado antes" : "sem par no histórico"}</div>
           </div>
           ${sugHtml}
           <div class="cat-row-ctl">
@@ -6813,7 +6867,7 @@ async function renderCategorizacao() {
             return `
             <div class="cat-line">
               <div class="cat-line-head">
-                <span class="text-3">${_fmtDataBR(i.data)} · ${i.cartao_nome || i.conta_nome || ""}${i.fonte === "lancamentos" ? '<span class="ex-tag">lançamento</span>' : ""}</span>
+                <span><span class="text-3">${_fmtDataBR(i.data)}</span> ${_origemChip(i)}${i.fonte === "lancamentos" ? '<span class="ex-tag">lançamento</span>' : ""}</span>
                 <span class="font-mono">${fmt(i.valor)}</span>
               </div>
               <input id="${descIdLinha}" class="form-input" style="font-size:12px;padding:4px 8px" value="${_escHtml(i.descricao)}">
@@ -6850,20 +6904,31 @@ async function renderCategorizacao() {
           }).join('')}
         </details>
       </div>`;
+  };
+
+  // Seções por titular (JP, My, e "origem não identificada" só se existir).
+  let seq = 0;
+  el.innerHTML = SECOES_TITULAR.map(([tit, rotulo]) => {
+    const gs = gruposOrdenados.filter(g => g.tit === tit);
+    if (!gs.length) return '';
+    const nTx = gs.reduce((s, g) => s + g.itens.length, 0);
+    const soma = gs.reduce((s, g) => s + g.itens.reduce((a, i) => a + (i.tipo === 'receita' ? 0 : Number(i.valor || 0)), 0), 0);
+    return `<div class="cat-titular cat-titular-${tit}"><span>${rotulo}</span><span class="cat-titular-meta">${nTx} ${nTx === 1 ? 'transação' : 'transações'} · ${gs.length} ${gs.length === 1 ? 'grupo' : 'grupos'} · ${fmt(soma)}</span></div>` +
+      gs.map(g => renderGrupo(g, seq++)).join('');
   }).join('');
 
   // Cabeçalho e botão de lote — montados DEPOIS dos grupos, porque dependem de
   // quantos grupos têm sugestão pronta.
-  const comSug = gruposOrdenados.filter(([base]) => sugestoes.has(base));
-  const nItensSug = comSug.reduce((s, g) => s + g[1].length, 0);
+  const comSug = gruposOrdenados.filter(g => sugestoes.has(g.base));
+  const nItensSug = comSug.reduce((s, g) => s + g.itens.length, 0);
   state._catSugestoes = comSug.map(g => ({
-    base: g[0],
-    categoria: sugestoes.get(g[0]),
+    base: g.base,
+    categoria: sugestoes.get(g.base),
     // pluggy_compra_chave/fonte precisam vir junto — sem eles, "aplicar
     // todas" nunca ensinava `pluggy_categorias_compra` (gap pré-existente,
     // achado junto desta mudança) nem sabia rotear lançamento pra tabela
     // certa.
-    itens: g[1].map(i => ({ id: i.id, descricao: i.descricao, pluggy_compra_chave: i.pluggy_compra_chave || null, fonte: i.fonte }))
+    itens: g.itens.map(i => ({ id: i.id, descricao: i.descricao, pluggy_compra_chave: i.pluggy_compra_chave || null, fonte: i.fonte }))
   }));
 
   const cEl = document.getElementById('categ-count');
