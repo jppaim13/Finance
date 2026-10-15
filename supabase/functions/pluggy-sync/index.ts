@@ -209,6 +209,10 @@ Deno.serve(async (req) => {
             saldo_atualizado_em: new Date().toISOString(),
             limite: c.creditData?.creditLimit ?? null,
             limite_disponivel: c.creditData?.availableCreditLimit ?? null,
+            // Payload bruto dos dados bancários (BANK; null em CREDIT): o valor
+            // "Reservado" do Meu Pluggy não vem em `balance` e o nome do campo
+            // não é conhecido — guarda o bruto pra descobrir (migration 016).
+            bank_data: c.bankData ?? null,
           }, { onConflict: "pluggy_account_id" });
 
           // --- 3. transações, incremental por data -------------------------
