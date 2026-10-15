@@ -215,6 +215,50 @@ Deno.serve(async (req) => {
             bank_data: c.bankData ?? null,
           }, { onConflict: "pluggy_account_id" });
 
+          // Reservas ("Reservado" do Meu Pluggy) — espelho em `pluggy_reservas`
+          // (migration 017), usado pra saldo automático das caixinhas ligadas.
+          // Bloco próprio: uma falha aqui nunca pode impedir a sincronização
+          // das transações da conta. Só mexe quando `reservedBalances` veio como
+          // lista (null/ausente = o conector não informou: não apaga nada). Uma
+          // reserva que sumiu da lista é removida do espelho.
+          try {
+            const reservas = c.bankData?.reservedBalances;
+            if (Array.isArray(reservas)) {
+              const idsVistos: string[] = [];
+              for (const r of reservas) {
+                const identificacao = String(r.identification ?? r.name ?? "");
+                if (!identificacao) continue;
+                const valor = (r.availableAmounts ?? [])
+                  .reduce((s: number, a: any) => s + Number(a.amount ?? 0), 0);
+                idsVistos.push(identificacao);
+                const { error: eUp } = await admin.from("pluggy_reservas").upsert({
+                  app_id: app.id,
+                  pluggy_account_id: c.id,
+                  identificacao,
+                  nome: r.name ?? identificacao,
+                  valor,
+                  remuneracao: r.availableAmounts?.[0]?.remuneration ?? null,
+                  atualizado_em: new Date().toISOString(),
+                }, { onConflict: "pluggy_account_id,identificacao" });
+                // supabase-js devolve { error } em vez de lançar: sem checar, uma
+                // falha deixaria o valor antigo no espelho sem nenhum aviso.
+                if (eUp) throw new Error(`upsert reserva: ${eUp.message}`);
+              }
+              const { data: existentes, error: eSel } = await admin
+                .from("pluggy_reservas").select("id, identificacao")
+                .eq("pluggy_account_id", c.id);
+              if (eSel) throw new Error(`select reservas: ${eSel.message}`);
+              const sumiram = (existentes ?? [])
+                .filter((e: any) => !idsVistos.includes(e.identificacao)).map((e: any) => e.id);
+              if (sumiram.length) {
+                const { error: eDel } = await admin.from("pluggy_reservas").delete().in("id", sumiram);
+                if (eDel) throw new Error(`delete reservas: ${eDel.message}`);
+              }
+            }
+          } catch (eRes) {
+            console.error("reservas", c.id, String(eRes));
+          }
+
           // --- 3. transações, incremental por data -------------------------
           // BUG REAL corrigido aqui (14/09/2026, ver Decisões no CLAUDE.md):
           // esta consulta pegava a MAIOR `data` salva pra essa conta, sem

@@ -1479,6 +1479,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
       <div id="pluggy-contas-list">
         <div class="empty-state"><div class="emoji">🔄</div><p>Nenhuma conta sincronizada ainda</p></div>
       </div>
+      <div id="pluggy-reservas-list"></div>
     </div>
 
     <!-- ── CATEGORIZAÇÃO (transações importadas da Pluggy) ─────────────── -->
@@ -2205,7 +2206,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-13b';
+const APP_VERSION = '2026-10-15b';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -2947,7 +2948,7 @@ async function loadData() {
   // Busca paralela de todos os dados necessários
   const [contasData, cartoesData, lanFixData, extratoMesData,
          allExtratoData, allTransfData, repassesData, catsData,
-         lancRealizadosData, pluggyFaturasData, pluggyContasData] = await Promise.all([
+         lancRealizadosData, pluggyFaturasData, pluggyContasData, pluggyReservasData] = await Promise.all([
     sbSelect('contas',   q => q.order('criado_em')),
     sbSelect('cartoes',  q => q.order('criado_em')),
     sbSelect('lancamentos', q => q.eq('ativo', true)),
@@ -2959,6 +2960,7 @@ async function loadData() {
     sbSelect('lancamentos_realizados', q => q.order('ano').order('mes')),
     sbSelect('pluggy_faturas', q => q.order('due_date')),
     sbSelect('pluggy_contas', q => q.eq('ignorar', false).not('cartao_nome', 'is', null)),
+    sbSelect('pluggy_reservas', q => q.order('nome')),
   ]);
   // Usado por renderFaturas() pra preferir o vencimento REAL de cada
   // fatura (quando a Pluggy já sincronizou) em vez do dia calculado a
@@ -3027,9 +3029,15 @@ async function loadData() {
   state.contas    = todasContas.filter(c => c.tipo === 'conta').map(c => ({
     ...c, saldo: calcularSaldo(c, lanFixData, allExtratoData, allTransfData, undefined, lancRealizadosConfirmados),
   }));
-  state.caixinhas = todasContas.filter(c => c.tipo === 'caixinha').map(c => ({
-    ...c, saldo: calcularSaldo(c, lanFixData, allExtratoData, allTransfData, undefined, lancRealizadosConfirmados),
-  }));
+  // Caixinha ligada a uma reserva da Pluggy (contas.pluggy_reserva_id): o saldo
+  // é o valor da reserva (espelho pluggy_reservas); sem reserva correspondente
+  // cai no saldo calculado — ver resolverSaldoCaixinha() em date-utils.js.
+  state._pluggyReservas = pluggyReservasData || [];
+  state.caixinhas = todasContas.filter(c => c.tipo === 'caixinha').map(c => {
+    const calc = calcularSaldo(c, lanFixData, allExtratoData, allTransfData, undefined, lancRealizadosConfirmados);
+    const { saldo, reserva } = resolverSaldoCaixinha(c, calc, state._pluggyReservas);
+    return { ...c, saldo, _reservaPluggy: reserva };
+  });
   state.cartoes   = cartoesData.map(c => ({ ...c, conta: c.conta_nome }));
 
   localStorage.setItem('financeContas',    JSON.stringify(state.contas));
@@ -3316,10 +3324,10 @@ function renderCaixinhas() {
       <div class="acct-mark" style="background:oklch(0.74 0.07 195)"></div>
       <div class="acct-body">
         <div class="acct-name">${c.nome}</div>
-        <div class="acct-sub">${c.banco || 'Caixinha'}</div>
+        <div class="acct-sub">${c.banco || 'Caixinha'}${c._reservaPluggy ? ` · automático (Pluggy, ${_dataHoraCurta(c._reservaPluggy.atualizado_em)})` : ''}</div>
       </div>
       <div class="acct-val">${fmt(c.saldo || 0)}</div>
-      <button class="tx-act-btn edit" onclick="abrirAjusteSaldo('${c.nome}',${c.saldo||0},'caixinha')" title="Ajustar saldo" style="opacity:1">⚖️</button>
+      ${c._reservaPluggy ? '' : `<button class="tx-act-btn edit" onclick="abrirAjusteSaldo('${c.nome}',${c.saldo||0},'caixinha')" title="Ajustar saldo" style="opacity:1">⚖️</button>`}
     </div>
   `).join('') + `
     <div class="acct-total">
@@ -6280,6 +6288,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
 async function carregarPluggyContas() {
   const el = document.getElementById('pluggy-contas-list');
   if (!el || !_sb) return;
+  renderPluggyReservas();
 
   const [{ data: contas, error }, { data: items }, { data: logsRecentes }, { data: appsLista }, { data: faturas }, { data: transacoesRecentes }] = await Promise.all([
     _sb.from('pluggy_contas').select('*').order('nome'),
@@ -6480,6 +6489,59 @@ async function carregarPluggyContas() {
       </div>
     `;
   }).join('');
+}
+
+// "15/10 01:45" a partir de um timestamp ISO (hora local).
+function _dataHoraCurta(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '?';
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// Reservas ("Reservado" do Meu Pluggy) e vínculo com as caixinhas do app. Uma
+// caixinha vinculada mostra o valor da reserva como saldo (automático); só o
+// Mercado Pago detalha reservas — as do Nubank vêm sem nome/valor e seguem
+// manuais. Ver Decisões no CLAUDE.md.
+async function renderPluggyReservas() {
+  const el = document.getElementById('pluggy-reservas-list');
+  if (!el || !_sb) return;
+  const [{ data: reservas }, { data: caixinhas }, { data: pcs }] = await Promise.all([
+    _sb.from('pluggy_reservas').select('*').order('nome'),
+    _sb.from('contas').select('nome, pluggy_reserva_id').eq('tipo', 'caixinha').order('nome'),
+    _sb.from('pluggy_contas').select('pluggy_account_id, nome, cartao_nome, conta_nome'),
+  ]);
+  if (!reservas || !reservas.length) { el.innerHTML = ''; return; }
+  const contaDe = new Map((pcs || []).map(p => [p.pluggy_account_id, p]));
+  el.innerHTML = '<div class="acct-group-label" style="margin-top:18px">Reservas da Pluggy → caixinhas</div>' +
+    '<div class="text-xs text-3" style="margin-bottom:8px">Vincule a reserva a uma caixinha para o saldo dela ficar automático. Desvincular volta ao saldo manual.</div>' +
+    reservas.map(r => {
+      const opts = '<option value="">— sem vínculo (manual) —</option>' + (caixinhas || []).map(c =>
+        `<option value="${_escHtml(c.nome)}"${c.pluggy_reserva_id === r.identificacao ? ' selected' : ''}>${_escHtml(c.nome)}</option>`).join('');
+      return `
+      <div class="acct-row" style="align-items:center">
+        <div class="acct-body">
+          <div class="acct-name">${_escHtml(r.nome)}</div>
+          <div class="acct-sub">${_escHtml((contaDe.get(r.pluggy_account_id) || {}).nome || '')} · atualizado ${_dataHoraCurta(r.atualizado_em)}</div>
+        </div>
+        <div class="acct-val">${fmt(Number(r.valor) || 0)}</div>
+        <select class="ex-filter-select" style="max-width:190px;margin-left:8px" data-ident="${_escHtml(r.identificacao)}" onchange="vincularReservaPluggy(this)">${opts}</select>
+      </div>`;
+    }).join('');
+}
+
+async function vincularReservaPluggy(select) {
+  const ident = select.dataset.ident;
+  const nome = select.value;
+  const { error: e1 } = await _sb.from('contas').update({ pluggy_reserva_id: null }).eq('pluggy_reserva_id', ident);
+  if (e1) { showToast('Erro ao salvar vínculo ❌'); return; }
+  if (nome) {
+    const { error: e2 } = await _sb.from('contas').update({ pluggy_reserva_id: ident }).eq('nome', nome).eq('tipo', 'caixinha');
+    if (e2) { showToast('Erro ao salvar vínculo ❌'); return; }
+  }
+  showToast(nome ? 'Caixinha vinculada — saldo automático ✅' : 'Vínculo removido — saldo manual ✅');
+  await loadData();
+  await renderPluggyReservas();
 }
 
 async function atualizarMapeamentoPluggy(id, value) {

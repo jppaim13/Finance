@@ -246,3 +246,14 @@ function gerarListaMeses(hoje = new Date(), mesesFuturos = 12) {
   }
   return { MESES, MESES_NOMES };
 }
+
+// ─── Saldo de caixinha ligada a uma reserva da Pluggy ──────────────────────
+// Uma caixinha com `pluggy_reserva_id` mostra o valor da reserva (espelho
+// `pluggy_reservas`, gravado pela sync) em vez do saldo calculado à mão. Sem
+// reserva correspondente (sync nunca rodou, reserva sumiu, id errado) cai no
+// saldo calculado — NUNCA zera em silêncio. Devolve { saldo, reserva }.
+function resolverSaldoCaixinha(caixinha, saldoCalculado, reservas) {
+  if (!caixinha || !caixinha.pluggy_reserva_id) return { saldo: saldoCalculado, reserva: null };
+  const r = (reservas || []).find(x => x.identificacao === caixinha.pluggy_reserva_id);
+  return r ? { saldo: Number(r.valor), reserva: r } : { saldo: saldoCalculado, reserva: null };
+}

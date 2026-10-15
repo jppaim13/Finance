@@ -263,6 +263,18 @@ assertEqual(getVencimentoIdx('2026-12-28', 25, 5), 2027 * 12 + 2,
   assertEqual(mesNomeToAnoMes('Mar-2027').join('/'), '2027/3', 'mesNomeToAnoMes lê meses além de Fev/2027');
 }
 
+// ─── resolverSaldoCaixinha: caixinha ligada a reserva da Pluggy ────────────
+{
+  const reservas = [{ identificacao: 'r1', valor: '4032.54' }, { identificacao: 'r2', valor: 0 }];
+  assertEqual(resolverSaldoCaixinha({ nome: 'A' }, 100, reservas).saldo, 100, 'caixinha sem vínculo mantém o saldo calculado');
+  assertEqual(resolverSaldoCaixinha({ pluggy_reserva_id: null }, 100, reservas).reserva, null, 'vínculo nulo: sem reserva');
+  assertEqual(resolverSaldoCaixinha({ pluggy_reserva_id: 'r1' }, 100, reservas).saldo, 4032.54, 'caixinha ligada usa o valor da reserva (numeric vem como string)');
+  assertEqual(resolverSaldoCaixinha({ pluggy_reserva_id: 'r2' }, 100, reservas).saldo, 0, 'reserva com valor 0 vale 0 (não cai no calculado)');
+  assertEqual(resolverSaldoCaixinha({ pluggy_reserva_id: 'zzz' }, 100, reservas).saldo, 100, 'id sem reserva no espelho: cai no saldo calculado, não zera');
+  assertEqual(resolverSaldoCaixinha({ pluggy_reserva_id: 'r1' }, 100, undefined).saldo, 100, 'sem espelho carregado: saldo calculado');
+  assertEqual(resolverSaldoCaixinha({ pluggy_reserva_id: 'r1' }, 100, reservas).reserva.identificacao, 'r1', 'devolve a reserva usada');
+}
+
 // ─── Render ─────────────────────────────────────────────────────────────────
 const el = document.getElementById('results');
 el.innerHTML =
