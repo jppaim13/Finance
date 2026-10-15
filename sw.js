@@ -1,4 +1,4 @@
-const CACHE_NAME = 'financas-v5';
+const CACHE_NAME = 'financas-v6';
 
 const SHELL = [
   './icon.svg',
@@ -30,7 +30,10 @@ self.addEventListener('fetch', event => {
   // que o app sempre carrega a versão mais recente de ambos juntos. Sem isso,
   // um date-utils.js em cache podia ficar "para trás" do index.html mais novo
   // sem erro nenhum, só com sintoma de saldo/data errados.
-  const isAppShell = event.request.mode === 'navigate' || url.endsWith('index.html') || url.endsWith('date-utils.js');
+  // Ignora a query string: date-utils.js é pedido como date-utils.js?v=<APP_VERSION>
+  // (cache-busting contra index.html novo + date-utils.js antigo — 15/10/2026).
+  const caminho = url.split('?')[0];
+  const isAppShell = event.request.mode === 'navigate' || caminho.endsWith('index.html') || caminho.endsWith('date-utils.js');
   if (isAppShell) {
     event.respondWith(
       fetch(event.request)
