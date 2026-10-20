@@ -1061,6 +1061,8 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 .cat-row { display: grid; align-items: center; gap: 10px 12px; padding: 13px 16px; border-bottom: 1px solid var(--bg-hover); }
 .cat-row:last-child { border-bottom: none; }
 .cat-row-body { grid-area: corpo; min-width: 0; }
+.pessoa-slot { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.pessoa-aviso { font-size: 12px; color: var(--amber); font-weight: 600; }
 .apelido-input.sug { color: var(--text-3); font-style: italic; }
 .apelido-ind { font-size: 10.5px; color: var(--text-3); margin-left: 6px; }
 .apelido-ind.erro { color: var(--red); }
@@ -1396,6 +1398,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 
       <!-- Filtro de tipo fica sempre visível; conta e categoria só quando pedido,
            senão três faixas de chips comem a tela antes da primeira transação -->
+      <div class="pessoa-slot"></div>
       <div class="filter-chips" id="filterChips">
         <button class="filter-chip active" onclick="setFilterTipo('todos',this)">Todos</button>
         <button class="filter-chip" onclick="setFilterTipo('despesa',this)">Despesas</button>
@@ -2256,7 +2259,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-20c';
+const APP_VERSION = '2026-10-20d';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -2331,6 +2334,9 @@ let state = {
   selectedTipo: 'despesa',
   selectedCat: '',
   filterTipo: 'todos',
+  // Pessoa (todos | jp | my): estado ÚNICO lido por todas as telas; nunca persistido
+  // (volta a "todos" a cada sessão, como o modo competência do Extrato).
+  filtroPessoa: 'todos',
   filterContas: new Set(),
   filterCats: new Set(),
   loading: false,
@@ -2557,6 +2563,36 @@ function renderAtual() {
   // momento). Adia até o campo perder o foco e salvar — ver `_apelidoRetomarRender`.
   if (_apelidoEmEdicao()) { state._renderAdiado = true; return; }
   PAGES[paginaAtiva()]?.();
+}
+
+// ── Filtro por pessoa (JP | My) ──────────────────────────────────────────────
+// A fonte do dono é a coluna `titular` de contas/cartoes (nunca pluggy_apps).
+// Item sem titular conhecido aparece em "Todos" e em nenhum filtro de pessoa —
+// e a tela avisa quantos ficaram de fora.
+function _titularDoItem(origem, nome) {
+  const lista = origem === 'cartao' ? (state.cartoes || []) : [...(state.contas || []), ...(state.caixinhas || [])];
+  return (lista.find(c => c.nome === nome) || {}).titular || null;
+}
+function _passaFiltroPessoa(titular) {
+  return state.filtroPessoa === 'todos' || titular === state.filtroPessoa;
+}
+const _PESSOA_ROTULO = { todos: 'Todos', jp: 'JP', my: 'My' };
+function _renderPessoaSlots(semDono) {
+  const html = ['todos', 'jp', 'my'].map(p =>
+    `<button class="filter-chip${state.filtroPessoa === p ? ' active' : ''}" onclick="setFiltroPessoa('${p}')">${_PESSOA_ROTULO[p]}</button>`).join('') +
+    (state.filtroPessoa !== 'todos'
+      ? `<span class="pessoa-aviso">Mostrando: ${_PESSOA_ROTULO[state.filtroPessoa]}${semDono ? ` · ${semDono} sem dono conhecido fora do filtro` : ''}</span>` : '');
+  document.querySelectorAll('.pessoa-slot').forEach(el => { el.innerHTML = html; });
+}
+function setFiltroPessoa(p) {
+  state.filtroPessoa = p;
+  // Conta/cartão já selecionado no Extrato que não é da pessoa escolhida sai do filtro.
+  for (const key of [...state.filterContas]) {
+    const isC = key.startsWith('cartao:');
+    if (!_passaFiltroPessoa(_titularDoItem(isC ? 'cartao' : 'conta', key.slice(isC ? 7 : 6)))) state.filterContas.delete(key);
+  }
+  buildSelectores();
+  renderAtual();
 }
 
 // ── Subtítulo (apelido) ─────────────────────────────────────────────────────
@@ -3559,7 +3595,8 @@ function setModoCompetencia(competencia) {
 function renderExtrato() {
   const el = document.getElementById('extrato-list');
   document.getElementById('extrato-subtitle').textContent =
-    MESES[state.currentMonth] + (state.extratoModoCompetencia ? ' — competência de fatura' : '');
+    MESES[state.currentMonth] + (state.extratoModoCompetencia ? ' — competência de fatura' : '') +
+    (state.filtroPessoa !== 'todos' ? ' — mostrando: ' + _PESSOA_ROTULO[state.filtroPessoa] : '');
   const btnCal  = document.getElementById('btnModoCalendario');
   const btnComp = document.getElementById('btnModoCompetencia');
   if (btnCal && btnComp) {
@@ -3567,7 +3604,15 @@ function renderExtrato() {
     btnComp.classList.toggle('active', state.extratoModoCompetencia);
   }
 
-  let txs = [...state.lancamentos];
+  // Pessoa: filtra pelo titular da conta/cartão de cada linha (coluna `titular`).
+  // Linha sem dono conhecido some dos filtros de pessoa e é contada no aviso.
+  const todasDoMes = state.lancamentos;
+  const semDono = state.filtroPessoa === 'todos' ? 0
+    : todasDoMes.filter(t => !_titularDoItem(t.origem, t.contaCartao)).length;
+  _renderPessoaSlots(semDono);
+  const doMes = state.filtroPessoa === 'todos' ? todasDoMes
+    : todasDoMes.filter(t => _titularDoItem(t.origem, t.contaCartao) === state.filtroPessoa);
+  let txs = [...doMes];
 
   // Tipo filter (single-select)
   if (state.filterTipo === 'despesa') txs = txs.filter(t => t.tipo !== 'receita');
@@ -3601,7 +3646,7 @@ function renderExtrato() {
   if (catsEl) {
     const allCats = [...(state.catsExtra||[]), ...CATS_DESPESA, ...CATS_RECEITA];
     const selectedCat = state.filterCats.values().next().value || '';
-    const catIds  = [...new Set(state.lancamentos.map(t => t.categoria).filter(Boolean))];
+    const catIds  = [...new Set(doMes.map(t => t.categoria).filter(Boolean))];
     if (selectedCat && !catIds.includes(selectedCat)) catIds.push(selectedCat);
     catsEl.innerHTML = `<option value="">Todas as categorias</option>` + catIds.map(id => {
       const info = allCats.find(c => c.id === id) || { emoji: '📦', nome: id };
@@ -5366,7 +5411,7 @@ function editarCategoria(id, tipoHint) {
 
 // Titular (JP | My) da conta/cartão — separa a Categorização por pessoa.
 function _titularSelectHtml(valor) {
-  return `<div class="form-group"><label class="form-label">Titular</label><select class="form-select" id="crud-titular"><option value="jp"${valor !== 'my' ? ' selected' : ''}>JP</option><option value="my"${valor === 'my' ? ' selected' : ''}>My</option></select></div>`;
+  return `<div class="form-group"><label class="form-label">Titular</label><select class="form-select" id="crud-titular"><option value=""${valor ? '' : ' selected'}>Selecione…</option><option value="jp"${valor === 'jp' ? ' selected' : ''}>JP</option><option value="my"${valor === 'my' ? ' selected' : ''}>My</option></select></div>`;
 }
 
 function openCrudModal(tipo) {
@@ -5381,12 +5426,12 @@ function openCrudModal(tipo) {
       <div class="form-group"><label class="form-label">Nome</label><input class="form-input" id="crud-nome" placeholder="Ex: Nubank"></div>
       <div class="form-group"><label class="form-label">Banco / Instituição</label><input class="form-input" id="crud-banco" placeholder="Ex: Nubank"></div>
       <div class="form-group"><label class="form-label">Saldo Inicial (R$)</label><input class="form-input" id="crud-saldo" type="number" step="0.01" placeholder="0,00"></div>
-      ${_titularSelectHtml('jp')}`,
+      ${_titularSelectHtml('')}`,
     caixinha: `
       <div class="form-group"><label class="form-label">Nome</label><input class="form-input" id="crud-nome" placeholder="Ex: Reserva de Emergência"></div>
       <div class="form-group"><label class="form-label">Instituição</label><input class="form-input" id="crud-banco" placeholder="Ex: Tesouro Direto"></div>
       <div class="form-group"><label class="form-label">Saldo Atual (R$)</label><input class="form-input" id="crud-saldo" type="number" step="0.01" placeholder="0,00"></div>
-      ${_titularSelectHtml('jp')}`,
+      ${_titularSelectHtml('')}`,
     cartao: `
       <div class="form-group"><label class="form-label">Nome</label><input class="form-input" id="crud-nome" placeholder="Ex: Nubank Roxinho"></div>
       <div class="form-group"><label class="form-label">Bandeira</label><input class="form-input" id="crud-bandeira" placeholder="Visa / Mastercard"></div>
@@ -5398,7 +5443,7 @@ function openCrudModal(tipo) {
         <div class="form-group"><label class="form-label">Dia fechamento</label><input class="form-input" id="crud-fech" type="number" min="1" max="31" placeholder="10"></div>
         <div class="form-group"><label class="form-label">Dia vencimento</label><input class="form-input" id="crud-venc" type="number" min="1" max="31" placeholder="20"></div>
       </div>
-      ${_titularSelectHtml('jp')}`,
+      ${_titularSelectHtml('')}`,
     categoria: `
       <div class="form-group"><label class="form-label">Nome</label><input class="form-input" id="crud-nome" placeholder="Ex: Academia"></div>
       <div class="form-group"><label class="form-label">Emoji</label><input class="form-input" id="crud-emoji" placeholder="🏋️" maxlength="4"></div>
@@ -5444,6 +5489,9 @@ async function salvarCrud() {
   const nome = document.getElementById('crud-nome')?.value.trim();
   if (!nome) { showToast('Informe o nome'); return; }
 
+  // Titular obrigatório (sem padrão): conta/cartão criado à mão não nasce do JP sem ninguém escolher.
+  if (tipo !== 'categoria' && !document.getElementById('crud-titular')?.value) { showToast('Escolha o titular (JP ou My)'); return; }
+
   closeModal('modalCrud');
   showToast('Salvando...');
 
@@ -5452,9 +5500,9 @@ async function salvarCrud() {
     row.banco         = document.getElementById('crud-banco')?.value.trim() || '';
     row.saldo_inicial = parseFloat(document.getElementById('crud-saldo')?.value || 0);
     row.tipo          = tipo;
-    row.titular       = document.getElementById('crud-titular')?.value || 'jp';
+    row.titular       = document.getElementById('crud-titular').value;
   } else if (tipo === 'cartao') {
-    row.titular    = document.getElementById('crud-titular')?.value || 'jp';
+    row.titular    = document.getElementById('crud-titular').value;
     row.bandeira   = document.getElementById('crud-bandeira')?.value.trim() || '';
     row.limite     = parseFloat(document.getElementById('crud-limite')?.value || 0);
     row.conta_nome = document.getElementById('crud-conta')?.value || '';
@@ -7947,10 +7995,10 @@ function buildSelectores() {
   const contasEl = document.getElementById('filterSelectContas');
   if (contasEl) {
     const selectedKey = state.filterContas.values().next().value || '';
-    const contaOptions = (state.contas || []).map(c =>
+    const contaOptions = (state.contas || []).filter(c => _passaFiltroPessoa(c.titular)).map(c =>
       `<option data-tipo="conta" value="${_escHtml(c.nome)}"${selectedKey === `conta:${c.nome}` ? ' selected' : ''}>🏦 ${_escHtml(c.nome)}</option>`
     ).join('');
-    const cartaoOptions = (state.cartoes || []).map(c =>
+    const cartaoOptions = (state.cartoes || []).filter(c => _passaFiltroPessoa(c.titular)).map(c =>
       `<option data-tipo="cartao" value="${_escHtml(c.nome)}"${selectedKey === `cartao:${c.nome}` ? ' selected' : ''}>💳 ${_escHtml(c.nome)}</option>`
     ).join('');
     contasEl.innerHTML = `<option value="">Todas as contas</option>` +
