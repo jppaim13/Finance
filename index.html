@@ -1061,6 +1061,10 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 .cat-row { display: grid; align-items: center; gap: 10px 12px; padding: 13px 16px; border-bottom: 1px solid var(--bg-hover); }
 .cat-row:last-child { border-bottom: none; }
 .cat-row-body { grid-area: corpo; min-width: 0; }
+.apelido-input.sug { color: var(--text-3); font-style: italic; }
+.apelido-ind { font-size: 10.5px; color: var(--text-3); margin-left: 6px; }
+.apelido-ind.erro { color: var(--red); }
+.ex-sub-titulo { font-size: 11px; color: var(--text-3); font-weight: 400; margin-top: 1px; }
 .cat-row-nome { font-size: 13.5px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cat-row-sub { font-size: 11.5px; color: var(--text-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cat-sug { grid-area: sug; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: var(--radius-sm); background: var(--accent-soft); border: none; cursor: pointer; font-family: var(--font); white-space: nowrap; }
@@ -2242,7 +2246,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-15d';
+const APP_VERSION = '2026-10-20a';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -2538,7 +2542,61 @@ function paginaAtiva() {
 // exatamente essa lista hardcoded que, incompleta, fez o Extrato não
 // atualizar sozinho depois de uma edição.
 function renderAtual() {
+  // Re-render no meio da digitação de um subtítulo apagaria o campo (a
+  // sincronização automática termina em loadData() → renderAtual() a qualquer
+  // momento). Adia até o campo perder o foco e salvar — ver `_apelidoRetomarRender`.
+  if (_apelidoEmEdicao()) { state._renderAdiado = true; return; }
   PAGES[paginaAtiva()]?.();
+}
+
+// ── Subtítulo (apelido) ─────────────────────────────────────────────────────
+// Título = descricao (Pluggy ou digitado); subtítulo = `apelido`, só exibição.
+// REGRA: nenhuma lógica de casamento, detecção ou agrupamento lê `apelido`.
+const _apelidoTimers = new Map();
+function _apelidoEmEdicao() {
+  const a = document.activeElement;
+  return _apelidoTimers.size > 0 || !!(a && a.classList && a.classList.contains('apelido-input'));
+}
+function _apelidoRetomarRender() {
+  if (state._renderAdiado && !_apelidoEmEdicao()) { state._renderAdiado = false; renderAtual(); }
+}
+// Atualiza o state local (sem loadData) pra Extrato/Faturas já refletirem o texto.
+function _apelidoAtualizarLocal(itens, apelido) {
+  const ids = new Set(itens.map(i => i.id));
+  [state._allExtrato, state._allLancamentos, state.lancamentos].forEach(arr =>
+    (arr || []).forEach(r => { if (ids.has(r.id)) r.apelido = apelido; }));
+}
+// Chamado por oninput (debounce 800ms) e onblur (imediato) dos campos de subtítulo.
+// Só salva o que o usuário de fato digitou (`dirty`): sugestão em cinza apenas
+// focada e abandonada NÃO é gravada — vira definitiva ao categorizar ou editar.
+function apelidoDigitando(inp, imediato) {
+  clearTimeout(_apelidoTimers.get(inp.id));
+  if (imediato) {
+    _apelidoTimers.delete(inp.id);
+    if (inp.dataset.dirty !== '1') { _apelidoRetomarRender(); return; }
+    return _salvarApelido(inp);
+  }
+  inp.classList.remove('sug');
+  inp.dataset.dirty = '1';
+  _apelidoTimers.set(inp.id, setTimeout(() => { _apelidoTimers.delete(inp.id); _salvarApelido(inp); }, 800));
+}
+async function _salvarApelido(inp) {
+  const ind = inp.parentNode.querySelector('.apelido-ind');
+  let itens; try { itens = JSON.parse(inp.dataset.itens); } catch (e) { return; }
+  const apelido = inp.value.trim() || null;
+  inp.dataset.dirty = '';
+  if (ind) { ind.className = 'apelido-ind'; ind.textContent = '…'; }
+  const res = await Promise.all(itens.map(i =>
+    _sb.from(i.fonte === 'lancamentos' ? 'lancamentos' : 'extrato').update({ apelido }).eq('id', i.id)));
+  const erro = res.find(r => r.error);
+  if (erro) {
+    console.error('salvarApelido', erro.error);
+    if (ind) { ind.className = 'apelido-ind erro'; ind.textContent = 'erro ao salvar ❌'; }
+  } else {
+    _apelidoAtualizarLocal(itens, apelido);
+    if (ind) { ind.textContent = 'salvo ✓'; setTimeout(() => { if (ind.textContent === 'salvo ✓') ind.textContent = ''; }, 2000); }
+  }
+  _apelidoRetomarRender();
 }
 
 function navigate(page) {
@@ -3404,7 +3462,8 @@ function txItem(tx, maxAbs) {
     <div class="ex-row">
       <div class="ex-mag" style="background:${magCor}"></div>
       <div class="ex-body">
-        <div class="ex-desc">${tx.descricao || '—'}${isFixo ? '<span class="ex-tag">fixo</span>' : ''}${tx.previsto ? '<span class="ex-tag ex-tag-previsto">previsto</span>' : ''}${isFatura ? '<span class="ex-tag ex-tag-fatura">fatura</span>' : ''}</div>
+        <div class="ex-desc">${tx.apelido ? _escHtml(tx.apelido) : (tx.descricao || '—')}${isFixo ? '<span class="ex-tag">fixo</span>' : ''}${tx.previsto ? '<span class="ex-tag ex-tag-previsto">previsto</span>' : ''}${isFatura ? '<span class="ex-tag ex-tag-fatura">fatura</span>' : ''}</div>
+        ${tx.apelido ? `<div class="ex-sub-titulo">${_escHtml(tx.descricao || '')}</div>` : ''}
         <div class="ex-meta">${cat.nome} · ${tx.contaCartao || ''}</div>
       </div>
       <div class="ex-val" style="color:${isReceita ? 'var(--green)' : 'var(--text)'}">
@@ -3541,7 +3600,7 @@ function renderExtrato() {
   }
 
   const search = document.getElementById('searchInput').value.toLowerCase();
-  if (search) txs = txs.filter(t => (t.descricao||'').toLowerCase().includes(search));
+  if (search) txs = txs.filter(t => ((t.descricao||'') + ' ' + (t.apelido||'')).toLowerCase().includes(search));
 
   // ── Summary panel ──────────────────────────────────────────────────────────
   const summaryEl = document.getElementById('extrato-summary');
@@ -4361,7 +4420,7 @@ function montarDespesasMesRepasse(mesNome) {
       const dia    = Math.min(lan.dia_ini || 1, new Date(iAno, iMes, 0).getDate());
       const data   = `${iAno}-${String(iMes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
       const parc   = tipo === 'parcelado' ? ` (${n+1}/${lan.parcelas})` : '';
-      return { id: lan.id, data, descricao: lan.descricao + parc, categoria: lan.categoria,
+      return { id: lan.id, data, descricao: lan.descricao + parc, apelido: lan.apelido || null, categoria: lan.categoria,
                valor: Number(lan.valor), tipo: 'despesa', origem: lan.origem,
                contaCartao: lan.conta_nome, fonte: 'lancamentos', instOffset: n };
     };
@@ -6059,6 +6118,8 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
     // em cartões/meses diferentes dentro da mesma rodada de importação.
     const { data: categoriasCompra } = await _sb.from('pluggy_categorias_compra').select('*');
     const categoriaPorCompra = new Map((categoriasCompra || []).map(c => [c.compra_chave, c.categoria]));
+    // Subtítulo herdado por compra, igual à categoria (só entra via confirmação explícita).
+    const apelidoPorCompra = new Map((categoriasCompra || []).filter(c => c.apelido).map(c => [c.compra_chave, c.apelido]));
 
     // Linhas de extrato já reivindicadas por alguma transação da Pluggy
     // (ver comentário em `_pluggyJaExisteNoApp`) — buscado uma vez, fora do
@@ -6190,6 +6251,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
           data: pt.data, descricao: descricaoFinal, categoria: categoriaConhecida || 'nao_classificado',
           valor, tipo: 'despesa', conta_nome: '', origem: 'cartao', cartao_nome: nome,
           origem_dado: 'pluggy', pluggy_compra_chave: compraChavePt || null,
+          apelido: (compraChavePt && apelidoPorCompra.get(compraChavePt)) || null,
         } : {
           data: pt.data, descricao: descricaoFinal, categoria: 'nao_classificado',
           valor, tipo: pt.tipo === 'CREDIT' ? 'receita' : 'despesa',
@@ -6256,6 +6318,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
           mes_ini: mesIni, ano_ini: anoIni, dia_ini: ad,
           conta_nome: nome, origem: 'cartao', ativo: true,
           origem_dado: 'pluggy', pluggy_compra_chave: g.compraChave, pluggy_parcelas_totais: g.instTot,
+          apelido: (g.compraChave && apelidoPorCompra.get(g.compraChave)) || null,
         };
         const criado = await sbInsert('lancamentos', novoLan);
         if (criado) {
@@ -6761,10 +6824,28 @@ async function renderCategorizacao() {
   // confirmação do usuário.
   const chavesBusca = [...new Set(pendentes.map(p => p.pluggy_compra_chave).filter(Boolean))];
   const sugestoesPorChave = new Map();
+  const apelidoPorChave = new Map();
   if (chavesBusca.length) {
     const { data: aprendidas } = await _sb.from('pluggy_categorias_compra')
-      .select('compra_chave, categoria').in('compra_chave', chavesBusca);
-    (aprendidas || []).forEach(a => sugestoesPorChave.set(a.compra_chave, a.categoria));
+      .select('compra_chave, categoria, apelido').in('compra_chave', chavesBusca);
+    (aprendidas || []).forEach(a => {
+      sugestoesPorChave.set(a.compra_chave, a.categoria);
+      if (a.apelido) apelidoPorChave.set(a.compra_chave, a.apelido);
+    });
+  }
+
+  // Sugestão de subtítulo por título igual: linha mais recente com a mesma
+  // descrição (sem sufixo de parcela, após _normalizarTexto — igualdade exata,
+  // nada de semelhança parcial) que tenha subtítulo. Só sugere, não grava.
+  const apelidoPorTitulo = new Map();
+  {
+    const { data: comApelido } = await _sb.from('extrato')
+      .select('descricao, apelido, data').not('apelido', 'is', null).neq('apelido', '')
+      .order('data', { ascending: false });
+    (comApelido || []).forEach(h => {
+      const k = _normalizarTexto(_semParcela(h.descricao));
+      if (!apelidoPorTitulo.has(k)) apelidoPorTitulo.set(k, h.apelido);
+    });
   }
 
   // Titular (JP | My) de cada conta/cartão: separa a tela em seções por pessoa e
@@ -6830,7 +6911,14 @@ async function renderCategorizacao() {
     // os dois (a parcela atual em `extrato`, o lançamento das futuras em
     // `lancamentos`, mesma compra).
     const itensGrupo = _escJsAttr(JSON.stringify(itens.map(i => ({ id: i.id, descricao: i.descricao, pluggy_compra_chave: i.pluggy_compra_chave || null, fonte: i.fonte }))));
-    const baseOriginalAttr = _escJsAttr(JSON.stringify(descricaoBase));
+    // Subtítulo do grupo: valor real quando todas as linhas têm o mesmo; senão
+    // herdado da compra; senão sugerido pelo histórico (cinza, não gravado).
+    const apelidosReais = [...new Set(itens.map(i => i.apelido || ''))];
+    const apelidoReal = apelidosReais.length === 1 ? apelidosReais[0] : '';
+    const apelidoSug = apelidoReal ? '' : (itens.map(i => apelidoPorChave.get(i.pluggy_compra_chave)).find(Boolean)
+      || apelidoPorTitulo.get(_normalizarTexto(descricaoBase)) || '');
+    g.apelidoCampo = apelidoReal || apelidoSug;
+    const itensApelidoAttr = _escHtml(JSON.stringify(itens.map(i => ({ id: i.id, fonte: i.fonte }))));
     const selIdGrupo = `catgrupo-${idx}`;
     const descIdGrupo = `descgrupo-${idx}`;
     // O `aplicar` do grupo usa a sugestão já resolvida; sem sugestão, o seletor
@@ -6840,19 +6928,22 @@ async function renderCategorizacao() {
     const origensChips = origens.slice(0, 3).map(_origemChip).join('') +
       (origens.length > 3 ? `<span class="cat-origem cat-origem-${g.tit}">+${origens.length - 3}</span>` : '');
     const sugHtml = sugestao
-      ? `<button class="cat-sug" title="Aplicar ${sugestao} nas ${itens.length} transações" onclick="categorizarGrupo('${itensGrupo}', '${sugestao}', ${baseOriginalAttr}, document.getElementById('${descIdGrupo}').value)"><span class="cat-sug-label">sugestão</span><span class="cat-sug-val">${sugestao} ✓</span></button>`
+      ? `<button class="cat-sug" title="Aplicar ${sugestao} nas ${itens.length} transações" onclick="categorizarGrupo('${itensGrupo}', '${sugestao}', document.getElementById('${descIdGrupo}').value)"><span class="cat-sug-label">sugestão</span><span class="cat-sug-val">${sugestao} ✓</span></button>`
       : '';
 
     return `
       <div>
         <div class="cat-row">
           <div class="cat-row-body">
-            <input id="${descIdGrupo}" class="cat-row-nome" style="width:100%;border:none;background:none;outline:none;font-family:var(--font);padding:0" value="${_escHtml(descricaoBase)}">
-            <div class="cat-row-sub">${origensChips}${itens.length} ${itens.length === 1 ? "transação" : "transações"} · ${sugestao ? "já classificado antes" : "sem par no histórico"}</div>
+            <div style="display:flex;align-items:baseline">
+              <input id="${descIdGrupo}" class="cat-row-nome apelido-input${!apelidoReal && apelidoSug ? ' sug' : ''}" style="width:100%;border:none;background:none;outline:none;font-family:var(--font);padding:0" placeholder="${_escHtml(descricaoBase)}" value="${_escHtml(g.apelidoCampo)}" data-itens="${itensApelidoAttr}" oninput="apelidoDigitando(this)" onblur="apelidoDigitando(this, true)">
+              <span class="apelido-ind"></span>
+            </div>
+            <div class="cat-row-sub">${g.apelidoCampo ? `<span title="Título da Pluggy">${_escHtml(descricaoBase)}</span> · ` : ''}${origensChips}${itens.length} ${itens.length === 1 ? "transação" : "transações"} · ${sugestao ? "já classificado antes" : "sem par no histórico"}</div>
           </div>
           ${sugHtml}
           <div class="cat-row-ctl">
-            <select id="${selIdGrupo}" class="form-select" onchange="categorizarGrupo('${itensGrupo}', this.value, ${baseOriginalAttr}, document.getElementById('${descIdGrupo}').value)">
+            <select id="${selIdGrupo}" class="form-select" onchange="categorizarGrupo('${itensGrupo}', this.value, document.getElementById('${descIdGrupo}').value)">
               <option value="">${sugestao ? "Outra categoria…" : "Escolher categoria…"}</option>
               ${_optsCategoria(tipo, "")}
             </select>
@@ -6870,8 +6961,9 @@ async function renderCategorizacao() {
                 <span><span class="text-3">${_fmtDataBR(i.data)}</span> ${_origemChip(i)}${i.fonte === "lancamentos" ? '<span class="ex-tag">lançamento</span>' : ""}</span>
                 <span class="font-mono">${fmt(i.valor)}</span>
               </div>
-              <input id="${descIdLinha}" class="form-input" style="font-size:12px;padding:4px 8px" value="${_escHtml(i.descricao)}">
+              <div class="text-3" style="font-size:11px;margin-bottom:2px">${_escHtml(i.descricao)}</div>
               <div class="cat-line-ctls">
+                <span style="display:flex;align-items:baseline;flex:1;min-width:120px"><input id="${descIdLinha}" class="form-input apelido-input" style="font-size:12px;padding:4px 8px" placeholder="Subtítulo (opcional)" value="${_escHtml(i.apelido || '')}" data-itens="${_escHtml(JSON.stringify([{ id: i.id, fonte: i.fonte }]))}" oninput="apelidoDigitando(this)" onblur="apelidoDigitando(this, true)"><span class="apelido-ind"></span></span>
                 <select id="${selIdLinha}" class="form-select" style="max-width:170px;font-size:12px" onchange="categorizarLinha('${i.id}', this.value, document.getElementById('${descIdLinha}').value, ${i.pluggy_compra_chave ? `'${_escJsAttr(i.pluggy_compra_chave)}'` : 'null'}, '${i.fonte}')">
                   <option value="">Categoria…</option>
                   ${_optsCategoria(tipo, "")}
@@ -6908,7 +7000,10 @@ async function renderCategorizacao() {
 
   // Seções por titular (JP, My, e "origem não identificada" só se existir).
   let seq = 0;
-  el.innerHTML = SECOES_TITULAR.map(([tit, rotulo]) => {
+  // Não troca o HTML com um subtítulo sendo digitado — apagaria o campo. O
+  // `blur`/salvamento chama `_apelidoRetomarRender()` e a tela atualiza depois.
+  if (_apelidoEmEdicao()) { state._renderAdiado = true; return; }
+  el.innerHTML =SECOES_TITULAR.map(([tit, rotulo]) => {
     const gs = gruposOrdenados.filter(g => g.tit === tit);
     if (!gs.length) return '';
     const nTx = gs.reduce((s, g) => s + g.itens.length, 0);
@@ -6923,6 +7018,7 @@ async function renderCategorizacao() {
   const nItensSug = comSug.reduce((s, g) => s + g.itens.length, 0);
   state._catSugestoes = comSug.map(g => ({
     base: g.base,
+    apelido: g.apelidoCampo || '',
     categoria: sugestoes.get(g.base),
     // pluggy_compra_chave/fonte precisam vir junto — sem eles, "aplicar
     // todas" nunca ensinava `pluggy_categorias_compra` (gap pré-existente,
@@ -6962,7 +7058,7 @@ async function aplicarTodasSugestoes() {
   let ok = 0, itensOk = 0;
   for (const g of lista) {
     try {
-      await categorizarGrupo(JSON.stringify(g.itens), g.categoria, g.base, g.base);
+      await categorizarGrupo(JSON.stringify(g.itens), g.categoria, g.apelido);
       ok++;
       itensOk += g.itens.length;
     } catch (e) { console.error('aplicarTodasSugestoes', g.base, e); }
@@ -6988,28 +7084,36 @@ async function aplicarTodasSugestoes() {
 // parcelas futuras da mesma compra tem a MESMA chave — categorizar uma
 // parcela precisa corrigir o lançamento irmão também, não só outras linhas
 // de extrato (achado real: 11/10/2026, ver Decisões no CLAUDE.md).
-async function _aplicarCategoriaPorCompra(compraChave, categoria) {
+// `apelido` (subtítulo) segue o MESMO caminho — ponto único de herança por
+// compra, sem segundo caminho. Só grava/propaga quando informado; nunca apaga.
+async function _aplicarCategoriaPorCompra(compraChave, categoria, apelido) {
   if (!compraChave) return;
-  await _sb.from('pluggy_categorias_compra')
-    .upsert({ compra_chave: compraChave, categoria, atualizado_em: new Date().toISOString() });
-  await _sb.from('extrato')
-    .update({ categoria }).eq('pluggy_compra_chave', compraChave).eq('categoria', 'nao_classificado');
-  await _sb.from('lancamentos')
-    .update({ categoria }).eq('pluggy_compra_chave', compraChave).eq('categoria', 'nao_classificado');
+  const reg = { compra_chave: compraChave, categoria, atualizado_em: new Date().toISOString() };
+  if (apelido) reg.apelido = apelido;
+  await _sb.from('pluggy_categorias_compra').upsert(reg);
+  for (const t of ['extrato', 'lancamentos']) {
+    await _sb.from(t)
+      .update({ categoria }).eq('pluggy_compra_chave', compraChave).eq('categoria', 'nao_classificado');
+    if (apelido) await _sb.from(t)
+      .update({ apelido }).eq('pluggy_compra_chave', compraChave).eq('categoria', 'nao_classificado').is('apelido', null);
+  }
 }
 
 // `fonte` ('extrato'|'lancamentos', default 'extrato' por compat com
 // chamadas antigas) diz qual tabela atualizar — a tela de Categorização
 // agora também lista lançamento Parcelado criado pela Pluggy sem categoria
 // (ver Decisões no CLAUDE.md).
-async function categorizarLinha(id, categoria, descricao, compraChave, fonte) {
+// O 3º parâmetro agora é o SUBTÍTULO (`apelido`); a `descricao` nunca mais é
+// alterada por aqui (é o texto que o app usa pra reconhecer a transação).
+async function categorizarLinha(id, categoria, apelido, compraChave, fonte) {
   if (!categoria) return;
   const tabela = fonte === 'lancamentos' ? 'lancamentos' : 'extrato';
   const changes = { categoria };
-  if (descricao != null && descricao.trim()) changes.descricao = descricao.trim();
+  const apelidoFinal = apelido != null ? apelido.trim() : '';
+  if (apelidoFinal) changes.apelido = apelidoFinal;
   const ok = await sbUpdate(tabela, id, changes);
   if (!ok) { showToast('Erro ao categorizar ❌'); return; }
-  if (compraChave) await _aplicarCategoriaPorCompra(compraChave, categoria);
+  if (compraChave) await _aplicarCategoriaPorCompra(compraChave, categoria, apelidoFinal || null);
   showToast('Categorizado ✅');
   await renderCategorizacao();
 }
@@ -7020,17 +7124,16 @@ async function categorizarLinha(id, categoria, descricao, compraChave, fonte) {
 // pode misturar `extrato` (parcela atual) e `lancamentos` (parcelas futuras
 // da mesma compra) — cada item roteia pra sua própria tabela via `fonte`
 // ('extrato' quando ausente, compat com chamadas antigas).
-// `novoBase`, quando diferente de `baseOriginal`, renomeia a parte comum do
-// grupo em cada linha, preservando o que vem depois dela (sufixo de parcela
-// ou texto extra do banco) — troca só o prefixo, não o texto inteiro.
-async function categorizarGrupo(itensJson, categoria, baseOriginal, novoBase) {
+// `apelido` (subtítulo), quando preenchido, é gravado em todas as linhas do
+// grupo; vazio não mexe no que já existe. A `descricao` nunca é alterada.
+async function categorizarGrupo(itensJson, categoria, apelido) {
   if (!categoria) return;
   const itens = JSON.parse(itensJson);
-  const renomear = novoBase != null && novoBase.trim() && novoBase.trim() !== baseOriginal;
-  const baseNova = renomear ? novoBase.trim() : null;
+  const apelidoFinal = (apelido || '').trim();
+  const renomear = !!apelidoFinal;
   const resultados = await Promise.all(itens.map(i => {
     const changes = { categoria };
-    if (renomear) changes.descricao = baseNova + i.descricao.slice(baseOriginal.length);
+    if (renomear) changes.apelido = apelidoFinal;
     const tabela = i.fonte === 'lancamentos' ? 'lancamentos' : 'extrato';
     return _sb.from(tabela).update(changes).eq('id', i.id);
   }));
@@ -7041,9 +7144,9 @@ async function categorizarGrupo(itensJson, categoria, baseOriginal, novoBase) {
   // por identidade) — aplica o aprendizado por chave, uma vez por compra
   // distinta presente no grupo, não uma chave só pro grupo inteiro.
   const chaves = [...new Set(itens.map(i => i.pluggy_compra_chave).filter(Boolean))];
-  await Promise.all(chaves.map(ch => _aplicarCategoriaPorCompra(ch, categoria)));
+  await Promise.all(chaves.map(ch => _aplicarCategoriaPorCompra(ch, categoria, apelidoFinal || null)));
 
-  showToast(renomear ? 'Grupo categorizado e renomeado ✅' : 'Grupo categorizado ✅');
+  showToast('Grupo categorizado ✅');
   await renderCategorizacao();
 }
 
