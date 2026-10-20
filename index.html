@@ -1875,6 +1875,11 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
       <input class="form-input" id="lancDesc" placeholder="Ex: Mercado, Uber...">
     </div>
 
+    <div class="form-group" id="lancApelidoGroup">
+      <label class="form-label">Subtítulo <span class="text-3">(opcional)</span></label>
+      <input class="form-input" id="lancApelido" placeholder="Seu nome para esta despesa">
+    </div>
+
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Data</label>
@@ -1994,6 +1999,11 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
     <div class="form-group">
       <label class="form-label">Descrição</label>
       <input class="form-input" id="efDesc" placeholder="Descrição">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Subtítulo <span class="text-3">(opcional)</span></label>
+      <input class="form-input" id="efApelido" placeholder="Seu nome para esta despesa">
     </div>
 
     <div class="form-group">
@@ -2246,7 +2256,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-20a';
+const APP_VERSION = '2026-10-20b';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -4051,6 +4061,9 @@ function renderFaturas() {
         id:          tx.id,
         data:        tx.data,
         descricao:   tx.descricao,
+        apelido:     tx.apelido || null,
+        origem_dado: tx.origem_dado || null,
+        pluggy_compra_chave: tx.pluggy_compra_chave || null,
         categoria:   tx.categoria,
         valor:       Number(tx.valor),
         tipo:        tx.tipo,
@@ -4076,7 +4089,7 @@ function renderFaturas() {
           const occIdx = startIdx + n - 1, occAno = Math.floor(occIdx / 12), occMes = occIdx % 12;
           const occDia = Math.min(Number(lan.dia_ini || 1), new Date(occAno, occMes + 1, 0).getDate());
           const occData = `${occAno}-${String(occMes + 1).padStart(2,'0')}-${String(occDia).padStart(2,'0')}`;
-          itensLan.push({ id: lan.id, data: occData, descricao: lan.descricao + parc, valor: Number(lan.valor), fonte: 'lancamentos' });
+          itensLan.push({ id: lan.id, data: occData, descricao: lan.descricao + parc, apelido: lan.apelido || null, valor: Number(lan.valor), fonte: 'lancamentos' });
           break;
         }
         if (vIdx > mesIdx) break;
@@ -4090,7 +4103,7 @@ function renderFaturas() {
       ? itens.map(t => `
           <div class="fat-item">
             <div class="fat-item-data">${t.data ? String(t.data).slice(8, 10) + '/' + String(t.data).slice(5, 7) : '—'}</div>
-            <div class="fat-item-desc">${t.descricao || "—"}</div>
+            <div class="fat-item-desc">${t.apelido ? `${_escHtml(t.apelido)}<div class="ex-sub-titulo">${_escHtml(t.descricao || '')}</div>` : (t.descricao || "—")}</div>
             <div class="fat-item-val">${fmt(t.valor)}</div>
             <button class="tx-act-btn edit" style="flex-shrink:0" onclick='${t.fonte === "lancamentos" ? `abrirEditFixo("${t.id}")` : `editarTx(${JSON.stringify(t)})`}' title="Editar">✏️</button>
           </div>`).join(``) +
@@ -5523,6 +5536,10 @@ function editarTx(tx) {
   // Pré-preenche o modal
   document.getElementById('lancValor').value = tx.valor || '';
   document.getElementById('lancDesc').value  = tx.descricao || '';
+  // Título de linha da Pluggy é só leitura (é o texto que o app usa pra
+  // reconhecer a transação); o subtítulo é o campo editável.
+  document.getElementById('lancDesc').readOnly = tx.origem_dado === 'pluggy';
+  document.getElementById('lancApelido').value = tx.apelido || '';
   // tx.data sempre vem preenchido (extrato.data é NOT NULL); tx é sempre uma
   // linha real vinda do banco, nunca um objeto sintético parcial.
   document.getElementById('lancData').value  = tx.data;
@@ -5608,6 +5625,7 @@ function editarTransferencia(tr) {
   _editingTx = { ...tr, fonte: 'transferencias' };
   document.getElementById('lancValor').value = tr.valor || '';
   document.getElementById('lancDesc').value  = tr.descricao || '';
+  document.getElementById('lancDesc').readOnly = false;
   // tr.data sempre vem preenchido (transferencias.data é NOT NULL); tr é
   // sempre uma linha real vinda do banco.
   document.getElementById('lancData').value  = tr.data;
@@ -7615,6 +7633,9 @@ function abrirEditFixo(lanId) {
 
   document.getElementById('efValor').value = lan.valor || '';
   document.getElementById('efDesc').value  = lan.descricao || '';
+  // Título de lançamento criado pela Pluggy é só leitura (ver subtítulo no CLAUDE.md).
+  document.getElementById('efDesc').readOnly = lan.origem_dado === 'pluggy';
+  document.getElementById('efApelido').value = lan.apelido || '';
 
   // Categoria
   const isReceita = lan.tipo === 'Receita' || lan.tipo === 'Receita Única';
@@ -7659,7 +7680,8 @@ async function executarEditFixo(escopo) {
 
   if (!valor || valor <= 0) { showToast('Valor inválido'); return; }
 
-  const campos = { valor, descricao, categoria, origem, conta_nome: conta };
+  const apelido = document.getElementById('efApelido').value.trim() || null;
+  const campos = { valor, descricao, apelido, categoria, origem, conta_nome: conta };
 
   if (escopo === 'todos') {
     const ok = await sbUpdate('lancamentos', lan.id, campos);
@@ -7695,7 +7717,7 @@ async function executarEditFixo(escopo) {
     }
 
     const copiaOriginal = {
-      tipo: lan.tipo, valor: lan.valor, descricao: lan.descricao, categoria: lan.categoria,
+      tipo: lan.tipo, valor: lan.valor, descricao: lan.descricao, apelido: lan.apelido || null, categoria: lan.categoria,
       origem: lan.origem, conta_nome: lan.conta_nome, dia_ini: lan.dia_ini || 1,
       parcelas: lan.parcelas || 0, ativo: true, pluggy_descricao_ref: lan.pluggy_descricao_ref || null,
     };
@@ -7808,6 +7830,8 @@ function openLancamento() {
   _editingTx = null;
   document.getElementById('lancValor').value = '';
   document.getElementById('lancDesc').value = '';
+  document.getElementById('lancDesc').readOnly = false;
+  document.getElementById('lancApelido').value = '';
   document.getElementById('lancData').value = formatarData(new Date());
   document.getElementById('lancRecorrente').checked = false;
   document.getElementById('btnSalvarOutro').style.display = '';
@@ -7835,7 +7859,9 @@ function setTipo(tipo, btn) {
     parcelaGroup.style.display = 'none';
     document.getElementById('recorrenteGroup').style.display = 'none';
     transFields.style.display = 'grid';
+    document.getElementById('lancApelidoGroup').style.display = 'none'; // transferencias não tem subtítulo
   } else {
+    document.getElementById('lancApelidoGroup').style.display = '';
     catSection.style.display = 'block';
     origemGroup.style.display = 'block';
     cartaoGroup.style.display = 'block';
@@ -7923,6 +7949,7 @@ function buildSelectores() {
 function resetCamposLancamento(contaCartaoValue) {
   document.getElementById('lancValor').value = '';
   document.getElementById('lancDesc').value = '';
+  document.getElementById('lancApelido').value = '';
   document.getElementById('lancRecorrente').checked = false;
   document.getElementById('lancTotalParcelas').value = '';
   document.getElementById('lancParcela').value = '';
@@ -7938,6 +7965,7 @@ function resetCamposLancamento(contaCartaoValue) {
 async function salvarLancamento(manterAberto) {
   const valor      = parseFloat(document.getElementById('lancValor').value);
   const desc       = document.getElementById('lancDesc').value.trim();
+  const apelido    = document.getElementById('lancApelido').value.trim() || null;
   const data       = document.getElementById('lancData').value;
   const recorrente = document.getElementById('lancRecorrente').checked;
   const tipo       = state.selectedTipo;
@@ -7972,6 +8000,7 @@ async function salvarLancamento(manterAberto) {
     const contaCartaoVal = document.getElementById('lancCartao')?.value || '';
     const changes = {
       descricao:   desc,
+      apelido,
       valor,
       data,
       categoria,
@@ -7985,20 +8014,14 @@ async function salvarLancamento(manterAberto) {
       changes.conta_nome  = contaCartaoVal;
       changes.cartao_nome = document.getElementById('lancFaturaCartao')?.value || '';
     }
-    // LIMITAÇÃO CONHECIDA, não esquecimento (ver Decisões no CLAUDE.md,
-    // 11/10/2026): recategorizar aqui NÃO chama `_aplicarCategoriaPorCompra()`
-    // — se esta linha tiver `pluggy_compra_chave`, `pluggy_categorias_compra`
-    // continua com a categoria ANTIGA, e toda parcela futura dessa mesma
-    // compra (ainda nem criada) vai nascer com ela, não com a que acabou de
-    // ser escolhida aqui. Sintoma enganoso: parece que funcionou (a linha na
-    // tela muda), só quebra meses depois quando a próxima parcela chega
-    // errada. Corrigir exigiria chamar `_aplicarCategoriaPorCompra()` aqui
-    // também quando `_editingTx.pluggy_compra_chave` existir — não feito
-    // ainda, registrado como a 4ª aparição da mesma classe de bug (dois
-    // caminhos fazem a mesma coisa conceitual, só um conhece o mecanismo
-    // novo) — ver Decisões sobre se vale um ponto único de escrita de
-    // categoria antes de corrigir caso a caso de novo.
     const ok = await sbUpdate('extrato', _editingTx.id, changes);
+    // Compra com identidade (`pluggy_compra_chave`): categoria e subtítulo
+    // escolhidos aqui também valem pras parcelas futuras — mesmo ponto único
+    // da Categorização (`_aplicarCategoriaPorCompra`). Fecha a limitação
+    // registrada em 11/10/2026 (recategorizar pela edição não ensinava a compra).
+    if (ok && _editingTx.pluggy_compra_chave && categoria && categoria !== 'nao_classificado') {
+      await _aplicarCategoriaPorCompra(_editingTx.pluggy_compra_chave, categoria, apelido);
+    }
     _editingTx = null;
     closeModal('modalLancamento');
     if (ok) { showToast('Atualizado! ✅'); await loadData(); }
@@ -8034,6 +8057,7 @@ async function salvarLancamento(manterAberto) {
     const d = parseData(data);
     const saved = await sbInsert('lancamentos', {
       descricao:  desc,
+      apelido,
       categoria,
       tipo:       tipo === 'receita' ? 'Receita' : 'Fixo',
       valor,
@@ -8056,6 +8080,7 @@ async function salvarLancamento(manterAberto) {
       const d = parseData(data);
       const saved = await sbInsert('lancamentos', {
         descricao:  desc,
+        apelido,
         categoria,
         tipo:       'Parcelado',
         valor,
@@ -8077,6 +8102,7 @@ async function salvarLancamento(manterAberto) {
   const saved = await sbInsert('extrato', {
     data,
     descricao:   desc,
+    apelido,
     categoria,
     valor,
     tipo:        tipo === 'receita' ? 'receita' : 'despesa',
