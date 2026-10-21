@@ -2223,7 +2223,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-10-21a"></script>
+<script src="date-utils.js?v=2026-10-21b"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2256,7 +2256,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-21a';
+const APP_VERSION = '2026-10-21b';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -3444,6 +3444,7 @@ function renderCaixinhas() {
 function txItem(tx, maxAbs) {
   const isReceita = tx.tipo === 'receita';
   const isFatura  = tx.categoria === 'fatura';
+  const isEstorno = !isReceita && Number(tx.valor || 0) < 0; // cancelamento/estorno: despesa de valor negativo
   const allCats   = [...(state.catsExtra||[]), ...CATS_DESPESA, ...CATS_RECEITA];
   const cat       = allCats.find(c => c.id === tx.categoria) || { nome: tx.categoria || 'Outros' };
   const isFixo    = tx.fonte === 'lancamentos';
@@ -3472,12 +3473,12 @@ function txItem(tx, maxAbs) {
     <div class="ex-row">
       <div class="ex-mag" style="background:${magCor}"></div>
       <div class="ex-body">
-        <div class="ex-desc">${tx.apelido ? _escHtml(tx.apelido) : (tx.descricao || '—')}${isFixo ? '<span class="ex-tag">fixo</span>' : ''}${tx.previsto ? '<span class="ex-tag ex-tag-previsto">previsto</span>' : ''}${isFatura ? '<span class="ex-tag ex-tag-fatura">fatura</span>' : ''}</div>
+        <div class="ex-desc">${tx.apelido ? _escHtml(tx.apelido) : (tx.descricao || '—')}${isFixo ? '<span class="ex-tag">fixo</span>' : ''}${tx.previsto ? '<span class="ex-tag ex-tag-previsto">previsto</span>' : ''}${isFatura ? '<span class="ex-tag ex-tag-fatura">fatura</span>' : ''}${isEstorno ? '<span class="ex-tag">estorno</span>' : ''}</div>
         ${tx.apelido ? `<div class="ex-sub-titulo">${_escHtml(tx.descricao || '')}</div>` : ''}
         <div class="ex-meta">${cat.nome} · ${tx.contaCartao || ''}</div>
       </div>
-      <div class="ex-val" style="color:${isReceita ? 'var(--green)' : 'var(--text)'}">
-        ${isReceita ? '+' : '−'} ${fmt(abs)}
+      <div class="ex-val" style="color:${(isReceita || isEstorno) ? 'var(--green)' : 'var(--text)'}">
+        ${(isReceita || isEstorno) ? '+' : '−'} ${fmt(abs)}
       </div>
       <div class="ex-acts">${editBtn}${delBtn}</div>
     </div>
@@ -5875,6 +5876,16 @@ function _pluggyMovimentoInternoItau(pt, m, ehCartao) {
     && pt.metadata?.operationType === 'RESGATE_APLIC_FINANCEIRA';
 }
 
+// Crédito em CARTÃO que é estorno/cancelamento de compra (reduz a fatura), não
+// pagamento de fatura nem transferência interna. Decide pela categoria que o banco
+// informa (metadata.category); sem categoria ou com parcela, não importa (conservador).
+function _pluggyCreditoCartaoEstorno(pt) {
+  if (pt.tipo !== 'CREDIT') return false;
+  if (pt.metadata?.creditCardMetadata?.installmentNumber) return false;
+  const cat = String(pt.metadata?.category || '');
+  return !!cat && !/payment|transfer\s*-\s*internal/i.test(cat);
+}
+
 function _pluggyValorReal(pt) {
   const moeda = pt.metadata?.currencyCode;
   if (moeda && moeda !== 'BRL') {
@@ -5969,7 +5980,8 @@ function _valorIgual(a, b) {
 // Só linha MANUAL (nunca vinculada) ainda pode ser "a que já existe".
 function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
   const extratoRows = cache.extrato.get(nome) || [];
-  const tipoEsperado = pt.tipo === 'CREDIT' ? 'receita' : 'despesa';
+  // Estorno de CARTÃO é despesa de valor negativo (não receita).
+  const tipoEsperado = (pt.tipo === 'CREDIT' && !ehCartao) ? 'receita' : 'despesa';
   const matchAvista = extratoRows.find(e =>
     e.tipo === tipoEsperado &&
     !cache.reivindicados?.has(e.id) &&
@@ -6223,7 +6235,10 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
         // "gasto" a importar. Conta: os dois — DEBIT = despesa, CREDIT =
         // receita (sinal oposto ao de cartão, conferido antes de escrever
         // este código, ver Decisões no CLAUDE.md).
-        if (ehCartao && pt.tipo !== 'DEBIT') continue;
+        // Cartão: DEBIT = compra; CREDIT só entra se for ESTORNO/cancelamento de compra
+        // (ver _pluggyCreditoCartaoEstorno) — pagamento de fatura e transferência
+        // interna continuam fora.
+        if (ehCartao && pt.tipo !== 'DEBIT' && !_pluggyCreditoCartaoEstorno(pt)) continue;
         if (!ehCartao && pt.tipo !== 'DEBIT' && pt.tipo !== 'CREDIT') continue;
 
         // Resgate de aplicação automática do Itaú: o banco reaplica o excedente
@@ -6235,17 +6250,38 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
           continue;
         }
 
-        const valor = _pluggyValorReal(pt);
+        const valorAbs = _pluggyValorReal(pt);
+        // Estorno de cartão vira despesa NEGATIVA (mesma convenção dos cancelamentos
+        // lançados à mão): reduz a fatura em vez de somar.
+        const ehEstorno = ehCartao && pt.tipo === 'CREDIT';
+        const valor = valorAbs === null ? null : (ehEstorno ? -valorAbs : valorAbs);
         if (valor === null) {
           suspeitas++;
           avisos.push(`${nome}: "${pt.descricao}" (${pt.data}) — moeda estrangeira sem valor convertido, não importada`);
           continue;
         }
 
+        // Estorno com fatura incoerente: a Pluggy às vezes liga o crédito a uma fatura
+        // de outro mês que o da data (ex.: crédito de 08/10 ligado à fatura 17/09). Importar
+        // subtrairia uma fatura que não o contém — fica pendente, com aviso.
+        if (ehEstorno) {
+          const bid = pt.metadata?.creditCardMetadata?.billId;
+          const fat = bid ? faturasMap.get(bid) : null;
+          if (fat?.due_date) {
+            const [fy, fm] = fat.due_date.split('-').map(Number);
+            const cartaoObjE = state.cartoes.find(c => c.nome === nome);
+            if (fy * 12 + fm !== getVencimentoIdx(pt.data, cartaoObjE?.fechamento, cartaoObjE?.vencimento)) {
+              suspeitas++;
+              avisos.push(`${nome}: crédito de R$ ${valorAbs.toFixed(2)} (${pt.data}) ligado a fatura de outro mês — não importado`);
+              continue;
+            }
+          }
+        }
+
         const ccPt = pt.metadata?.creditCardMetadata;
         const instNumPt = ccPt?.installmentNumber ? Number(ccPt.installmentNumber) : null;
         const instTotPt = ccPt?.totalInstallments ? Number(ccPt.totalInstallments) : null;
-        const compraChavePt = ehCartao ? _pluggyCompraChave(pt) : null;
+        const compraChavePt = ehCartao && !ehEstorno ? _pluggyCompraChave(pt) : null;
         if (compraChavePt) {
           const g = gruposParcelado.get(compraChavePt) || {
             compraChave: compraChavePt, instTot: instTotPt, maxInstNum: 0,
