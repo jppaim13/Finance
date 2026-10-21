@@ -129,6 +129,17 @@ function calcularSaldo(conta, lancamentos, extrato, transferencias, hoje = new D
     ? (() => { const [ay, am] = String(dataInicial).split('-').map(Number); return ay * 12 + am; })()
     : -Infinity;
 
+  // Corte no DIA, não só no mês: uma ocorrência do próprio mês do corte cujo dia
+  // é anterior ao dia do corte já está embutida no saldo_inicial (a Pluggy
+  // capturou o saldo depois dela) — contar de novo dobra. Ocorrência no dia do
+  // corte conta (mesma regra do extrato: só `data < data_inicial` sai).
+  const diaCorte = dataInicial ? Number(String(dataInicial).split('-')[2]) : 0;
+  const antesDoCorte = (lan, idx) => {
+    if (!dataInicial || idx !== cutoffIdx) return false;
+    const m = ((idx - 1) % 12) + 1, a = (idx - m) / 12;
+    return Math.min(Number(lan.dia_ini || 1), new Date(a, m, 0).getDate()) < diaCorte;
+  };
+
   const realizadosSet = new Set((realizados || []).map(r => `${r.lancamento_id}|${r.ano}-${r.mes}`));
 
   for (const lan of lancamentos) {
@@ -141,18 +152,20 @@ function calcularSaldo(conta, lancamentos, extrato, transferencias, hoje = new D
     const valor = Number(lan.valor || 0);
 
     if (tipo === 'receita única' || tipo === 'receita unica') {
-      if (startIdx >= cutoffIdx) saldo += valor;
+      if (startIdx >= cutoffIdx && !antesDoCorte(lan, startIdx)) saldo += valor;
     } else if (tipo === 'receita') {
       const anoFim = lan.ano_fim ? Number(lan.ano_fim) : anoHoje;
       const mesFim = lan.mes_fim ? Number(lan.mes_fim) : mesHoje;
       const endIdx = Math.min(anoFim * 12 + mesFim, nowIdx);
-      const efetivoInicio = Math.max(startIdx, cutoffIdx);
+      let efetivoInicio = Math.max(startIdx, cutoffIdx);
+      if (antesDoCorte(lan, efetivoInicio)) efetivoInicio++;
       saldo += valor * Math.max(0, endIdx - efetivoInicio + 1);
     } else if (tipo === 'fixo' || tipo === 'variável' || tipo === 'variavel') {
       const anoFim = lan.ano_fim ? Number(lan.ano_fim) : anoHoje;
       const mesFim = lan.mes_fim ? Number(lan.mes_fim) : mesHoje;
       const endIdx = Math.min(anoFim * 12 + mesFim, nowIdx);
-      const efetivoInicio = Math.max(startIdx, cutoffIdx);
+      let efetivoInicio = Math.max(startIdx, cutoffIdx);
+      if (antesDoCorte(lan, efetivoInicio)) efetivoInicio++;
       // Duas regras diferentes por mês, nunca a mesma pra todos — por isso
       // é loop mês a mês, não mais fórmula em bloco:
       // (1) MÊS CORRENTE: regra invertida (estilo Mobills, pedido
@@ -184,7 +197,8 @@ function calcularSaldo(conta, lancamentos, extrato, transferencias, hoje = new D
     } else if (tipo === 'parcelado') {
       const parcelas = Number(lan.parcelas || 1);
       const ultimaParcelaIdx = startIdx + parcelas - 1;
-      const efetivoInicio = Math.max(startIdx, cutoffIdx);
+      let efetivoInicio = Math.max(startIdx, cutoffIdx);
+      if (antesDoCorte(lan, efetivoInicio)) efetivoInicio++;
       const efetivoFim    = Math.min(ultimaParcelaIdx, nowIdx);
       // Mesma regra dupla do Fixo acima (mês corrente exige vínculo; meses
       // passados descontam por padrão, exceto vínculo confirmado).

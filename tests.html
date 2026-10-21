@@ -192,6 +192,38 @@ assertEqual(formatarData(parseData('2028-02-29')), '2028-02-29', 'round-trip: 29
   assertEqual(depoisDoCorte, 100, 'calcularSaldo: receita única depois do corte soma normal');
 }
 
+// ─── calcularSaldo: corte de marco zero no DIA, não só no mês (20/10/2026) ───
+// Achado real: Conta Itaú com data_inicial 15/10 e uma receita fixa dia 8 — a
+// ocorrência de 08/10 já estava embutida no saldo_inicial e era contada de novo.
+{
+  const hoje = new Date(2026, 9, 20); // 20/10/2026
+  const conta = { nome: 'C', saldo_inicial: 1000, data_inicial: '2026-10-15' };
+  const receitaDia8 = [{ id: 'r', conta_nome: 'C', ativo: true, tipo: 'Receita', valor: 500, dia_ini: 8, mes_ini: 7, ano_ini: 2026 }];
+  assertEqual(calcularSaldo(conta, receitaDia8, [], [], hoje), 1000,
+    'corte no dia: receita fixa dia 8 no mês do corte (15/10) não conta de novo');
+  const receitaDia20 = [{ id: 'r', conta_nome: 'C', ativo: true, tipo: 'Receita', valor: 500, dia_ini: 20, mes_ini: 7, ano_ini: 2026 }];
+  assertEqual(calcularSaldo(conta, receitaDia20, [], [], hoje), 1500,
+    'corte no dia: receita fixa dia 20 (depois do corte, mesmo mês) conta');
+  const receitaDia15 = [{ id: 'r', conta_nome: 'C', ativo: true, tipo: 'Receita', valor: 500, dia_ini: 15, mes_ini: 7, ano_ini: 2026 }];
+  assertEqual(calcularSaldo(conta, receitaDia15, [], [], hoje), 1500,
+    'corte no dia: ocorrência NO dia do corte conta (mesma regra do extrato: só data < corte sai)');
+  const fixoDia8 = [{ id: 'f', conta_nome: 'C', ativo: true, tipo: 'Fixo', valor: 100, dia_ini: 8, mes_ini: 7, ano_ini: 2026, mes_fim: 10, ano_fim: 2026 }];
+  assertEqual(calcularSaldo(conta, fixoDia8, [], [], hoje), 1000,
+    'corte no dia: fixo dia 8 no mês do corte não conta (já embutido); outubro é mês corrente e sem vínculo seria pendente de qualquer forma');
+  const parceladoDia8 = [{ id: 'p', conta_nome: 'C', ativo: true, tipo: 'Parcelado', valor: 50, parcelas: 6, dia_ini: 8, mes_ini: 9, ano_ini: 2026 }];
+  assertEqual(calcularSaldo(conta, parceladoDia8, [], [], hoje, [{ lancamento_id: 'p', ano: 2026, mes: 10 }]), 1000 - 0,
+    'corte no dia: parcela dia 8 de outubro (antes do corte) não conta mesmo com vínculo no mês');
+  const unicaDia8 = [{ conta_nome: 'C', ativo: true, tipo: 'Receita única', valor: 70, dia_ini: 8, mes_ini: 10, ano_ini: 2026 }];
+  assertEqual(calcularSaldo(conta, unicaDia8, [], [], hoje), 1000,
+    'corte no dia: receita única dia 8 de outubro (antes do corte) não conta');
+  const unicaDia18 = [{ conta_nome: 'C', ativo: true, tipo: 'Receita única', valor: 70, dia_ini: 18, mes_ini: 10, ano_ini: 2026 }];
+  assertEqual(calcularSaldo(conta, unicaDia18, [], [], hoje), 1070,
+    'corte no dia: receita única dia 18 de outubro (depois do corte) conta');
+  // sem data_inicial nada muda
+  assertEqual(calcularSaldo({ nome: 'C', saldo_inicial: 1000 }, receitaDia8, [], [], hoje), 1000 + 500 * 4,
+    'sem data_inicial: receita fixa dia 8 (jul–out, 4 ocorrências) conta inteira, como antes');
+}
+
 // ─── getVencimentoIdx: competência/vencimento de cartão ────────────────────
 assertEqual(getVencimentoIdx('2026-06-10', 10, 20), 2026 * 12 + 6,
   'vencimento: compra NO dia do fechamento fecha no mesmo mês (dia <= fechamento)');
