@@ -19,10 +19,13 @@
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 
 <title>Finanças</title>
+<!-- CSP: o app usa handlers inline (onclick), então script-src precisa de 'unsafe-inline'; o ganho é restringir ORIGENS — scripts só do próprio site e do jsDelivr, conexões só ao Supabase (um script injetado não consegue mandar dados a outro domínio), sem plugins e sem <base>. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
+<!-- versão FIXA + SRI (antes: @2 flutuante, sem verificação). Para atualizar: trocar a versão e recalcular o sha384 do arquivo. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
 <style>
 /* ── Reset & Variables ─────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2223,7 +2226,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-10-21b"></script>
+<script src="date-utils.js?v=2026-10-21c"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2256,7 +2259,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-21b';
+const APP_VERSION = '2026-10-21c';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -3341,7 +3344,7 @@ function renderPendentes() {
 
   const linhaOcorrencia = (item, extraBtns) => `
     <div class="card" style="padding:12px;margin-bottom:8px">
-      <div class="text-sm">${item.lan.descricao} — ${fmt(item.lan.valor)}${item.dia ? `, esperado dia ${item.dia}` : ''}</div>
+      <div class="text-sm">${_escHtml(item.lan.descricao)} — ${fmt(item.lan.valor)}${item.dia ? `, esperado dia ${item.dia}` : ''}</div>
       <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${extraBtns}</div>
     </div>`;
 
@@ -3360,7 +3363,7 @@ function renderPendentes() {
 
   const htmlVencidos = vencidos.map(item => `
     <div class="card" style="padding:12px;margin-bottom:8px;border:1px solid var(--red)">
-      <div class="text-sm">⚠️ <b>${item.lan.descricao}</b> — ${fmt(item.lan.valor)}, esperado dia ${item.dia}. Foi pago fora do radar (ex: conta não coberta) ou o lançamento está obsoleto?</div>
+      <div class="text-sm">⚠️ <b>${_escHtml(item.lan.descricao)}</b> — ${fmt(item.lan.valor)}, esperado dia ${item.dia}. Foi pago fora do radar (ex: conta não coberta) ou o lançamento está obsoleto?</div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn-primary" style="padding:6px 12px;font-size:12px" onclick="marcarFixoComoPago('${item.lan.id}')">Marcar como paga</button>
       </div>
@@ -3369,7 +3372,7 @@ function renderPendentes() {
   const htmlPagos = pagos.map(item => `
     <div class="card" style="padding:10px 12px;margin-bottom:8px">
       <div class="text-sm" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <span>✅ ${item.lan.descricao} — ${fmt(item.lan.valor)}${item.vinculo.origem === 'manual' ? ' (marcado manualmente)' : ''}</span>
+        <span>✅ ${_escHtml(item.lan.descricao)} — ${fmt(item.lan.valor)}${item.vinculo.origem === 'manual' ? ' (marcado manualmente)' : ''}</span>
         <button class="btn-primary" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="desfazerFixoRealizado('${item.vinculo.id}')">Desfazer</button>
       </div>
     </div>`).join('');
@@ -3464,16 +3467,16 @@ function txItem(tx, maxAbs) {
 
   const editBtn = isFixo
     ? `<button class="tx-act-btn edit" onclick="abrirEditFixo('${tx.id}')" title="Editar">✏️</button>`
-    : `<button class="tx-act-btn edit" onclick='editarTx(${JSON.stringify(tx)})' title="Editar">✏️</button>`;
+    : `<button class="tx-act-btn edit" onclick='editarTx(${_jsonAttr(tx)})' title="Editar">✏️</button>`;
   const delBtn  = isFixo
     ? `<button class="tx-act-btn del" onclick="abrirDeleteFixo('${tx.id}',${tx.row||0})" title="Excluir recorrente">🗑️</button>`
-    : `<button class="tx-act-btn del" onclick="deletarTx('${tx.id}','${tx.mes||''}',${tx.row||0},'${tx.origem}','${tx.contaCartao}',${tx.valor},'${tx.tipo}')" title="Excluir">🗑️</button>`;
+    : `<button class="tx-act-btn del" onclick="deletarTx('${tx.id}','${tx.mes||''}',${tx.row||0},'${tx.origem}','${_jsStrAttr(tx.contaCartao)}',${tx.valor},'${tx.tipo}')" title="Excluir">🗑️</button>`;
 
   return `
     <div class="ex-row">
       <div class="ex-mag" style="background:${magCor}"></div>
       <div class="ex-body">
-        <div class="ex-desc">${tx.apelido ? _escHtml(tx.apelido) : (tx.descricao || '—')}${isFixo ? '<span class="ex-tag">fixo</span>' : ''}${tx.previsto ? '<span class="ex-tag ex-tag-previsto">previsto</span>' : ''}${isFatura ? '<span class="ex-tag ex-tag-fatura">fatura</span>' : ''}${isEstorno ? '<span class="ex-tag">estorno</span>' : ''}</div>
+        <div class="ex-desc">${tx.apelido ? _escHtml(tx.apelido) : _escHtml(tx.descricao || '—')}${isFixo ? '<span class="ex-tag">fixo</span>' : ''}${tx.previsto ? '<span class="ex-tag ex-tag-previsto">previsto</span>' : ''}${isFatura ? '<span class="ex-tag ex-tag-fatura">fatura</span>' : ''}${isEstorno ? '<span class="ex-tag">estorno</span>' : ''}</div>
         ${tx.apelido ? `<div class="ex-sub-titulo">${_escHtml(tx.descricao || '')}</div>` : ''}
         <div class="ex-meta">${cat.nome} · ${tx.contaCartao || ''}</div>
       </div>
@@ -4104,9 +4107,9 @@ function renderFaturas() {
       ? itens.map(t => `
           <div class="fat-item">
             <div class="fat-item-data">${t.data ? String(t.data).slice(8, 10) + '/' + String(t.data).slice(5, 7) : '—'}</div>
-            <div class="fat-item-desc">${t.apelido ? `${_escHtml(t.apelido)}<div class="ex-sub-titulo">${_escHtml(t.descricao || '')}</div>` : (t.descricao || "—")}</div>
+            <div class="fat-item-desc">${t.apelido ? `${_escHtml(t.apelido)}<div class="ex-sub-titulo">${_escHtml(t.descricao || '')}</div>` : _escHtml(t.descricao || "—")}</div>
             <div class="fat-item-val">${fmt(t.valor)}</div>
-            <button class="tx-act-btn edit" style="flex-shrink:0" onclick='${t.fonte === "lancamentos" ? `abrirEditFixo("${t.id}")` : `editarTx(${JSON.stringify(t)})`}' title="Editar">✏️</button>
+            <button class="tx-act-btn edit" style="flex-shrink:0" onclick='${t.fonte === "lancamentos" ? `abrirEditFixo("${t.id}")` : `editarTx(${_jsonAttr(t)})`}' title="Editar">✏️</button>
           </div>`).join(``) +
         `<div class="fat-item" style="border-top:1px solid var(--border-2);border-bottom:none;margin-top:4px">
             <div class="fat-item-data"></div>
@@ -4328,7 +4331,7 @@ function renderRepasses() {
       linhas.push(`
         <div class="repasse-tx-item" style="${quitado?'opacity:.45':''}${rep?';background:var(--bg-input);border-radius:8px;padding:8px;margin-bottom:2px':''}">
           <div class="repasse-tx-info">
-            <div class="repasse-tx-desc">${tx.descricao || '—'}${tx.parcela ? `<span style="font-size:11px;color:var(--text-3)"> ${tx.parcela}</span>` : ''}</div>
+            <div class="repasse-tx-desc">${_escHtml(tx.descricao || '—')}${tx.parcela ? `<span style="font-size:11px;color:var(--text-3)"> ${tx.parcela}</span>` : ''}</div>
             <div class="repasse-tx-meta">${formatDate(tx.data)}</div>
           </div>
           <div style="text-align:right;flex-shrink:0">
@@ -4342,7 +4345,7 @@ function renderRepasses() {
               <button class="tx-act-btn del"  onclick="deletarRepasse('${rep.id}')" title="Remover">🗑️</button>
             </div>
           ` : `
-            <button class="repasse-add-btn" onclick='abrirModalRepasse(${JSON.stringify({refKey, descricao:tx.descricao, valor:tx.valor, data:tx.data}).replace(/'/g,"&#39;")})' title="Definir repasse">+</button>
+            <button class="repasse-add-btn" onclick='abrirModalRepasse(${_jsonAttr({refKey, descricao:tx.descricao, valor:tx.valor, data:tx.data})})' title="Definir repasse">+</button>
           `}
         </div>`);
     });
@@ -4356,7 +4359,7 @@ function renderRepasses() {
       linhas.push(`
         <div class="repasse-tx-item" style="${r.status==='quitado'?'opacity:.45':''}; background:var(--bg-input);border-radius:8px;padding:8px;margin-bottom:2px">
           <div class="repasse-tx-info">
-            <div class="repasse-tx-desc">${r.descricao || '—'}</div>
+            <div class="repasse-tx-desc">${_escHtml(r.descricao || '—')}</div>
             <div class="repasse-tx-meta">${formatDate(r.data)}</div>
           </div>
           <div style="font-family:var(--font-mono);font-size:14px;font-weight:600;color:${val>=0?'var(--red)':'var(--green)'}">${val>=0?'−':'+'}${fmt(Math.abs(val))}</div>
@@ -4926,7 +4929,7 @@ function renderRelCategorias() {
     const txList   = items[cat] || [];
     const txRows   = txList.map(t => `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 4px 20px;font-size:12px;border-bottom:1px solid var(--border);gap:8px">
-        <div style="color:var(--text-2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.descricao}</div>
+        <div style="color:var(--text-2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_escHtml(t.descricao)}</div>
         ${t.data ? `<div style="color:var(--text-3);flex-shrink:0">${t.data.slice(8)}.${t.data.slice(5,7)}</div>` : ''}
         ${t.conta ? `<div style="color:var(--text-3);flex-shrink:0;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.conta}</div>` : ''}
         <div style="color:var(--red);font-family:var(--font-mono);font-weight:600;flex-shrink:0">${fmt(t.valor)}</div>
@@ -5612,12 +5615,12 @@ function renderTransferencias() {
       <div class="tx-item">
         <div class="tx-icon" style="background:var(--bg-input)">🔁</div>
         <div class="tx-info">
-          <div class="tx-desc">${tr.descricao || 'Transferência'}</div>
+          <div class="tx-desc">${_escHtml(tr.descricao || 'Transferência')}</div>
           <div class="tx-meta">${iconFor(tr.conta_origem)} ${tr.conta_origem} → ${iconFor(tr.conta_dest)} ${tr.conta_dest}</div>
         </div>
         <div class="tx-amount" style="color:var(--text)">${fmt(tr.valor || 0)}</div>
         <div class="tx-actions">
-          <button class="tx-act-btn edit" onclick='editarTransferencia(${JSON.stringify(tr)})' title="Editar">✏️</button>
+          <button class="tx-act-btn edit" onclick='editarTransferencia(${_jsonAttr(tr)})' title="Editar">✏️</button>
           <button class="tx-act-btn del" onclick="deletarTransferencia('${tr.id}')" title="Excluir">🗑️</button>
         </div>
       </div>
@@ -6515,7 +6518,7 @@ async function carregarPluggyContas() {
 
   if (error) {
     console.error('carregarPluggyContas', error);
-    el.innerHTML = `<div class="empty-state"><p>Erro ao carregar dados da Pluggy</p><p class="text-xs text-3" style="margin-top:6px">${error.message || ''}</p></div>`;
+    el.innerHTML = `<div class="empty-state"><p>Erro ao carregar dados da Pluggy</p><p class="text-xs text-3" style="margin-top:6px">${_escHtml(error.message || '')}</p></div>`;
     return;
   }
   if (!contas || !contas.length) {
@@ -6633,7 +6636,7 @@ async function carregarPluggyContas() {
       <div class="card" style="padding:14px;margin-bottom:10px;${c.ignorar ? 'opacity:.6' : ''}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
           <div>
-            <div style="font-weight:500">${c.nome}</div>
+            <div style="font-weight:500">${_escHtml(c.nome)}</div>
             <div class="text-xs text-3">${meta}</div>
           </div>
           <div style="text-align:right">
@@ -6774,6 +6777,19 @@ function _fmtDataBR(dataStr) {
 // diferente do escape usado pra embutir JSON dentro de onclick/onchange
 // (esse aqui não precisa escapar aspas simples, só o que quebraria o
 // atributo de verdade).
+// JSON dentro de onclick='...' (atributo entre aspas simples): sem isto, um ' ou
+// < no texto (descrição vinda da Pluggy, p.ex.) fecha o atributo e injeta HTML/JS.
+// As entidades são decodificadas pelo navegador antes do JS rodar, então o
+// handler recebe o JSON original.
+function _jsonAttr(o) {
+  return JSON.stringify(o).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+// Texto dentro de uma string JS entre aspas simples DENTRO de um atributo
+// entre aspas duplas: escapa pro JS (\\ e ') e depois pro HTML.
+function _jsStrAttr(s) {
+  return _escHtml(String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+}
+
 function _escHtml(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
