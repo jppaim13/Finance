@@ -4,8 +4,10 @@
 --   XP Visa, fatura de out/2026: -20,00 (LITE contado duas vezes) e a série do LITE segue só em 50ca5da8.
 -- NÃO apaga nada: só preenche mes_fim/ano_fim (o histórico anterior continua contando).
 -- ESTE ARQUIVO FICA FORA DE migrations/ DE PROPÓSITO (dado de produção, não entra na montagem do projeto do zero).
+-- STATUS: EXECUTADO em 23/10/2026 (pedido do João) — não rodar de novo; a conferência abortaria.
 -- ORDEM: (1) export do banco; (2) rodar o arquivo inteiro numa única execução; (3) conferir os SELECTs do fim.
 -- Rollback: 2026-10-23_encerra_duplicatas_xp_rollback.sql (valores antigos literais).
+-- COMO RODAR: supabase db query --linked -f scripts-dados/2026-10-23_encerra_duplicatas_xp.sql   (use -f: passar o conteúdo como argumento falha, o CLI lê o primeiro '--' como opção)
 
 begin;
 
