@@ -2226,7 +2226,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-10-23c"></script>
+<script src="date-utils.js?v=2026-10-23d"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2259,7 +2259,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-23c';
+const APP_VERSION = '2026-10-23d';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -4255,6 +4255,16 @@ function donoRepasse(nomeContaCartao) {
   return null;
 }
 
+// Quem pagou a despesa, pelo titular da conta/cartão: 'meu' (JP) ou 'dela' (My); null se não der
+// para saber. Usa o titular gravado no banco; a config local (minhas/delas) só como reserva.
+function pagadorRepasse(nomeContaCartao) {
+  const o = (state.cartoes || []).find(c => c.nome === nomeContaCartao)
+         || (state.contas  || []).find(c => c.nome === nomeContaCartao);
+  if (o?.titular === 'jp') return 'meu';
+  if (o?.titular === 'my') return 'dela';
+  return donoRepasse(nomeContaCartao);
+}
+
 function renderRepasses() {
   const mesNome = MESES_NOMES[state.currentMonth];
   const [ano, mes] = mesNomeToAnoMes(mesNome);
@@ -4345,7 +4355,7 @@ function renderRepasses() {
               <button class="tx-act-btn del"  onclick="deletarRepasse('${rep.id}')" title="Remover">🗑️</button>
             </div>
           ` : `
-            <button class="repasse-add-btn" onclick='abrirModalRepasse(${_jsonAttr({refKey, descricao:tx.descricao, valor:tx.valor, data:tx.data})})' title="Definir repasse">+</button>
+            <button class="repasse-add-btn" onclick='abrirModalRepasse(${_jsonAttr({refKey, descricao:tx.descricao, valor:tx.valor, data:tx.data, pagador:pagadorRepasse(grupoNome)})})' title="Definir repasse">+</button>
           `}
         </div>`);
     });
@@ -4492,13 +4502,34 @@ function abrirModalRepasse(tx) {
   document.getElementById('rValorDiretoGroup').style.display = 'none';
   document.getElementById('rValorTotalGroup').style.display  = '';
   document.querySelectorAll('.perc-btn').forEach(b => b.classList.remove('active'));
-  updateRepassePreview();
   const modal = document.getElementById('modalRepasse');
+  modal.dataset.pagador = tx.pagador || '';
+  updateRepassePreview();
   modal.dataset.refKey = tx.refKey || '';
+  modal.dataset.pagador = tx.pagador || '';
+  _ajustaRotuloRepasse(tx.pagador || '');
   // Salva no mês de vencimento (mês selecionado), não na data de compra
   const [rAno, rMes] = mesNomeToAnoMes(MESES_NOMES[state.currentMonth]);
   modal.dataset.data = `${rAno}-${String(rMes).padStart(2,'0')}-01`;
   modal.classList.add('open');
+}
+
+// Sinal do repasse = quem pagou. Paguei eu (conta/cartão do JP): a parte dela é o que ELA me deve
+// (negativo); pagou ela: a minha parte é o que EU devo a ela (positivo). Sem pagador conhecido,
+// vale o que for digitado (negativo = ela deve pra mim), como antes.
+function _ajustaRotuloRepasse(pagador) {
+  const lbl = document.querySelector('#rPercGroup .form-label');
+  const inp = document.getElementById('rPercentual');
+  if (pagador === 'meu') {
+    lbl.textContent = 'Parte dela (%) — saiu da minha conta, ela me deve';
+    inp.placeholder = '% da despesa que é dela';
+  } else if (pagador === 'dela') {
+    lbl.textContent = 'Minha parte (%) — saiu da conta dela, eu devo';
+    inp.placeholder = '% da despesa que é minha';
+  } else {
+    lbl.textContent = 'Minha parte (%)';
+    inp.placeholder = '% (negativo = ela deve pra mim)';
+  }
 }
 
 function abrirRepasseManual() {
@@ -4515,6 +4546,8 @@ function abrirRepasseManual() {
   document.getElementById('rValorDireto').value = '';
   updateRepassePreview();
   const modal = document.getElementById('modalRepasse');
+  modal.dataset.pagador = '';
+  _ajustaRotuloRepasse('');
   modal.dataset.refId = '';
   modal.dataset.data  = `${ano}-${String(mes).padStart(2,'0')}-01`;
   modal.classList.add('open');
@@ -4537,8 +4570,10 @@ function editarRepasse(id) {
   document.getElementById('rPercentual').value  = r.percentual || '';
   document.getElementById('rValorDireto').value = r.valor_direto ?? '';
   document.querySelectorAll('.perc-btn').forEach(b => b.classList.remove('active'));
-  updateRepassePreview();
   const modal = document.getElementById('modalRepasse');
+  modal.dataset.pagador = '';   // edição mostra o percentual como gravado, com sinal
+  _ajustaRotuloRepasse('');
+  updateRepassePreview();
   modal.dataset.refId = r.ref_id || '';
   modal.dataset.data  = r.data || '';
   modal.classList.add('open');
@@ -4551,14 +4586,21 @@ function setRepassePerc(p) {
   updateRepassePreview();
 }
 
+// Repasse novo com pagador conhecido: o número digitado é a parte de quem NÃO pagou e o sinal vem
+// do pagador (paguei eu → negativo). Edição e pagador desconhecido: vale o digitado.
+function _percentualComSinal(p) {
+  const pagador = document.getElementById('modalRepasse').dataset.pagador;
+  if (_repasseEditId || !pagador) return p;
+  return pagador === 'meu' ? -Math.abs(p) : Math.abs(p);
+}
+
 function updateRepassePreview() {
   let val;
   if (_repasseIsManual) {
     val = parseFloat(document.getElementById('rValorDireto').value) || 0;
   } else {
     const total = parseFloat(document.getElementById('rValorTotal').value) || 0;
-    const perc  = parseFloat(document.getElementById('rPercentual').value) || 0;
-    val = total * perc / 100;
+    val = total * _percentualComSinal(parseFloat(document.getElementById('rPercentual').value) || 0) / 100;
   }
   const el = document.getElementById('repassePreview');
   el.textContent = (val >= 0 ? '− ' : '+ ') + fmt(Math.abs(val));
@@ -4580,8 +4622,9 @@ async function salvarRepasse() {
     row = { data, descricao, valor_total: Math.abs(valor_direto), percentual: valor_direto >= 0 ? 100 : -100, valor_direto, ref_key: null, status: 'pendente' };
   } else {
     const valor_total = parseFloat(document.getElementById('rValorTotal').value);
-    const percentual  = parseFloat(document.getElementById('rPercentual').value);
-    if (!valor_total || isNaN(percentual)) { showToast('Preencha o percentual'); return; }
+    const percDigitado = parseFloat(document.getElementById('rPercentual').value);
+    if (!valor_total || isNaN(percDigitado)) { showToast('Preencha o percentual'); return; }
+    const percentual  = _percentualComSinal(percDigitado);
     row = { data, descricao, valor_total, percentual, valor_direto: null, ref_key, status: 'pendente' };
   }
 
