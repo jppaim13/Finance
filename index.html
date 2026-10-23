@@ -2226,7 +2226,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-10-21d"></script>
+<script src="date-utils.js?v=2026-10-23a"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2259,7 +2259,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-21d';
+const APP_VERSION = '2026-10-23a';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -5981,6 +5981,14 @@ function _valorIgual(a, b) {
 // casados/inseridos nesta rodada) não casa de novo. Sem (2), duas compras
 // idênticas no mesmo dia (ou rendimentos iguais em dias seguidos) colapsam.
 // Só linha MANUAL (nunca vinculada) ainda pode ser "a que já existe".
+// Índice (ano*12+mês) do início e do fim de um lançamento; fim = Infinity quando não tem data de fim.
+// O casamento NÃO pode vincular uma transação real a um lançamento que, no app, não conta naquele mês
+// (encerrado ou ainda não iniciado): a cobrança real não viraria linha de extrato e o lançamento também
+// não a contaria — a despesa sumiria do app em silêncio (achado 23/10/2026: Spotify e Gympass de out
+// vinculados a Fixo encerrado em set). Só RESTRINGE o casamento; nunca o afrouxa.
+function _lancIniIdx(lan) { return Number(lan.ano_ini) * 12 + Number(lan.mes_ini || 1); }
+function _lancFimIdx(lan) { return lan.ano_fim && lan.mes_fim ? Number(lan.ano_fim) * 12 + Number(lan.mes_fim) : Infinity; }
+
 function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
   const extratoRows = cache.extrato.get(nome) || [];
   // Estorno de CARTÃO é despesa de valor negativo (não receita).
@@ -6047,6 +6055,7 @@ function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
         const parcelaInicial = Number(lan.pluggy_parcelas_totais) - Number(lan.parcelas) + 1;
         const offset = instNum - parcelaInicial;
         if (offset < 0 || offset >= Number(lan.parcelas)) continue;
+        if (_lancIniIdx(lan) + offset > _lancFimIdx(lan)) continue; // ocorrência além do fim: não conta no app
         const venidxLan = getInstVencIdx(lan, offset, cartaoObj?.fechamento, cartaoObj?.vencimento);
         if (venidxLan === venidxReal) return { fonte: 'lancamentos', id: lan.id };
         continue;
@@ -6056,6 +6065,7 @@ function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
       // pelo total real igual ao `parcelas` cadastrado.
       if (Number(lan.parcelas) !== instTot) continue;
       if (!_valorIgual(lan.valor, valor)) continue;
+      if (_lancIniIdx(lan) + (instNum - 1) > _lancFimIdx(lan)) continue; // ocorrência além do fim: não conta no app
       const venidxLan = getInstVencIdx(lan, instNum - 1, cartaoObj?.fechamento, cartaoObj?.vencimento);
       if (venidxLan === venidxReal) return { fonte: 'lancamentos', id: lan.id };
     }
@@ -6068,6 +6078,8 @@ function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
   for (const lan of lancRows) {
     if ((lan.tipo || '').toLowerCase() !== 'fixo') continue;
     if (!_valorIgual(lan.valor, valor)) continue;
+    const idxTx = ay * 12 + am;
+    if (idxTx < _lancIniIdx(lan) || idxTx > _lancFimIdx(lan)) continue; // fora da vigência do Fixo
     const dia = Math.min(Number(lan.dia_ini) || 1, ultimoDia);
     const dataEsperada = `${ay}-${String(am).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
     if (_diffDias(dataEsperada, pt.data) <= 3) return { fonte: 'lancamentos', id: lan.id };
