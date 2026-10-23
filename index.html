@@ -2226,7 +2226,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-10-23a"></script>
+<script src="date-utils.js?v=2026-10-23b"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2259,7 +2259,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-23a';
+const APP_VERSION = '2026-10-23b';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -7094,6 +7094,7 @@ async function renderCategorizacao() {
                 </select>
                 <button class="btn-secondary" style="padding:5px 10px;font-size:11px;white-space:nowrap" onclick="marcarComoFatura('${i.id}', document.getElementById('${selIdCartao}').value, document.getElementById('${selIdMes}').value)">📋 Fatura</button>`;
                 })() : ""}
+                <button class="btn-secondary" style="padding:5px 10px;font-size:11px;white-space:nowrap;color:var(--red);margin-left:auto" onclick="excluirPendente('${i.id}', '${i.fonte}', '${i.origem_dado || ''}')" title="Excluir este lançamento">🗑️ Excluir</button>
               </div>
             </div>`;
           }).join('')}
@@ -7222,6 +7223,36 @@ async function categorizarLinha(id, categoria, apelido, compraChave, fonte) {
   if (compraChave) await _aplicarCategoriaPorCompra(compraChave, categoria, apelidoFinal || null);
   showToast('Categorizado ✅');
   await renderCategorizacao();
+}
+
+// Exclui UMA linha pendente da Categorização (extrato ou lançamento). Linha criada pela
+// Pluggy: depois de apagar, marca a(s) transação(ões) do espelho vinculada(s) como 'excluida'
+// (o vínculo transacao_id fica) — a importação só pega transacao_id E transacao_fonte nulos,
+// então a despesa que o usuário apagou de propósito nunca volta como pendente. Apagar primeiro
+// e marcar depois: se a marcação falhar, o vínculo antigo ainda impede a reimportação.
+async function excluirPendente(id, fonte, origemDado) {
+  const tabela = fonte === 'lancamentos' ? 'lancamentos' : 'extrato';
+  const ehPluggy = origemDado === 'pluggy';
+  let aviso;
+  if (tabela === 'lancamentos') {
+    aviso = ehPluggy
+      ? 'Excluir este lançamento futuro?\n\nEle foi criado a partir de uma compra parcelada da Pluggy: se a Pluggy continuar reportando as próximas parcelas, elas voltam a ser importadas e a série pode ser recriada.'
+      : 'Excluir este lançamento?';
+  } else {
+    aviso = ehPluggy
+      ? 'Excluir esta despesa?\n\nEla veio da Pluggy e não será importada de novo.'
+      : 'Excluir esta despesa?';
+  }
+  if (!confirm(aviso)) return;
+  const ok = await sbDelete(tabela, id);
+  if (!ok) { showToast('Erro ao excluir ❌'); return; }
+  if (ehPluggy) {
+    const { error } = await _sb.from('pluggy_transacoes').update({ transacao_fonte: 'excluida' }).eq('transacao_id', id);
+    if (error) console.error('excluirPendente: marcar espelho', error);
+  }
+  showToast('Excluído ✅');
+  await renderCategorizacao();
+  await loadData();
 }
 
 // Categoriza TODAS as pendentes de um grupo de uma vez, por id — não por
