@@ -1,4 +1,4 @@
-const CACHE_NAME = 'financas-v6';
+const CACHE_NAME = 'financas-v7';
 
 const SHELL = [
   './icon.svg',
@@ -34,9 +34,12 @@ self.addEventListener('fetch', event => {
   // (cache-busting contra index.html novo + date-utils.js antigo — 15/10/2026).
   const caminho = url.split('?')[0];
   const isAppShell = event.request.mode === 'navigate' || caminho.endsWith('index.html') || caminho.endsWith('date-utils.js');
+  // cache: 'no-cache' = sempre revalida no servidor (barato: 304 quando nada mudou). Sem isso, o
+  // Cache-Control: max-age=600 do GitHub Pages deixava o navegador servir o index.html antigo por
+  // até 10 min depois de cada publicação, mesmo com este network-first (achado 24/10/2026).
   if (isAppShell) {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: 'no-cache' })
         .then(response => {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
