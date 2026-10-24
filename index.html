@@ -2287,7 +2287,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-10-24f"></script>
+<script src="date-utils.js?v=2026-10-24g"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2320,7 +2320,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-24f';
+const APP_VERSION = '2026-10-24g';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -5286,7 +5286,15 @@ function buildCatBarChips() {
   const chips   = document.getElementById('catBarChips');
   if (!chips) return;
 
-  chips.innerHTML = [...catSet].map(id => {
+  // Ordem: maior gasto do mês selecionado no gráfico de pizza para o menor; quem não gastou
+  // naquele mês vai para o fim, na ordem original.
+  const gastoMes = calcularCatsPorMes(state._pieMes ?? state.currentMonth).totals;
+  const ordem = [...catSet]
+    .map((id, k) => ({ id, k, v: gastoMes[id] || 0 }))
+    .sort((a, b) => (b.v - a.v) || (a.k - b.k))
+    .map(x => x.id);
+
+  chips.innerHTML = ordem.map(id => {
     const info = allCats.find(c => c.id === id) || { nome: id, emoji: '📦' };
     const cc = catCor(id);
     return `<button class="filter-chip ${state._catBarSel===id?'active':''}"
@@ -5296,8 +5304,8 @@ function buildCatBarChips() {
   }).join('');
 
   // seleciona automaticamente a primeira se nenhuma selecionada
-  if (!state._catBarSel && catSet.size) {
-    state._catBarSel = [...catSet][0];
+  if (!state._catBarSel && ordem.length) {
+    state._catBarSel = ordem[0];
     chips.querySelector(`[data-cat="${state._catBarSel}"]`)?.classList.add('active');
   }
 }

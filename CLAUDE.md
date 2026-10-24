@@ -1297,3 +1297,6 @@ Mesmo desenho do Extrato, em versão discreta, nas compras listadas ao expandir 
 
 ### 24/10/2026 — "Ver como Mylena": botão flutuante do admin removido
 Pedido do João: o botão flutuante some para o administrador. O atalho passou para **Configurações > Conta** ("👁 Ver como Mylena"). Ligada a visão, o app o leva ao painel (Config fica fora de alcance) e aparece o botão flutuante amarelo **só para sair da visão**; não-admin continua com o "Sair" flutuante. Restante da regra de 24/10 (acesso, limites) inalterado. Não testado em navegador. Rollback: reverter o commit.
+
+### 24/10/2026 — Evolução mensal por categoria: botões ordenados pelo gasto do mês
+Os botões de categoria do gráfico "Evolução Mensal por Categoria" (Relatórios > Categorias) agora vêm do **maior gasto para o menor no mês selecionado na pizza** (`state._pieMes`, setas ‹ ›); categorias sem gasto naquele mês vão para o fim na ordem original. A ordem se refaz ao trocar o mês e a categoria pré-selecionada (quando nenhuma foi escolhida) é a de maior gasto. Usa `calcularCatsPorMes` (o mesmo cálculo da pizza e da lista). Não testado em navegador. Rollback: reverter o commit.
