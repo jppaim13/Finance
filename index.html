@@ -44,6 +44,8 @@
   --amber-soft:   oklch(0.96 0.03 75);
   --fatura:       oklch(0.64 0.15 62);   /* fatura: informativo, amarelo alaranjado */
   --fatura-soft:  oklch(0.96 0.05 80);
+  --transf:       oklch(0.55 0.13 235);  /* transferência: neutra para o saldo, azul claro */
+  --transf-soft:  oklch(0.96 0.03 235);
 
   /* Tinta e superfícies — azul-ardósia frio, tema único (escuro abandonado) */
   --bg:         #f1f3f6;
@@ -1011,6 +1013,13 @@ details.ex-filters > summary { list-style: none; display: none; }
 .ex-val.despesa { color: var(--red); }
 .ex-val.receita { color: var(--green); }
 .ex-val.fatura  { color: var(--fatura); }
+.ex-val.transf  { color: var(--transf); }
+.ex-row.ex-transf { background: var(--transf-soft); border-color: oklch(0.82 0.06 235); }
+.ex-row.ex-transf:hover { background: oklch(0.94 0.04 235); }
+.ex-tag-transf { color: var(--transf); border-color: var(--transf); background: #fff; }
+.ex-rota { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 3px; font-size: 11.5px; color: var(--text-2); }
+.ex-rota-conta { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; background: #fff; border: 1px solid oklch(0.85 0.05 235); max-width: 100%; overflow-wrap: anywhere; }
+.ex-rota-seta { color: var(--transf); font-weight: 700; }
 .ex-tag { display: inline-block; font-size: 9.5px; font-weight: 500; letter-spacing: .5px; text-transform: uppercase; color: var(--text-3); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px; margin-left: 7px; vertical-align: 1px; }
 .ex-tag-previsto { color: var(--amber); border-color: var(--amber); background: var(--amber-soft); }
 .ex-tag-fatura { color: var(--fatura); border-color: var(--fatura); background: var(--fatura-soft); }
@@ -1464,6 +1473,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
         <button class="filter-chip active" onclick="setFilterTipo('todos',this)">Todos</button>
         <button class="filter-chip" onclick="setFilterTipo('despesa',this)">Despesas</button>
         <button class="filter-chip" onclick="setFilterTipo('receita',this)">Receitas</button>
+        <button class="filter-chip" onclick="setFilterTipo('transferencia',this)">Transferências</button>
       </div>
       <details class="ex-filters" id="extratoFiltros">
         <summary></summary>
@@ -2313,7 +2323,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-10-24i"></script>
+<script src="date-utils.js?v=2026-10-24j"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2346,7 +2356,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-24i';
+const APP_VERSION = '2026-10-24j';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -3629,6 +3639,30 @@ function txItem(tx, maxAbs) {
   `;
 }
 
+// Card de transferência (Extrato e menu Transferências): azul claro, rota "origem ➜ destino" em
+// chips e o valor sozinho embaixo, sem sinal (não entra nem sai do patrimônio).
+function transfItem(tr) {
+  const caixinhaNomes = new Set((state.caixinhas || []).map(c => c.nome));
+  const iconFor = nome => caixinhaNomes.has(nome) ? '💰' : '🏦';
+  return `
+    <div class="ex-row ex-transf">
+      <div class="ex-mag" style="background:var(--transf)"></div>
+      <div class="ex-body">
+        <div class="ex-desc">${_escHtml(tr.descricao || 'Transferência')}<span class="ex-tag ex-tag-transf">transferência</span></div>
+        <div class="ex-rota">
+          <span class="ex-rota-conta">${iconFor(tr.conta_origem)} ${_escHtml(tr.conta_origem || '—')}</span>
+          <span class="ex-rota-seta">➜</span>
+          <span class="ex-rota-conta">${iconFor(tr.conta_dest)} ${_escHtml(tr.conta_dest || '—')}</span>
+        </div>
+        <div class="ex-val transf">⇄ ${fmt(tr.valor || 0)}</div>
+      </div>
+      <div class="ex-acts">
+        <button class="tx-act-btn edit" onclick='editarTransferencia(${_jsonAttr(tr)})' title="Editar">✏️</button>
+        <button class="tx-act-btn del" onclick="deletarTransferencia('${tr.id}')" title="Excluir">🗑️</button>
+      </div>
+    </div>`;
+}
+
 function renderEvolucaoChart() {
   const ctx = document.getElementById('chartEvolucao');
   if (!ctx) return; // o Dashboard não tem mais este gráfico — ver Relatórios
@@ -3757,6 +3791,21 @@ function renderExtrato() {
   const search = document.getElementById('searchInput').value.toLowerCase();
   if (search) txs = txs.filter(t => ((t.descricao||'') + ' ' + (t.apelido||'')).toLowerCase().includes(search));
 
+  // Transferências do mês: entram só na LISTA (e no filtro de tipo "Transferências"), nunca nos
+  // totais — mover dinheiro entre as nossas contas não é entrada nem saída.
+  const [anoSel, mesSel] = mesNomeToAnoMes(MESES_NOMES[state.currentMonth]);
+  const prefixoMes = `${anoSel}-${String(mesSel).padStart(2, '0')}`;
+  let trs = (state._allTransferencias || []).filter(t => String(t.data || '').startsWith(prefixoMes));
+  if (state.filterTipo === 'despesa' || state.filterTipo === 'receita' || state.filterCats.size > 0) trs = [];
+  if (state.filterContas.size > 0) {
+    trs = trs.filter(t => [...state.filterContas].some(k => {
+      const nome = k.slice(k.indexOf(':') + 1);
+      return k.startsWith('conta:') && (t.conta_origem === nome || t.conta_dest === nome);
+    }));
+  }
+  if (search) trs = trs.filter(t => ((t.descricao || '') + ' ' + (t.conta_origem || '') + ' ' + (t.conta_dest || '')).toLowerCase().includes(search));
+  if (state.filterTipo === 'transferencia') txs = [];
+
   // ── Summary panel ──────────────────────────────────────────────────────────
   const summaryEl = document.getElementById('extrato-summary');
   if (summaryEl) {
@@ -3832,30 +3881,41 @@ function renderExtrato() {
   const heroFaturaExcluida = txs.filter(t => t.categoria === 'fatura').reduce((s,t) => s + (t.valor||0), 0);
   const heroEl   = document.getElementById('extrato-hero');
   if (heroEl) {
-    heroEl.textContent = (heroNet >= 0 ? '+ ' : '− ') + fmt(Math.abs(heroNet));
-    heroEl.style.color = heroNet >= 0 ? 'var(--green)' : 'var(--red)';
+    if (state.filterTipo === 'transferencia') {
+      heroEl.textContent = '⇄ ' + fmt(trs.reduce((t, x) => t + Number(x.valor || 0), 0));
+      heroEl.style.color = 'var(--transf)';
+    } else {
+      heroEl.textContent = (heroNet >= 0 ? '+ ' : '− ') + fmt(Math.abs(heroNet));
+      heroEl.style.color = heroNet >= 0 ? 'var(--green)' : 'var(--red)';
+    }
     document.getElementById('extrato-hero-sub').textContent =
       txs.length + (txs.length === 1 ? ' lançamento' : ' lançamentos') +
       ' · ' + fmt(heroRec) + ' entradas · ' + fmt(heroDesp) + ' saídas' +
-      (heroFaturaExcluida > 0 ? ` · Saídas não incluem ${fmt(heroFaturaExcluida)} de pagamento de fatura` : '');
+      (heroFaturaExcluida > 0 ? ` · Saídas não incluem ${fmt(heroFaturaExcluida)} de pagamento de fatura` : '') +
+      (trs.length ? ` · ${trs.length} ${trs.length === 1 ? 'transferência' : 'transferências'} (${fmt(trs.reduce((t, x) => t + Number(x.valor || 0), 0))}) fora do saldo` : '');
   }
 
-  if (!txs.length) { el.innerHTML = '<div class="empty-state"><p>Nenhum lançamento encontrado</p></div>'; return; }
+  if (!txs.length && !trs.length) { el.innerHTML = '<div class="empty-state"><p>Nenhum lançamento encontrado</p></div>'; return; }
 
   // Agrupa por dia. A barra de magnitude é relativa ao MAIOR valor do conjunto
   // filtrado, então a leitura relativa continua válida dentro de qualquer filtro.
   const groups = {};
   txs.forEach(tx => { const d = tx.data||''; (groups[d]=groups[d]||[]).push(tx); });
+  const gruposTransf = {};
+  trs.forEach(tr => { const d = tr.data||''; (gruposTransf[d]=gruposTransf[d]||[]).push(tr); });
   const maxAbs = Math.max.apply(null, txs.map(t => Math.abs(t.valor||0)).concat([1]));
 
-  el.innerHTML = Object.entries(groups).sort((a,b)=>b[0].localeCompare(a[0])).map(([date, txList]) => {
+  const datas = [...new Set([...Object.keys(groups), ...Object.keys(gruposTransf)])].sort((a, b) => b.localeCompare(a));
+  el.innerHTML = datas.map(date => {
+    const txList = groups[date] || [];
     const totalDia = txList.reduce((s,t) => s + (t.tipo === 'receita' ? (t.valor||0) : -(t.valor||0)), 0);
     return `
       <div class="ex-day">
         <span class="ex-day-label">${formatDate(date)}</span>
-        <span class="ex-day-total">${totalDia >= 0 ? '+' : '−'}${fmt(Math.abs(totalDia))}</span>
+        <span class="ex-day-total">${txList.length ? (totalDia >= 0 ? '+' : '−') + fmt(Math.abs(totalDia)) : '⇄'}</span>
       </div>
       ${txList.map(tx => txItem(tx, maxAbs)).join('')}
+      ${(gruposTransf[date] || []).map(transfItem).join('')}
     `;
   }).join('');
 }
@@ -5898,28 +5958,15 @@ function renderTransferencias() {
     return;
   }
 
-  const caixinhaNomes = new Set((state.caixinhas || []).map(c => c.nome));
-  const iconFor = nome => caixinhaNomes.has(nome) ? '💰' : '🏦';
-
   const groups = {};
   transfs.forEach(tr => { const d = tr.data || ''; (groups[d] = groups[d] || []).push(tr); });
 
   el.innerHTML = Object.entries(groups).map(([date, list]) => `
-    <div class="tx-date-group">${formatDate(date)}</div>
-    ${list.map(tr => `
-      <div class="tx-item">
-        <div class="tx-icon" style="background:var(--bg-input)">🔁</div>
-        <div class="tx-info">
-          <div class="tx-desc">${_escHtml(tr.descricao || 'Transferência')}</div>
-          <div class="tx-meta">${iconFor(tr.conta_origem)} ${tr.conta_origem} → ${iconFor(tr.conta_dest)} ${tr.conta_dest}</div>
-        </div>
-        <div class="tx-amount" style="color:var(--text)">${fmt(tr.valor || 0)}</div>
-        <div class="tx-actions">
-          <button class="tx-act-btn edit" onclick='editarTransferencia(${_jsonAttr(tr)})' title="Editar">✏️</button>
-          <button class="tx-act-btn del" onclick="deletarTransferencia('${tr.id}')" title="Excluir">🗑️</button>
-        </div>
-      </div>
-    `).join('')}
+    <div class="ex-day">
+      <span class="ex-day-label">${formatDate(date)}</span>
+      <span class="ex-day-total">⇄</span>
+    </div>
+    ${list.map(transfItem).join('')}
   `).join('');
 }
 
