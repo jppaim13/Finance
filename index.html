@@ -1084,11 +1084,14 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 .cat-row-ctl .form-select { font-size: 12px; padding: 6px 8px; min-width: 0; }
 .cat-more { grid-area: mais; width: 28px; height: 28px; border: 1px solid var(--border); background: var(--bg-card); border-radius: var(--radius-sm); color: var(--text-2); cursor: pointer; font-size: 13px; line-height: 1; flex-shrink: 0; }
 .cat-more:hover { background: var(--bg-hover); }
-.cat-detail { background: var(--bg-hover); border-top: 1px solid var(--border); padding: 6px 16px 12px; }
+.cat-detail { background: var(--bg-hover); border-top: 1px solid var(--border); padding: 8px 12px 10px; }
 .cat-detail > summary { list-style: none; display: none; }
-.cat-line { display: flex; flex-direction: column; gap: 5px; padding: 9px 0; border-top: 1px solid var(--border); }
-.cat-line:first-child { border-top: none; }
-.cat-line-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
+.cat-line { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; margin-bottom: 4px; background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--red); border-radius: 6px; }
+.cat-line.receita { border-left-color: var(--green); }
+.cat-line-head { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 12px; }
+.cat-line-desc { font-size: 12.5px; color: var(--text-2); line-height: 1.3; overflow-wrap: anywhere; }
+.cat-line-val { font-family: var(--font-mono); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--red); }
+.cat-line.receita .cat-line-val { color: var(--green); }
 /* Titular (JP | My): seção da Categorização e selo de origem de cada despesa */
 :root {
   --titular-jp: oklch(0.50 0.14 250);   --titular-jp-bg: oklch(0.95 0.03 250);
@@ -1118,21 +1121,42 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 .relbar-legend { display: flex; gap: 16px; flex-wrap: wrap; }
 .relbar-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-2); }
 .relbar-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
-.relbar-plot { display: flex; align-items: flex-end; height: 150px; border-bottom: 1px solid var(--border); }
+.relbar-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+.relbar-inner { min-width: 100%; }
+.relbar-plot { display: flex; align-items: flex-end; height: 160px; border-bottom: 1px solid var(--border); background: repeating-linear-gradient(to top, transparent 0, transparent calc(25% - 1px), var(--bg-hover) calc(25% - 1px), var(--bg-hover) 25%); }
 .relbar-col { flex: 1; min-width: 0; display: flex; align-items: flex-end; justify-content: center; gap: 3px; height: 100%; }
-.relbar { width: 15px; max-width: 40%; border-radius: 2px 2px 0 0; transition: height .5s ease; }
+.relbar-col.atual { background: var(--accent-soft); }
+.relbar { width: 14px; max-width: 40%; border-radius: 2px 2px 0 0; transition: height .5s ease; }
 .relbar.rec { background: var(--accent); }
 .relbar.des { background: oklch(0.62 0.13 40); }
 .relbar-labels { display: flex; }
-.relbar-labels > div { flex: 1; min-width: 0; text-align: center; font-size: 10.5px; color: var(--text-3); padding-top: 7px; }
+.relbar-labels > div { flex: 1; min-width: 0; text-align: center; font-size: 10.5px; line-height: 1.25; color: var(--text-3); padding-top: 6px; }
+.relbar-labels > div.atual { color: var(--text); font-weight: 600; }
+.relbar-labels .rb-ano { display: block; font-size: 9.5px; opacity: .8; }
+.relbar-labels .rb-res { display: block; margin-top: 2px; font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; }
+.relbar-labels .rb-res.pos { color: var(--green); }
+.relbar-labels .rb-res.neg { color: var(--red); }
 
-.relev-grid { display: grid; grid-template-columns: 60px 1fr 1fr 1fr; align-items: center; padding: 0 18px; }
+.relev-grid { display: grid; grid-template-columns: 60px 1fr 1fr 1fr; grid-template-areas: "mes ent sai res"; align-items: center; padding: 0 18px; }
+.rv-mes { grid-area: mes; } .rv-ent { grid-area: ent; } .rv-sai { grid-area: sai; } .rv-res { grid-area: res; }
 .relev-head { height: 30px; background: var(--bg-hover); border-bottom: 1px solid var(--border); }
 .relev-head > div { font-size: 10px; font-weight: 600; letter-spacing: .7px; text-transform: uppercase; color: var(--text-3); }
 .relev-row { height: 34px; border-bottom: 1px solid var(--bg-hover); }
 .relev-row:hover { background: var(--bg-hover); }
 .relev-foot { height: 38px; background: var(--bg-hover); border-top: 1px solid var(--border-2); }
-.relev-num { font-family: var(--font-mono); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.relev-num { font-family: var(--font-mono); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Celular: mês e resultado em cima, entradas e saídas embaixo — nada se espreme em 4 colunas */
+@media (max-width: 767px) {
+  .relev-head { display: none; }
+  .relev-grid { grid-template-columns: 1fr 1fr; grid-template-areas: "mes res" "ent sai"; padding: 8px 14px; row-gap: 2px; }
+  .relev-row, .relev-foot { height: auto; }
+  .rv-res { text-align: right; }
+  .relev-grid .rv-ent, .relev-grid .rv-sai { font-size: 11px; color: var(--text-3); }
+  .relev-grid .rv-ent { text-align: left; }
+  .relev-grid .rv-sai { text-align: right; }
+  .relev-grid .rv-ent::before { content: "Entradas "; font-family: var(--font); }
+  .relev-grid .rv-sai::before { content: "Saídas "; font-family: var(--font); }
+}
 
 /* Utilitários de cor por sinal — de propósito no FIM da folha de estilo,
    não perto de onde foram declarados antes. Empatam em especificidade (uma
@@ -1573,15 +1597,19 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
             </div>
             <span class="text-xs text-3" id="rel-ev-periodo">—</span>
           </div>
-          <div class="relbar-plot" id="rel-ev-plot"></div>
-          <div class="relbar-labels" id="rel-ev-labels"></div>
+          <div class="relbar-scroll" id="rel-ev-scroll">
+            <div class="relbar-inner" id="rel-ev-inner">
+              <div class="relbar-plot" id="rel-ev-plot"></div>
+              <div class="relbar-labels" id="rel-ev-labels"></div>
+            </div>
+          </div>
         </div>
         <div class="card" style="padding:0;overflow:hidden">
           <div class="relev-grid relev-head">
-            <div>Mês</div>
-            <div style="text-align:right">Entradas</div>
-            <div style="text-align:right">Saídas</div>
-            <div style="text-align:right">Resultado</div>
+            <div class="rv-mes">Mês</div>
+            <div class="rv-ent" style="text-align:right">Entradas</div>
+            <div class="rv-sai" style="text-align:right">Saídas</div>
+            <div class="rv-res" style="text-align:right">Resultado</div>
           </div>
           <div id="rel-ev-tabela"></div>
         </div>
@@ -1618,7 +1646,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
             <div class="section-label" style="margin:0">Evolução de Faturas</div>
           </div>
           <div class="filter-chips" id="faturaCartaoChips" style="margin-bottom:12px"></div>
-          <div class="chart-wrap" style="height:220px"><canvas id="chartFaturaEvolucao"></canvas></div>
+          <div class="chart-wrap" style="height:260px"><canvas id="chartFaturaEvolucao"></canvas></div>
         </div>
         <div class="card">
           <div class="section-label" style="margin-top:0">Resumo por Cartão</div>
@@ -2231,7 +2259,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-10-24b"></script>
+<script src="date-utils.js?v=2026-10-24c"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2264,7 +2292,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-24b';
+const APP_VERSION = '2026-10-24c';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -4720,13 +4748,27 @@ function renderRelEvolucao() {
 
   const teto = Math.max.apply(null, meses.map(m => Math.max(m.rec, m.des)));
 
+  const inner = document.getElementById('rel-ev-inner');
+  if (inner) inner.style.minWidth = (meses.length * 50) + 'px'; // 50px por mês; passou da largura, rola
   plot.innerHTML = meses.map(m => `
-    <div class="relbar-col" title="${MESES[m.i]} · entradas ${fmt(m.rec)} · saídas ${fmt(m.des)}">
+    <div class="relbar-col${m.i === state.currentMonth ? ' atual' : ''}" title="${MESES[m.i]} · entradas ${fmt(m.rec)} · saídas ${fmt(m.des)}">
       <div class="relbar rec" style="height:${(m.rec / teto * 100).toFixed(1)}%"></div>
       <div class="relbar des" style="height:${(m.des / teto * 100).toFixed(1)}%"></div>
     </div>`).join('');
 
-  labels.innerHTML = meses.map(m => `<div>${_rotuloMesCurto(m.i).toLowerCase()}</div>`).join('');
+  const _k = v => (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1).replace('.', ',') + 'k' : Math.abs(v).toFixed(0));
+  labels.innerHTML = meses.map(m => {
+    const [ab, ano] = MESES_NOMES[m.i].split('-');
+    const res = m.rec - m.des;
+    return `<div${m.i === state.currentMonth ? ' class="atual"' : ''}>${ab.toLowerCase()}<span class="rb-ano">${ano.slice(2)}</span><span class="rb-res ${res >= 0 ? 'pos' : 'neg'}">${res >= 0 ? '+' : '−'}${_k(res)}</span></div>`;
+  }).join('');
+  // Rola até o mês selecionado (ou o último com movimento), sem animar.
+  const scroller = document.getElementById('rel-ev-scroll');
+  if (scroller) {
+    const pos = meses.findIndex(m => m.i === state.currentMonth);
+    const idxAlvo = pos < 0 ? meses.length - 1 : pos;
+    scroller.scrollLeft = Math.max(0, idxAlvo * 50 - scroller.clientWidth / 2 + 25);
+  }
 
   document.getElementById('rel-ev-periodo').textContent =
     MESES[meses[0].i] + ' – ' + MESES[meses[meses.length - 1].i];
@@ -4740,10 +4782,10 @@ function renderRelEvolucao() {
     const atual = m.i === state.currentMonth;
     return `
       <div class="relev-grid relev-row" style="${atual ? `background:var(--accent-soft)` : ``}">
-        <div style="font-size:12px;font-weight:${atual ? 600 : 500};color:var(--text)">${_rotuloMesCurto(m.i).toLowerCase()}</div>
-        <div class="relev-num" style="color:var(--text-2)">${fmt(m.rec)}</div>
-        <div class="relev-num" style="color:var(--text-2)">${fmt(m.des)}</div>
-        <div class="relev-num" style="font-weight:500;color:${res >= 0 ? `var(--green)` : `var(--red)`}">${res >= 0 ? "+" : "−"}${fmt(Math.abs(res))}</div>
+        <div class="rv-mes" style="font-size:12px;font-weight:${atual ? 600 : 500};color:var(--text)">${_rotuloMesCurto(m.i).toLowerCase()}</div>
+        <div class="relev-num rv-ent" style="color:var(--text-2)">${fmt(m.rec)}</div>
+        <div class="relev-num rv-sai" style="color:var(--text-2)">${fmt(m.des)}</div>
+        <div class="relev-num rv-res" style="font-weight:500;color:${res >= 0 ? `var(--green)` : `var(--red)`}">${res >= 0 ? "+" : "−"}${fmt(Math.abs(res))}</div>
       </div>`;
   }).join('');
 
@@ -4752,10 +4794,10 @@ function renderRelEvolucao() {
 
   tabela.innerHTML = linhas + `
     <div class="relev-grid relev-foot">
-      <div class="font-600" style="font-size:12px">Total</div>
-      <div class="relev-num font-500">${fmt(totRec)}</div>
-      <div class="relev-num font-500">${fmt(totDes)}</div>
-      <div class="relev-num font-500" style="color:${acum >= 0 ? `var(--green)` : `var(--red)`}">${acum >= 0 ? "+" : "−"}${fmt(Math.abs(acum))}</div>
+      <div class="rv-mes font-600" style="font-size:12px">Total</div>
+      <div class="relev-num rv-ent font-500">${fmt(totRec)}</div>
+      <div class="relev-num rv-sai font-500">${fmt(totDes)}</div>
+      <div class="relev-num rv-res font-500" style="color:${acum >= 0 ? `var(--green)` : `var(--red)`}">${acum >= 0 ? "+" : "−"}${fmt(Math.abs(acum))}</div>
     </div>`;
 }
 
@@ -4795,17 +4837,19 @@ function renderRelFaturas() {
     ? allCartoes.filter(c => state._faturasSel.has(c.nome))
     : allCartoes;
 
-  // Build datasets
-  const datasets = cartoesSel.map((c, i) => {
-    const color = CAT_COLORS[i % CAT_COLORS.length];
+  // Colunas empilhadas por cartão: cada mês mostra a composição E o total, sem as áreas
+  // sobrepostas do gráfico de linha. Só meses com fatura entram (mês zerado é mês que não aconteceu).
+  const idxMeses = state.resumo.map((r, i) => i)
+    .filter(i => cartoesSel.some(c => ((state.resumo[i].faturas || {})[c.nome] || 0) > 0));
+  const datasets = cartoesSel.map(c => {
+    const color = CAT_COLORS[allCartoes.indexOf(c) % CAT_COLORS.length];
     return {
       label: c.nome,
-      data: state.resumo.map(r => (r.faturas || {})[c.nome] || 0),
-      borderColor: color,
-      backgroundColor: color + '18',
-      fill: true,
-      tension: .4,
-      pointRadius: 4,
+      data: idxMeses.map(i => (state.resumo[i].faturas || {})[c.nome] || 0),
+      backgroundColor: color,
+      borderRadius: 3,
+      borderSkipped: false,
+      maxBarThickness: 34,
     };
   });
 
@@ -4813,17 +4857,25 @@ function renderRelFaturas() {
   if (window._chartFatEv) { window._chartFatEv.destroy(); window._chartFatEv = null; }
   if (ctx) {
     window._chartFatEv = new Chart(ctx, {
-      type: 'line',
-      data: { labels: MESES.map((_, i) => _rotuloMesCurto(i)), datasets },
+      type: 'bar',
+      data: { labels: idxMeses.map(i => _rotuloMesCurto(i)), datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
         plugins: {
-          legend: { labels: { color: textColor, font: { size: 12 }, boxWidth: 12 } },
-          tooltip: { callbacks: { label: c => ' ' + fmt(c.raw) } },
+          legend: { position: 'bottom', labels: { color: textColor, font: { size: 11 }, boxWidth: 8, boxHeight: 8, usePointStyle: true, pointStyle: 'rectRounded', padding: 14 } },
+          tooltip: {
+            itemSort: (a, b) => b.raw - a.raw,
+            filter: item => item.raw > 0,
+            callbacks: {
+              label: c => ' ' + c.dataset.label + ': ' + fmt(c.raw),
+              footer: items => items.length > 1 ? 'Total: ' + fmt(items.reduce((t, it) => t + it.raw, 0)) : '',
+            },
+          },
         },
         scales: {
-          x: { grid: { display: false }, ticks: { color: textColor, font: { size: 10 } } },
-          y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, callback: v => 'R$' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v.toFixed(0)) } },
+          x: { stacked: true, grid: { display: false }, ticks: { color: textColor, font: { size: 10 }, maxRotation: 0, autoSkip: true } },
+          y: { stacked: true, beginAtZero: true, border: { display: false }, grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, maxTicksLimit: 5, callback: v => 'R$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v.toFixed(0)) } },
         },
       },
     });
@@ -7112,13 +7164,14 @@ async function renderCategorizacao() {
           ${itens.map(i => {
             const selIdLinha = `catlinha-${i.id}`;
             const descIdLinha = `desclinha-${i.id}`;
+            const entra = i.tipo === 'receita' || Number(i.valor || 0) < 0; // receita ou estorno: entra
             return `
-            <div class="cat-line">
+            <div class="cat-line${entra ? ' receita' : ''}">
               <div class="cat-line-head">
-                <span><span class="text-3">${_fmtDataBR(i.data)}</span> ${_origemChip(i)}${i.fonte === "lancamentos" ? '<span class="ex-tag">lançamento</span>' : ""}</span>
-                <span class="font-mono">${fmt(i.valor)}</span>
+                <span class="text-3">${_fmtDataBR(i.data)}</span> ${_origemChip(i)}${i.fonte === "lancamentos" ? '<span class="ex-tag">lançamento</span>' : ""}
               </div>
-              <div class="text-3" style="font-size:11px;margin-bottom:2px">${_escHtml(i.descricao)}</div>
+              <div class="cat-line-desc">${_escHtml(i.descricao)}</div>
+              <div class="cat-line-val">${entra ? '+' : '−'} ${fmt(Math.abs(i.valor))}</div>
               <div class="cat-line-ctls">
                 <span style="display:flex;align-items:baseline;flex:1;min-width:120px"><input id="${descIdLinha}" class="form-input apelido-input" style="font-size:12px;padding:4px 8px" placeholder="Subtítulo (opcional)" value="${_escHtml(i.apelido || '')}" data-itens="${_escHtml(JSON.stringify([{ id: i.id, fonte: i.fonte }]))}" oninput="apelidoDigitando(this)" onblur="apelidoDigitando(this, true)"><span class="apelido-ind"></span></span>
                 <select id="${selIdLinha}" class="form-select" style="max-width:170px;font-size:12px" onchange="categorizarLinha('${i.id}', this.value, document.getElementById('${descIdLinha}').value, ${i.pluggy_compra_chave ? `'${_escJsAttr(i.pluggy_compra_chave)}'` : 'null'}, '${i.fonte}')">
