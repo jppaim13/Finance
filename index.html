@@ -419,6 +419,13 @@ body:not(.acesso-total) [data-page="config"] { display: none !important; }
 .rc-sub { font-size: 11px; color: var(--text-3); font-weight: 400; margin-left: 6px; }
 .rc-card[open] > summary { border-bottom: 1px solid var(--border); }
 .rc-card .rc-tx-list { padding: 8px 10px 6px; background: var(--bg-hover); }
+.rc-tx { cursor: pointer; }
+.rc-tx:hover { background: var(--bg-hover); }
+.rc-lapis { font-size: 11px; opacity: .45; flex-shrink: 0; }
+.rc-tx:hover .rc-lapis { opacity: 1; }
+.rc-edit { margin-top: 6px; }
+.rc-edit .form-select { font-size: 12px; padding: 5px 8px; max-width: 100%; }
+.fat-item-apelido { font-weight: 600; color: var(--text); }
 .rc-resumo { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-3); margin: -4px 0 8px; }
 .rc-resumo b { font-family: var(--font-mono); color: var(--text); font-weight: 600; }
 .cat-item { display: flex; align-items: center; gap: 10px; }
@@ -2306,7 +2313,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-10-24h"></script>
+<script src="date-utils.js?v=2026-10-24i"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2339,7 +2346,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-24h';
+const APP_VERSION = '2026-10-24i';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -4243,7 +4250,7 @@ function renderFaturas() {
           return `
           <div class="fat-item${credito ? ' credito' : ''}">
             <div class="fat-item-info">
-              <div class="fat-item-desc"><span class="fat-item-data">${t.data ? String(t.data).slice(8, 10) + '/' + String(t.data).slice(5, 7) : '—'}</span>${t.apelido ? `${_escHtml(t.apelido)}<div class="ex-sub-titulo">${_escHtml(t.descricao || '')}</div>` : _escHtml(t.descricao || "—")}</div>
+              <div class="fat-item-desc"><span class="fat-item-data">${t.data ? String(t.data).slice(8, 10) + '/' + String(t.data).slice(5, 7) : '—'}</span>${t.apelido ? `<span class="fat-item-apelido">${_escHtml(t.apelido)}</span><div class="ex-sub-titulo">${_escHtml(t.descricao || '')}</div>` : _escHtml(t.descricao || "—")}</div>
               <div class="fat-item-val">${credito ? '+' : '−'} ${fmt(Math.abs(t.valor))}</div>
             </div>
             <button class="tx-act-btn edit" onclick='${t.fonte === "lancamentos" ? `abrirEditFixo("${t.id}")` : `editarTx(${_jsonAttr(t)})`}' title="Editar">✏️</button>
@@ -5036,10 +5043,10 @@ function calcularCatsPorMes(mi) {
     if (tx.origem === 'cartao') {
       const c = cartaoMap[tx.cartao_nome] || {};
       if (getVencimentoIdx(tx.data, c.fechamento, c.vencimento) !== mesIdx) continue;
-      add(cat, val, { data: tx.data, descricao: tx.descricao || '—', valor: val, conta: tx.cartao_nome || '' });
+      add(cat, val, { id: tx.id, fonte: 'extrato', apelido: tx.apelido || null, chave: tx.pluggy_compra_chave || null, data: tx.data, descricao: tx.descricao || '—', valor: val, conta: tx.cartao_nome || '' });
     } else {
       if (tx.categoria === 'fatura' || a !== anoAtual || m !== mesAtual) continue;
-      add(cat, val, { data: tx.data, descricao: tx.descricao || '—', valor: val, conta: tx.conta_nome || '' });
+      add(cat, val, { id: tx.id, fonte: 'extrato', apelido: tx.apelido || null, chave: tx.pluggy_compra_chave || null, data: tx.data, descricao: tx.descricao || '—', valor: val, conta: tx.conta_nome || '' });
     }
   }
 
@@ -5068,16 +5075,40 @@ function calcularCatsPorMes(mi) {
       }
       if (matchedN < 0) continue;
       const parc = tipo === 'parcelado' ? ` (${matchedN+1}/${lan.parcelas})` : '';
-      add(cat, valor, { data: null, descricao: lan.descricao + parc, valor, conta: lan.conta_nome || '' });
+      add(cat, valor, { id: lan.id, fonte: 'lancamentos', apelido: lan.apelido || null, chave: null, data: null, descricao: lan.descricao + parc, valor, conta: lan.conta_nome || '' });
     } else {
       if (mesIdx < startIdx || mesIdx > endFimIdx) continue;
       if (tipo === 'parcelado' && mesIdx - startIdx >= Number(lan.parcelas || 1)) continue;
       const parc = tipo === 'parcelado' ? ` (${mesIdx-startIdx+1}/${lan.parcelas})` : '';
-      add(cat, valor, { data: null, descricao: lan.descricao + parc, valor, conta: lan.conta_nome || '' });
+      add(cat, valor, { id: lan.id, fonte: 'lancamentos', apelido: lan.apelido || null, chave: null, data: null, descricao: lan.descricao + parc, valor, conta: lan.conta_nome || '' });
     }
   }
 
   return { totals, items };
+}
+
+// Toque no card de um lançamento (Relatórios > Categorias) mostra/oculta o seletor de categoria.
+function rcAbrirEdicao(card, ev) {
+  if (ev && ev.target.closest('select')) return; // clicar no próprio seletor não fecha
+  const box = card.querySelector('.rc-edit');
+  if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+// Muda a categoria de UM lançamento do relatório e redesenha, mantendo abertas as categorias abertas.
+// Lançamento futuro/parcelado (tabela lancamentos): a mudança vale para a série inteira.
+async function rcSalvarCategoria(sel, id, fonte, compraChave) {
+  const categoria = sel.value;
+  if (!categoria) return;
+  if (categoria === 'fatura') { showToast('Pagamento de fatura: use o botão "📋 Fatura" na Categorização'); sel.value = ''; return; }
+  if (fonte === 'lancamentos' && !confirm('Este lançamento se repete (parcelas/meses). A nova categoria vale para a série inteira. Continuar?')) { sel.value = ''; return; }
+  const ok = await sbUpdate(fonte === 'lancamentos' ? 'lancamentos' : 'extrato', id, { categoria });
+  if (!ok) { showToast('Erro ao mudar a categoria ❌'); sel.value = ''; return; }
+  if (compraChave) await _aplicarCategoriaPorCompra(compraChave, categoria, null);
+  const abertas = [...document.querySelectorAll('#rel-cat-list details[open]')].map(d => d.dataset.cat);
+  await loadData();
+  renderRelCategorias();
+  document.querySelectorAll('#rel-cat-list details').forEach(d => { if (abertas.includes(d.dataset.cat)) d.open = true; });
+  showToast('Categoria atualizada ✅');
 }
 
 function pieMesNav(dir) {
@@ -5136,19 +5167,31 @@ function renderRelCategorias() {
     const cor    = catCor(cat);
     const pct    = total ? (val / total * 100) : 0;
     const txList = items[cat] || [];
+    const escJs = v => String(v).replace(/'/g, "\\'").replace(/"/g, '&quot;');
     const txRows = txList.map(t => {
       const credito = Number(t.valor) < 0; // estorno reduz a categoria
+      // Subtítulo (apelido) em destaque quando existe; a descrição original fica embaixo, em cinza.
+      const titulo = t.apelido
+        ? `<span class="fat-item-apelido">${_escHtml(t.apelido)}</span><div class="ex-sub-titulo">${_escHtml(t.descricao)}</div>`
+        : _escHtml(t.descricao);
       return `
-        <div class="fat-item${credito ? ' credito' : ''}">
+        <div class="fat-item rc-tx${credito ? ' credito' : ''}" onclick="rcAbrirEdicao(this, event)" title="Toque para mudar a categoria">
           <div class="fat-item-info">
-            <div class="fat-item-desc">${t.data ? `<span class="fat-item-data">${t.data.slice(8)}/${t.data.slice(5, 7)}</span>` : ''}${_escHtml(t.descricao)}${t.conta ? `<span class="fat-item-data" style="margin:0 0 0 6px">· ${_escHtml(t.conta)}</span>` : ''}</div>
+            <div class="fat-item-desc">${t.data ? `<span class="fat-item-data">${t.data.slice(8)}/${t.data.slice(5, 7)}</span>` : ''}${titulo}${t.conta ? `<span class="fat-item-data" style="margin:0 0 0 6px">· ${_escHtml(t.conta)}</span>` : ''}</div>
             <div class="fat-item-val">${credito ? '+' : '−'} ${fmt(Math.abs(t.valor))}</div>
+            <div class="rc-edit" style="display:none">
+              <select class="form-select" onchange="rcSalvarCategoria(this, '${t.id}', '${t.fonte}', ${t.chave ? `'${escJs(t.chave)}'` : 'null'})">
+                <option value="">Mudar categoria…</option>
+                ${_optsCategoria('despesa', cat).replace('<option value="">Categorizar...</option>', '')}
+              </select>
+            </div>
           </div>
+          <span class="rc-lapis">✏️</span>
         </div>`;
     }).join('');
 
     return `
-      <details class="rc-card" style="--rc-cor:${cor}">
+      <details class="rc-card" data-cat="${_escHtml(cat)}" style="--rc-cor:${cor}">
         <summary>
           <div class="rc-nome">${info.emoji} ${info.nome}<span class="rc-sub">${txList.length} ${txList.length === 1 ? 'lançamento' : 'lançamentos'}</span></div>
           <div class="rc-pct">${pct.toFixed(1).replace('.', ',')}%</div>
