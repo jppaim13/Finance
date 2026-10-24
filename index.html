@@ -42,6 +42,8 @@
   --red-soft:     oklch(0.96 0.025 40);
   --amber:        oklch(0.60 0.12 75);
   --amber-soft:   oklch(0.96 0.03 75);
+  --fatura:       oklch(0.64 0.15 62);   /* fatura: informativo, amarelo alaranjado */
+  --fatura-soft:  oklch(0.96 0.05 80);
 
   /* Tinta e superfícies — azul-ardósia frio, tema único (escuro abandonado) */
   --bg:         #f1f3f6;
@@ -967,27 +969,24 @@ details.ex-filters > summary { list-style: none; display: none; }
 .ex-day-label { font-size: 10px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--text-3); }
 .ex-day-total { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 
-.ex-row { display: grid; grid-template-columns: 3px 1fr auto auto; align-items: center; gap: 12px; padding: 11px 12px; border-bottom: 1px solid var(--bg-hover); }
-.ex-row:last-child { border-bottom: none; }
+/* Cada lançamento é um card: barra de cor (despesa/receita/fatura) · informações · valor SOZINHO embaixo · ações */
+.ex-row { display: grid; grid-template-columns: 4px minmax(0,1fr) auto; align-items: stretch; gap: 12px; padding: 0 10px 0 0; margin: 0 0 6px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; transition: background var(--transition); }
 .ex-row:hover { background: var(--bg-hover); }
-.ex-mag { width: 3px; height: 28px; border-radius: 2px; }
-.ex-body { min-width: 0; }
-.ex-desc { font-size: 13.5px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ex-meta { font-size: 11.5px; color: var(--text-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ex-val { font-family: var(--font-mono); font-size: 13px; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.ex-tag { font-size: 9.5px; font-weight: 500; letter-spacing: .5px; text-transform: uppercase; color: var(--text-3); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px; margin-left: 7px; }
+.ex-row.ex-fatura { background: var(--fatura-soft); border-color: var(--fatura); }
+.ex-mag { width: 4px; align-self: stretch; }
+.ex-body { min-width: 0; padding: 11px 0; }
+.ex-desc { font-size: 13.5px; font-weight: 500; color: var(--text); overflow-wrap: anywhere; line-height: 1.35; }
+.ex-meta { font-size: 11.5px; color: var(--text-3); margin-top: 2px; overflow-wrap: anywhere; }
+.ex-val { font-family: var(--font-mono); font-size: 15px; font-weight: 600; margin-top: 6px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ex-val.despesa { color: var(--red); }
+.ex-val.receita { color: var(--green); }
+.ex-val.fatura  { color: var(--fatura); }
+.ex-tag { display: inline-block; font-size: 9.5px; font-weight: 500; letter-spacing: .5px; text-transform: uppercase; color: var(--text-3); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px; margin-left: 7px; vertical-align: 1px; }
 .ex-tag-previsto { color: var(--amber); border-color: var(--amber); background: var(--amber-soft); }
-.ex-tag-fatura { color: var(--green); border-color: var(--green); background: var(--green-soft); }
-.ex-acts { display: flex; gap: 4px; opacity: 0; transition: opacity var(--transition); }
+.ex-tag-fatura { color: var(--fatura); border-color: var(--fatura); background: var(--fatura-soft); }
+.ex-acts { display: flex; gap: 4px; align-self: center; opacity: 0; transition: opacity var(--transition); }
 .ex-row:hover .ex-acts { opacity: 1; }
 @media (max-width: 767px) { .ex-acts { opacity: 1; } }
-
-/* Desktop: descrição e meta lado a lado em vez de empilhadas */
-@media (min-width: 768px) {
-  .ex-row { grid-template-columns: 3px minmax(120px,1fr) minmax(0,200px) 112px auto; }
-  .ex-body { display: contents; }
-  .ex-meta { margin-top: 0; font-size: 12px; }
-}
 
 /* ══ FATURAS — um DOM só: tabela no desktop, lista no celular (1d) ══
    A troca é feita por grid-template-areas, não por markup duplicado: dois
@@ -2226,7 +2225,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-10-23d"></script>
+<script src="date-utils.js?v=2026-10-24a"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2259,7 +2258,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-23d';
+const APP_VERSION = '2026-10-24a';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -3463,7 +3462,12 @@ function txItem(tx, maxAbs) {
   // essa ambiguidade; despesa de fatura usa a cor normal de despesa.
   const magCor = isReceita
     ? 'var(--green)'
+    : isFatura ? 'var(--fatura)'
     : (abs / teto > 0.5 ? 'oklch(0.58 0.13 40)' : 'oklch(0.82 0.06 40)');
+  // Cor e sinal do valor: fatura = informativo (amarelo alaranjado); receita/estorno entram (+, verde);
+  // despesa sai (−, vermelho).
+  const entra   = isReceita || isEstorno;
+  const valCls  = isFatura ? 'fatura' : entra ? 'receita' : 'despesa';
 
   const editBtn = isFixo
     ? `<button class="tx-act-btn edit" onclick="abrirEditFixo('${tx.id}')" title="Editar">✏️</button>`
@@ -3473,15 +3477,13 @@ function txItem(tx, maxAbs) {
     : `<button class="tx-act-btn del" onclick="deletarTx('${tx.id}','${tx.mes||''}',${tx.row||0},'${tx.origem}','${_jsStrAttr(tx.contaCartao)}',${tx.valor},'${tx.tipo}')" title="Excluir">🗑️</button>`;
 
   return `
-    <div class="ex-row">
+    <div class="ex-row${isFatura ? ' ex-fatura' : ''}">
       <div class="ex-mag" style="background:${magCor}"></div>
       <div class="ex-body">
         <div class="ex-desc">${tx.apelido ? _escHtml(tx.apelido) : _escHtml(tx.descricao || '—')}${isFixo ? '<span class="ex-tag">fixo</span>' : ''}${tx.previsto ? '<span class="ex-tag ex-tag-previsto">previsto</span>' : ''}${isFatura ? '<span class="ex-tag ex-tag-fatura">fatura</span>' : ''}${isEstorno ? '<span class="ex-tag">estorno</span>' : ''}</div>
         ${tx.apelido ? `<div class="ex-sub-titulo">${_escHtml(tx.descricao || '')}</div>` : ''}
         <div class="ex-meta">${cat.nome} · ${tx.contaCartao || ''}</div>
-      </div>
-      <div class="ex-val" style="color:${(isReceita || isEstorno) ? 'var(--green)' : 'var(--text)'}">
-        ${(isReceita || isEstorno) ? '+' : '−'} ${fmt(abs)}
+        <div class="ex-val ${valCls}">${entra ? '+' : '−'} ${fmt(abs)}</div>
       </div>
       <div class="ex-acts">${editBtn}${delBtn}</div>
     </div>
