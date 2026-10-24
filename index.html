@@ -201,6 +201,14 @@ body {
   .sidebar-section { font-size: 11px; font-weight: 600; color: var(--text-3); letter-spacing: .8px; text-transform: uppercase; padding: 16px 12px 6px; }
 }
 .sidebar { display: none; }
+/* Sincronização e Configurações: só o administrador. Escondido por padrão (falha segura) e liberado
+   por aplicarAcesso() com body.acesso-total. */
+body:not(.acesso-total) [data-page="sincronizacao"],
+body:not(.acesso-total) [data-page="config"] { display: none !important; }
+.acesso-pill { position: fixed; left: 12px; bottom: 76px; z-index: 150; display: none; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--bg-card); color: var(--text-2); font-family: var(--font); font-size: 12px; font-weight: 500; cursor: pointer; box-shadow: var(--shadow-sm); }
+.acesso-pill:hover { background: var(--bg-hover); color: var(--text); }
+.acesso-pill.ativo { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 600; }
+@media (min-width: 768px) { .acesso-pill { left: auto; right: 24px; bottom: 24px; } }
 @media (min-width: 768px) { .sidebar { display: flex; } }
 
 /* ── Pages ──────────────────────────────────────────────────────── */
@@ -1875,6 +1883,9 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
     
   </nav>
 
+  <!-- Acesso: admin alterna "ver como Mylena"; demais usuários têm só o Sair (a tela de Config é restrita) -->
+  <button class="acesso-pill" id="acessoPill" onclick="acessoPillClick()"></button>
+
   <!-- FAB Lote -->
   <button class="fab-lote" onclick="openLote()" title="Lançamentos em lote">
     <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -2275,7 +2286,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-10-24d"></script>
+<script src="date-utils.js?v=2026-10-24e"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2308,7 +2319,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-24d';
+const APP_VERSION = '2026-10-24e';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -2476,6 +2487,8 @@ function iniciarAuthGate() {
       document.getElementById('loginError').style.display = 'none';
       const emailEl = document.getElementById('loggedUserEmail');
       if (emailEl) emailEl.textContent = session.user.email || '—';
+      state.usuarioEmail = session.user.email || '';
+      aplicarAcesso();
       hideLoginScreen();
       await loadData();
       // Só em abertura de sessão de verdade (login ou app reaberto com
@@ -2486,6 +2499,8 @@ function iniciarAuthGate() {
         autoSincronizarEImportar();
       }
     } else {
+      state.usuarioEmail = '';
+      aplicarAcesso();
       showLoginScreen();
     }
     hideLoading();
@@ -2669,7 +2684,45 @@ async function _salvarApelido(inp) {
   _apelidoRetomarRender();
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// ACESSO — quem vê Sincronização e Configurações
+// ════════════════════════════════════════════════════════════════════════════
+// Só o administrador abre essas duas telas. É controle de INTERFACE (menus escondidos e navegação
+// bloqueada): o banco continua liberando os dados a qualquer usuário da família (RLS familia_full).
+// O administrador ainda pode "ver como a Mylena": mesma interface restrita dela, só para conferir.
+const ADMIN_EMAIL = 'jppaim13@gmail.com';
+const PAGINAS_ADMIN = ['sincronizacao', 'config'];
+
+function _ehAdmin() { return String(state.usuarioEmail || '').trim().toLowerCase() === ADMIN_EMAIL; }
+function _acessoTotal() { return _ehAdmin() && !state.verComoMylena; }
+
+function aplicarAcesso() {
+  try { state.verComoMylena = _ehAdmin() && sessionStorage.getItem('verComoMylena') === '1'; } catch { state.verComoMylena = false; }
+  document.body.classList.toggle('acesso-total', _acessoTotal());
+  const pill = document.getElementById('acessoPill');
+  if (pill) {
+    if (!state.usuarioEmail) pill.style.display = 'none';
+    else {
+      pill.style.display = 'inline-flex';
+      pill.classList.toggle('ativo', !!state.verComoMylena);
+      pill.textContent = _ehAdmin()
+        ? (state.verComoMylena ? '👁 Visão da Mylena · sair' : '👁 Ver como Mylena')
+        : 'Sair';
+    }
+  }
+  // Estava numa tela restrita e perdeu o acesso (entrou na visão da Mylena): volta ao painel.
+  if (!_acessoTotal() && PAGINAS_ADMIN.some(p => document.getElementById('page-' + p)?.classList.contains('active'))) navigate('dashboard');
+}
+
+function acessoPillClick() {
+  if (!_ehAdmin()) { fazerLogout(); return; }
+  try { sessionStorage.setItem('verComoMylena', state.verComoMylena ? '0' : '1'); } catch {}
+  aplicarAcesso();
+  showToast(state.verComoMylena ? 'Visão da Mylena ligada' : 'Visão da Mylena desligada');
+}
+
 function navigate(page) {
+  if (PAGINAS_ADMIN.includes(page) && !_acessoTotal()) page = 'dashboard';
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('[data-page]').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + page)?.classList.add('active');
