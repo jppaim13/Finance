@@ -399,6 +399,20 @@ body {
 
 /* ── Category Pills ─────────────────────────────────────────────── */
 .cat-list { display: flex; flex-direction: column; gap: 8px; }
+/* Relatórios > Categorias: cada categoria é um card (nome · %, barra, valor sozinho) que abre os lançamentos em mini-cards */
+.rc-card { background: var(--bg-card); border: 1px solid var(--border); border-left: 4px solid var(--rc-cor, var(--red)); border-radius: 8px; margin-bottom: 6px; overflow: hidden; }
+.rc-card > summary { list-style: none; cursor: pointer; padding: 10px 12px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 8px; align-items: center; user-select: none; }
+.rc-card > summary::-webkit-details-marker { display: none; }
+.rc-nome { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.rc-pct { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.rc-bar { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: var(--bg-input); overflow: hidden; }
+.rc-bar > div { height: 100%; border-radius: 3px; background: var(--rc-cor, var(--red)); transition: width .6s ease; }
+.rc-val { grid-column: 1 / -1; font-family: var(--font-mono); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rc-sub { font-size: 11px; color: var(--text-3); font-weight: 400; margin-left: 6px; }
+.rc-card[open] > summary { border-bottom: 1px solid var(--border); }
+.rc-card .rc-tx-list { padding: 8px 10px 6px; background: var(--bg-hover); }
+.rc-resumo { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-3); margin: -4px 0 8px; }
+.rc-resumo b { font-family: var(--font-mono); color: var(--text); font-weight: 600; }
 .cat-item { display: flex; align-items: center; gap: 10px; }
 .cat-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .cat-name { font-size: 13px; flex: 1; }
@@ -823,6 +837,7 @@ body {
   transition: all var(--transition);
 }
 .filter-chip.active { background: var(--accent-soft); color: var(--accent); }
+.filter-chip[data-cat].active { background: var(--chip-cor, var(--accent)); color: #fff; }
 
 /* Filtros selecionáveis do Extrato (conta/cartão e categoria) */
 .ex-select-filters {
@@ -1631,7 +1646,8 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
         </div>
         <div class="card">
           <div class="section-label" style="margin-top:0">Evolução Mensal por Categoria</div>
-          <div class="filter-chips" id="catBarChips" style="margin-bottom:12px"></div>
+          <div class="filter-chips" id="catBarChips" style="margin-bottom:10px"></div>
+          <div class="rc-resumo" id="catBarResumo"></div>
           <div class="chart-wrap" style="height:200px"><canvas id="chartCatBar"></canvas></div>
         </div>
       </div>
@@ -2259,7 +2275,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-10-24c"></script>
+<script src="date-utils.js?v=2026-10-24d"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2292,7 +2308,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-24c';
+const APP_VERSION = '2026-10-24d';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -2333,6 +2349,14 @@ const CAT_COLORS = ['oklch(0.58 0.13 40)','oklch(0.60 0.11 195)','oklch(0.62 0.1
                     'oklch(0.55 0.12 310)','oklch(0.58 0.10 260)','oklch(0.64 0.10 150)',
                     'oklch(0.62 0.13 25)','oklch(0.56 0.11 340)','oklch(0.66 0.09 195)',
                     'oklch(0.62 0.10 110)','oklch(0.56 0.12 285)','oklch(0.60 0.03 250)'];
+// Paleta viva só para Relatórios > Categorias (pizza, lista e barras). A cor é estável por categoria
+// (posição na lista de categorias), então "Alimentação" é a mesma cor na pizza, na lista e no gráfico mensal.
+const CAT_VIVID = ['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#84cc16','#f43f5e','#0ea5e9','#a855f7','#fb923c','#10b981','#6366f1'];
+function catCor(id) {
+  const ids = [...new Set([...(state.catsExtra || []), ...CATS_DESPESA, ...CATS_RECEITA].map(c => c.id))];
+  const k = ids.indexOf(id);
+  return CAT_VIVID[(k < 0 ? ids.length + String(id).length : k) % CAT_VIVID.length];
+}
 
 function getCurrentMonthIndex() {
   const now  = new Date();
@@ -5004,50 +5028,60 @@ function renderRelCategorias() {
   const ctx = document.getElementById('chartCatPie');
   if (window._chartPie) window._chartPie.destroy();
   if (sorted.length) {
+    const nomeCat = k => { const info = allCatInfo.find(c => c.id === k) || { emoji: '📦', nome: k }; return `${info.emoji} ${info.nome}`; };
     window._chartPie = new Chart(ctx, {
-      type:'doughnut',
-      data:{
-        labels: sorted.map(([k]) => {
-          const info = allCatInfo.find(c=>c.id===k) || {emoji:'📦', nome:k};
-          return `${info.emoji} ${info.nome}`;
-        }),
-        datasets:[{ data: sorted.map(([,v])=>v), backgroundColor: CAT_COLORS, borderWidth:0, hoverOffset:4 }]
+      type: 'doughnut',
+      data: {
+        labels: sorted.map(([k]) => nomeCat(k)),
+        datasets: [{ data: sorted.map(([, v]) => v), backgroundColor: sorted.map(([k]) => catCor(k)), borderColor: '#ffffff', borderWidth: 2, hoverOffset: 6 }]
       },
-      options:{
-        responsive:true, maintainAspectRatio:false, cutout:'65%',
-        plugins:{
-          legend:{ position:'right', labels:{ color: false?'#94a3b8':'#6b7280', font:{size:11}, boxWidth:10 } },
-          tooltip:{ callbacks:{ label: c=>' '+fmt(c.raw)+' ('+(total?((c.raw/total)*100).toFixed(1):0)+'%)' } }
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '66%',
+        plugins: {
+          legend: { display: false }, // a lista logo abaixo é a legenda (mesma cor, valor e %)
+          tooltip: { callbacks: { label: c => ' ' + fmt(c.raw) + ' (' + (total ? ((c.raw / total) * 100).toFixed(1) : 0) + '%)' } }
         }
-      }
+      },
+      plugins: [{
+        id: 'centroTotal',
+        afterDraw(chart) {
+          const { ctx: g, chartArea: { left, right, top, bottom } } = chart;
+          const cx = (left + right) / 2, cy = (top + bottom) / 2;
+          g.save(); g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.fillStyle = '#6b7280'; g.font = '11px sans-serif'; g.fillText('Total do mês', cx, cy - 11);
+          g.fillStyle = '#111827'; g.font = '600 16px monospace'; g.fillText(fmt(total), cx, cy + 9);
+          g.restore();
+        }
+      }]
     });
   }
 
   const el = document.getElementById('rel-cat-list');
-  el.innerHTML = sorted.length ? sorted.map(([cat,val],i) => {
-    const info     = allCatInfo.find(c=>c.id===cat) || {emoji:'📦', nome:cat};
-    const cor      = CAT_COLORS[i % CAT_COLORS.length];
-    const txList   = items[cat] || [];
-    const txRows   = txList.map(t => `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 4px 20px;font-size:12px;border-bottom:1px solid var(--border);gap:8px">
-        <div style="color:var(--text-2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_escHtml(t.descricao)}</div>
-        ${t.data ? `<div style="color:var(--text-3);flex-shrink:0">${t.data.slice(8)}.${t.data.slice(5,7)}</div>` : ''}
-        ${t.conta ? `<div style="color:var(--text-3);flex-shrink:0;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.conta}</div>` : ''}
-        <div style="color:var(--red);font-family:var(--font-mono);font-weight:600;flex-shrink:0">${fmt(t.valor)}</div>
-      </div>`).join('');
+  el.innerHTML = sorted.length ? sorted.map(([cat, val]) => {
+    const info   = allCatInfo.find(c => c.id === cat) || { emoji: '📦', nome: cat };
+    const cor    = catCor(cat);
+    const pct    = total ? (val / total * 100) : 0;
+    const txList = items[cat] || [];
+    const txRows = txList.map(t => {
+      const credito = Number(t.valor) < 0; // estorno reduz a categoria
+      return `
+        <div class="fat-item${credito ? ' credito' : ''}">
+          <div class="fat-item-info">
+            <div class="fat-item-desc">${t.data ? `<span class="fat-item-data">${t.data.slice(8)}/${t.data.slice(5, 7)}</span>` : ''}${_escHtml(t.descricao)}${t.conta ? `<span class="fat-item-data" style="margin:0 0 0 6px">· ${_escHtml(t.conta)}</span>` : ''}</div>
+            <div class="fat-item-val">${credito ? '+' : '−'} ${fmt(Math.abs(t.valor))}</div>
+          </div>
+        </div>`;
+    }).join('');
 
     return `
-      <details style="border-bottom:1px solid var(--border)">
-        <summary style="list-style:none;cursor:pointer;padding:8px 0;user-select:none">
-          <div class="cat-item" style="margin:0">
-            <span class="fatura-arrow" style="color:var(--text-3);font-size:10px">&#9656;</span>
-            <div class="cat-dot" style="background:${cor}"></div>
-            <div class="cat-name text-sm">${info.emoji} ${info.nome}</div>
-            <div class="cat-bar-wrap"><div class="cat-bar" style="width:${(val/total*100).toFixed(0)}%;background:${cor}"></div></div>
-            <div class="cat-value text-sm">${fmt(val)}</div>
-          </div>
+      <details class="rc-card" style="--rc-cor:${cor}">
+        <summary>
+          <div class="rc-nome">${info.emoji} ${info.nome}<span class="rc-sub">${txList.length} ${txList.length === 1 ? 'lançamento' : 'lançamentos'}</span></div>
+          <div class="rc-pct">${pct.toFixed(1).replace('.', ',')}%</div>
+          <div class="rc-bar"><div style="width:${pct.toFixed(1)}%"></div></div>
+          <div class="rc-val">− ${fmt(val)}</div>
         </summary>
-        ${txRows}
+        <div class="rc-tx-list">${txRows}</div>
       </details>`;
   }).join('') : '<div class="text-xs text-3" style="padding:8px 0">Nenhuma despesa neste mês</div>';
 
@@ -5140,6 +5174,18 @@ function renderCatBarChart() {
   const isDark  = false;
   const tickClr = isDark ? '#94a3b8' : '#6b7280';
   const curMes  = state.currentMonth;
+  const cor     = catCor(catId);
+
+  // Resumo do período: média dos meses com gasto, maior mês e total.
+  const comGasto = totals.filter(v => v > 0);
+  const resumoEl = document.getElementById('catBarResumo');
+  if (resumoEl) {
+    const soma = totals.reduce((t, v) => t + v, 0);
+    const maior = Math.max(0, ...totals);
+    resumoEl.innerHTML = comGasto.length
+      ? `<span>Média/mês <b>${fmt(soma / comGasto.length)}</b></span><span>Maior mês <b>${fmt(maior)}</b> (${_rotuloMesCurto(totals.indexOf(maior))})</span><span>Total <b>${fmt(soma)}</b></span>`
+      : '<span>Sem gastos nesta categoria no período</span>';
+  }
 
   window._chartCatBar = new Chart(ctx, {
     type: 'bar',
@@ -5148,11 +5194,10 @@ function renderCatBarChart() {
       datasets: [{
         label: `${info.emoji} ${info.nome}`,
         data: totals,
-        backgroundColor: totals.map((_,i) =>
-          i === curMes ? 'rgba(99,102,241,0.9)' : 'rgba(99,102,241,0.35)'
-        ),
+        backgroundColor: totals.map((_, i) => i === curMes ? cor : cor + '66'), // mês selecionado cheio, os demais a 40%
         borderRadius: 5,
         borderSkipped: false,
+        maxBarThickness: 30,
       }]
     },
     options: {
@@ -5162,8 +5207,8 @@ function renderCatBarChart() {
         tooltip: { callbacks: { label: c => ' ' + fmt(c.raw) } }
       },
       scales: {
-        x: { ticks: { color: tickClr, font: { size: 11 } }, grid: { display: false } },
-        y: { beginAtZero: true, ticks: { color: tickClr, font: { size: 11 },
+        x: { ticks: { color: tickClr, font: { size: 10 }, maxRotation: 0, autoSkip: true }, grid: { display: false } },
+        y: { beginAtZero: true, border: { display: false }, ticks: { color: tickClr, font: { size: 11 }, maxTicksLimit: 5,
                callback: v => v >= 1000 ? 'R$'+(v/1000).toFixed(0)+'k' : 'R$'+v } }
       }
     }
@@ -5188,8 +5233,9 @@ function buildCatBarChips() {
 
   chips.innerHTML = [...catSet].map(id => {
     const info = allCats.find(c => c.id === id) || { nome: id, emoji: '📦' };
+    const cc = catCor(id);
     return `<button class="filter-chip ${state._catBarSel===id?'active':''}"
-      data-cat="${id}" onclick="selectCatBar('${id}')">
+      data-cat="${id}" style="--chip-cor:${cc};border-left:3px solid ${cc}" onclick="selectCatBar('${id}')">
       ${info.emoji} ${info.nome}
     </button>`;
   }).join('');
