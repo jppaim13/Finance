@@ -207,7 +207,11 @@ body {
    por aplicarAcesso() com body.acesso-total. */
 body:not(.acesso-total) [data-page="sincronizacao"],
 body:not(.acesso-total) [data-page="config"] { display: none !important; }
-.acesso-pill { position: fixed; left: 12px; bottom: 76px; z-index: 150; display: none; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--bg-card); color: var(--text-2); font-family: var(--font); font-size: 12px; font-weight: 500; cursor: pointer; box-shadow: var(--shadow-sm); }
+.ocultar-btn { position: fixed; left: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 150; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border-2); background: var(--bg-card); font-size: 16px; line-height: 1; cursor: pointer; box-shadow: var(--shadow-sm); display: flex; align-items: center; justify-content: center; }
+.ocultar-btn:hover { background: var(--bg-hover); }
+.ocultar-btn.ativo { background: var(--accent-soft); border-color: var(--accent); }
+@media (min-width: 768px) { .ocultar-btn { left: 16px; bottom: 16px; } }
+.acesso-pill { position: fixed; left: 56px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 150; display: none; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--bg-card); color: var(--text-2); font-family: var(--font); font-size: 12px; font-weight: 500; cursor: pointer; box-shadow: var(--shadow-sm); }
 .acesso-pill:hover { background: var(--bg-hover); color: var(--text); }
 .acesso-pill.ativo { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 600; }
 @media (min-width: 768px) { .acesso-pill { left: auto; right: 24px; bottom: 24px; } }
@@ -1896,6 +1900,9 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
     
   </nav>
 
+  <!-- Ocultar/mostrar saldos (privacidade) -->
+  <button class="ocultar-btn" id="ocultarBtn" onclick="alternarOcultarSaldos()" title="Ocultar saldos" aria-label="Ocultar saldos">👁️</button>
+
   <!-- Acesso: admin alterna "ver como Mylena"; demais usuários têm só o Sair (a tela de Config é restrita) -->
   <button class="acesso-pill" id="acessoPill" onclick="acessoPillClick()"></button>
 
@@ -2299,7 +2306,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-10-24k"></script>
+<script src="date-utils.js?v=2026-10-28a"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2332,7 +2339,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-10-24k';
+const APP_VERSION = '2026-10-28a';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -2373,6 +2380,36 @@ const CAT_COLORS = ['oklch(0.58 0.13 40)','oklch(0.60 0.11 195)','oklch(0.62 0.1
                     'oklch(0.55 0.12 310)','oklch(0.58 0.10 260)','oklch(0.64 0.10 150)',
                     'oklch(0.62 0.13 25)','oklch(0.56 0.11 340)','oklch(0.66 0.09 195)',
                     'oklch(0.62 0.10 110)','oklch(0.56 0.12 285)','oklch(0.60 0.03 250)'];
+// Modo privacidade: com "ocultar saldos" ligado, TODO valor em reais (fmt) vira "R$ ••••••". Guardado no
+// aparelho (localStorage), por usuário do navegador; não mexe em nenhum dado nem cálculo.
+let _ocultarSaldos = false;
+try { _ocultarSaldos = localStorage.getItem('ocultarSaldos') === '1'; } catch {}
+const MASCARA_VALOR = 'R$ ••••••';
+
+function atualizarOcultarBtn() {
+  const b = document.getElementById('ocultarBtn');
+  if (!b) return;
+  b.textContent = _ocultarSaldos ? '🙈' : '👁️';
+  b.title = _ocultarSaldos ? 'Mostrar saldos' : 'Ocultar saldos';
+  b.setAttribute('aria-label', b.title);
+  b.classList.toggle('ativo', _ocultarSaldos);
+}
+
+function alternarOcultarSaldos() {
+  _ocultarSaldos = !_ocultarSaldos;
+  try { localStorage.setItem('ocultarSaldos', _ocultarSaldos ? '1' : '0'); } catch {}
+  atualizarOcultarBtn();
+  renderAtual();
+  // Relatórios tem abas com renderizadores próprios: refaz a aba visível.
+  if (paginaAtiva() === 'relatorios') {
+    const aba = ['evolucao', 'categorias', 'contas', 'faturas'].find(t => document.getElementById('report-' + t)?.style.display !== 'none');
+    if (aba === 'categorias') renderRelCategorias();
+    else if (aba === 'contas') renderRelContas();
+    else if (aba === 'faturas') renderRelFaturas();
+  }
+}
+document.addEventListener('DOMContentLoaded', atualizarOcultarBtn);
+
 // Paleta viva só para Relatórios > Categorias (pizza, lista e barras). A cor é estável por categoria
 // (posição na lista de categorias), então "Alimentação" é a mesma cor na pizza, na lista e no gráfico mensal.
 const CAT_VIVID = ['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#84cc16','#f43f5e','#0ea5e9','#a855f7','#fb923c','#10b981','#6366f1'];
@@ -3661,7 +3698,7 @@ function renderEvolucaoChart() {
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + fmt(ctx.raw) } } },
       scales: {
         x: { grid: { display: false }, ticks: { color: textColor, font: { size: 10 } } },
-        y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, callback: v => 'R$' + (v/1000).toFixed(0) + 'k' } }
+        y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, callback: v => _ocultarSaldos ? '' : 'R$' + (v/1000).toFixed(0) + 'k' } }
       }
     }
   });
@@ -4896,7 +4933,7 @@ function renderRelEvolucao() {
       <div class="relbar des" style="height:${(m.des / teto * 100).toFixed(1)}%"></div>
     </div>`).join('');
 
-  const _k = v => (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1).replace('.', ',') + 'k' : Math.abs(v).toFixed(0));
+  const _k = v => _ocultarSaldos ? '••' : (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1).replace('.', ',') + 'k' : Math.abs(v).toFixed(0));
   labels.innerHTML = meses.map(m => {
     const [ab, ano] = MESES_NOMES[m.i].split('-');
     const res = m.rec - m.des;
@@ -5015,7 +5052,7 @@ function renderRelFaturas() {
         },
         scales: {
           x: { stacked: true, grid: { display: false }, ticks: { color: textColor, font: { size: 10 }, maxRotation: 0, autoSkip: true } },
-          y: { stacked: true, beginAtZero: true, border: { display: false }, grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, maxTicksLimit: 5, callback: v => 'R$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v.toFixed(0)) } },
+          y: { stacked: true, beginAtZero: true, border: { display: false }, grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, maxTicksLimit: 5, callback: v => _ocultarSaldos ? '' : 'R$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v.toFixed(0)) } },
         },
       },
     });
@@ -5358,7 +5395,7 @@ function renderCatBarChart() {
       <div class="relbar" style="height:${(m.v / teto * 100).toFixed(1)}%;width:22px;max-width:60%;background:${cor}"></div>
     </div>`).join('');
 
-  const _k = v => (v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + 'k' : v.toFixed(0));
+  const _k = v => _ocultarSaldos ? '••' : (v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + 'k' : v.toFixed(0));
   labels.innerHTML = meses.map(m => {
     const [ab, ano] = MESES_NOMES[m.i].split('-');
     return `<div${m.i === state.currentMonth ? ' class="atual"' : ''}>${ab.toLowerCase()}<span class="rb-ano">${ano.slice(2)}</span><span class="rb-res" style="color:var(--text-2)">${_k(m.v)}</span></div>`;
@@ -8719,6 +8756,7 @@ async function salvarLote() {
 // UTILS
 // ════════════════════════════════════════════════════════════════════════════
 function fmt(val) {
+  if (_ocultarSaldos) return MASCARA_VALOR;
   return (val||0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 }
 
