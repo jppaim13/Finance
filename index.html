@@ -1194,18 +1194,22 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 .wlista .fat-item { font-size: 12.5px; }
 .fat-item > .cat-ic { width: 16px; height: 16px; flex-shrink: 0; }
 .wvazio { font-size: 12px; color: var(--text-3); padding: 14px 4px; text-align: center; }
-.woutros { margin-top: 16px; }
-.woutros-t { font-size: 10px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--text-3); padding: 0 4px 6px; }
-.wstrip { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 16px; margin-top: -8px; border: none; border-radius: 14px 14px 10px 10px; color: #fff; cursor: pointer; font-family: var(--font); background: linear-gradient(135deg, var(--c1), var(--c2)); box-shadow: 0 -2px 8px rgba(15,18,22,.15); position: relative; text-align: left; }
-.wstrip:first-of-type { margin-top: 0; }
-.wstrip:hover { filter: brightness(1.08); }
-.wstrip.paga { filter: saturate(.55); }
-.wstrip-nome { font-size: 13.5px; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,.25); }
-.wstrip-v { font-family: var(--font-mono); font-size: 13px; font-weight: 500; white-space: nowrap; }
 .fat-tabela-wrap { margin-top: 8px; }
 .fat-tabela-wrap > summary { list-style: none; cursor: pointer; font-size: 12.5px; font-weight: 500; color: var(--text-2); padding: 10px 4px; text-align: center; }
 .fat-tabela-wrap > summary::-webkit-details-marker { display: none; }
 .fat-tabela-wrap[open] > summary { color: var(--accent); }
+
+.wcarrossel { position: relative; display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding: 4px 7% 12px; -webkit-overflow-scrolling: touch; }
+.wcarrossel::-webkit-scrollbar { display: none; }
+.wcarrossel .wcard { flex: 0 0 86%; width: auto; scroll-snap-align: center; transition: transform .25s ease, opacity .25s ease; }
+.wcarrossel .wcard:not(.sel) { transform: scale(.94); opacity: .6; }
+.wminis { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px 4px 8px; }
+.wminis::-webkit-scrollbar { display: none; }
+.wmini { flex: 0 0 auto; width: 104px; height: 62px; padding: 8px 9px; border: none; border-radius: 10px; color: #fff; cursor: pointer; font-family: var(--font); text-align: left; display: flex; flex-direction: column; justify-content: space-between; background: linear-gradient(135deg, var(--c1), var(--c2)); box-shadow: 0 2px 6px rgba(15,18,22,.18); opacity: .75; transition: opacity .2s ease, outline-color .2s ease; outline: 2px solid transparent; outline-offset: 2px; }
+.wmini.sel { opacity: 1; outline-color: var(--text); }
+.wmini.paga { filter: saturate(.55); }
+.wmini-nome { font-size: 11px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.wmini-v { font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 
 /* Valor de destaque: reais grandes, centavos pequenos */
 .hv-cur { font-size: .5em; color: var(--text-3); margin-right: .15em; letter-spacing: 0; }
@@ -2622,7 +2626,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-11i';
+const APP_VERSION = '2026-11-11j';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -4889,18 +4893,93 @@ function renderCarteiraCartoes(ordenados, faturas, mesNome, anoMes, mesNum, hoje
   if (!el) return;
   if (!ordenados.length) { el.innerHTML = ''; return; }
   const mi = state.currentMonth;
-  const nomes = ordenados.map(o => o.c.nome);
-  // Mantém o cartão escolhido entre re-renders; sem escolha, o primeiro com fatura em aberto.
-  if (!nomes.includes(state._walletSel)) {
+  // Contexto guardado para redesenhar só o detalhe ao deslizar/tocar, sem refazer o carrossel.
+  state._walletCtx = { ordenados, faturas, mesNome, hoje };
+  if (!ordenados.some(o => o.c.nome === state._walletSel)) {
     const aberto = ordenados.find(({ c }) => (faturas[c.nome] || 0) > 0 && !(state.faturasPagas || {})[c.nome + '-' + mesNome]);
     state._walletSel = (aberto || ordenados[0]).c.nome;
   }
-  const { c, i } = ordenados.find(o => o.c.nome === state._walletSel);
-  const [c1, c2] = _corCartao(c.nome, i);
+  const contactless = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8.5 8.5a5 5 0 0 1 0 7"/><path d="M12 6a8.5 8.5 0 0 1 0 12"/><path d="M15.5 3.5a12 12 0 0 1 0 17"/></svg>';
+  const mesCurto = MESES[mi].split('/')[0];
+
+  const cartoes = ordenados.map(({ c, i }) => {
+    const [c1, c2] = _corCartao(c.nome, i);
+    const valor = faturas[c.nome] || 0;
+    const pago  = !!(state.faturasPagas || {})[c.nome + '-' + mesNome];
+    const disp = c.limite ? calcularLimiteDisponivel(c) : null;
+    const pct  = c.limite ? Math.max(0, Math.min(100, (c.limite - disp) / c.limite * 100)) : 0;
+    return `<div class="wcard${state._walletSel === c.nome ? ' sel' : ''}${pago ? ' paga' : ''}" data-wallet-idx="${i}" style="--c1:${c1};--c2:${c2}" onclick="walletSel(${i})">
+      <div class="wcard-top"><div class="wcard-nome">${_escHtml(c.nome)}</div><span class="wcard-band">${_bandeiraCartao(c.nome)}</span></div>
+      <div class="wcard-mid"><i class="wcard-chip"></i><span class="wcard-nfc">${contactless}</span></div>
+      <div class="wcard-info">
+        <div><div class="wcard-l">Fatura de ${mesCurto}${pago ? ' · paga' : ''}</div><div class="wcard-v">${fmtHero(valor)}</div></div>
+        ${disp != null ? `<div class="wcard-lim"><div class="wcard-l">Limite livre</div><div class="wcard-lv">${fmt(disp)}</div>
+          <div class="wcard-bar"><div style="width:${pct.toFixed(0)}%"></div></div></div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  const minis = ordenados.map(({ c, i }) => {
+    const [c1, c2] = _corCartao(c.nome, i);
+    const pago = !!(state.faturasPagas || {})[c.nome + '-' + mesNome];
+    return `<button class="wmini${state._walletSel === c.nome ? ' sel' : ''}${pago ? ' paga' : ''}" data-wallet-idx="${i}" style="--c1:${c1};--c2:${c2}" onclick="walletSel(${i})">
+      <span class="wmini-nome">${_escHtml(c.nome)}</span><span class="wmini-v">${pago ? '✓ ' : ''}${fmt(faturas[c.nome] || 0)}</span></button>`;
+  }).join('');
+
+  el.innerHTML = `<div class="wcarrossel" id="wCarrossel">${cartoes}</div>
+    <div class="wminis" id="wMinis">${minis}</div>
+    <div id="wDetalhe"></div>`;
+
+  _walletRenderDetalhe();
+  // Abre já no cartão escolhido (sem animação) e passa a acompanhar o deslizar.
+  const car = document.getElementById('wCarrossel');
+  _walletRolarPara(state._walletSel, false);
+  let t = null;
+  car.addEventListener('scroll', () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      const meio = car.scrollLeft + car.clientWidth / 2;
+      let melhor = null, dist = Infinity;
+      car.querySelectorAll('.wcard').forEach(cd => {
+        const d = Math.abs(cd.offsetLeft + cd.offsetWidth / 2 - meio);
+        if (d < dist) { dist = d; melhor = cd; }
+      });
+      const c = melhor && state.cartoes[Number(melhor.dataset.walletIdx)];
+      if (c && c.nome !== state._walletSel) _walletEscolher(c.nome);
+    }, 120);
+  }, { passive: true });
+}
+
+function _walletRolarPara(nome, suave) {
+  const car = document.getElementById('wCarrossel');
+  if (!car) return;
+  const i = state.cartoes.findIndex(c => c.nome === nome);
+  const cd = car.querySelector(`.wcard[data-wallet-idx="${i}"]`);
+  if (!cd) return;
+  car.scrollTo({ left: cd.offsetLeft - (car.clientWidth - cd.offsetWidth) / 2, behavior: suave ? 'smooth' : 'auto' });
+  document.querySelector(`#wMinis .wmini[data-wallet-idx="${i}"]`)?.scrollIntoView({ behavior: suave ? 'smooth' : 'auto', block: 'nearest', inline: 'center' });
+}
+
+// Troca o cartão escolhido sem refazer o carrossel: marca o cartão e a miniatura e redesenha o detalhe.
+function _walletEscolher(nome) {
+  state._walletSel = nome;
+  state._walletMes = state.currentMonth;
+  const i = String(state.cartoes.findIndex(c => c.nome === nome));
+  document.querySelectorAll('#wCarrossel .wcard, #wMinis .wmini').forEach(el => el.classList.toggle('sel', el.dataset.walletIdx === i));
+  _walletRenderDetalhe();
+}
+
+// Faturas do cartão escolhido (atual + próximas com valor) e as despesas da fatura escolhida.
+function _walletRenderDetalhe() {
+  const el = document.getElementById('wDetalhe');
+  const ctx = state._walletCtx;
+  if (!el || !ctx) return;
+  const o = ctx.ordenados.find(x => x.c.nome === state._walletSel);
+  if (!o) { el.innerHTML = ''; return; }
+  const { c } = o;
+  const mi = state.currentMonth, hoje = ctx.hoje;
   const valorDe = k => ((state.resumo[k] || {}).faturas || {})[c.nome] || 0;
   const pagaDe  = k => !!(state.faturasPagas || {})[c.nome + '-' + MESES_NOMES[k]];
-
-  // Faturas mostradas: a do mês selecionado sempre + as próximas que têm valor (até 12 meses).
   const meses = [];
   for (let k = mi; k < MESES_NOMES.length && k <= mi + 12; k++) if (k === mi || valorDe(k) > 0) meses.push(k);
   if (state._walletMesBase !== mi || !meses.includes(state._walletMes)) { state._walletMes = mi; state._walletMesBase = mi; }
@@ -4912,19 +4991,6 @@ function renderCarteiraCartoes(ordenados, faturas, mesNome, anoMes, mesNum, hoje
   const dueTxt = String(due.getDate()).padStart(2, '0') + '/' + String(due.getMonth() + 1).padStart(2, '0');
   const status = pago ? '✓ paga' : valor <= 0 ? 'sem compras'
     : dias < 0 ? `vencida há ${-dias} ${-dias === 1 ? 'dia' : 'dias'}` : dias === 0 ? 'vence hoje' : `vence em ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
-  const disp = c.limite ? calcularLimiteDisponivel(c) : null;
-  const pct  = c.limite ? Math.max(0, Math.min(100, (c.limite - disp) / c.limite * 100)) : 0;
-  const contactless = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8.5 8.5a5 5 0 0 1 0 7"/><path d="M12 6a8.5 8.5 0 0 1 0 12"/><path d="M15.5 3.5a12 12 0 0 1 0 17"/></svg>';
-
-  const cartao = `<div class="wcard sel${pagaDe(mi) ? ' paga' : ''}" style="--c1:${c1};--c2:${c2}">
-      <div class="wcard-top"><div class="wcard-nome">${_escHtml(c.nome)}</div><span class="wcard-band">${_bandeiraCartao(c.nome)}</span></div>
-      <div class="wcard-mid"><i class="wcard-chip"></i><span class="wcard-nfc">${contactless}</span></div>
-      <div class="wcard-info">
-        <div><div class="wcard-l">Fatura de ${MESES[mi].split('/')[0]}</div><div class="wcard-v">${fmtHero(valorDe(mi))}</div></div>
-        ${disp != null ? `<div class="wcard-lim"><div class="wcard-l">Limite livre</div><div class="wcard-lv">${fmt(disp)}</div>
-          <div class="wcard-bar"><div style="width:${pct.toFixed(0)}%"></div></div></div>` : ''}
-      </div>
-    </div>`;
 
   const chips = meses.map(m => `<button class="wmes${m === k ? ' sel' : ''}${pagaDe(m) ? ' paga' : ''}" onclick="walletMes(${m})">
       <span class="wmes-m">${m === mi ? 'Atual' : _rotuloMesCurto(m)}</span>
@@ -4939,40 +5005,28 @@ function renderCarteiraCartoes(ordenados, faturas, mesNome, anoMes, mesNum, hoje
   const pagar = (k === mi && !pago && valor > 0)
     ? `<button class="fat-btn ${dias < 0 ? 'urgente' : 'normal'}" onclick="abrirModalPagarFatura('${_jsStrAttr(c.nome)}','${_jsStrAttr(c.conta || '')}',${valor},'${formatarData(due)}')">${dias < 0 ? 'Pagar agora' : 'Pagar fatura'}</button>` : '';
 
-  const outros = ordenados.filter(o => o.c.nome !== c.nome).map(o => {
-    const [o1, o2] = _corCartao(o.c.nome, o.i);
-    const v = faturas[o.c.nome] || 0;
-    const pg = !!(state.faturasPagas || {})[o.c.nome + '-' + mesNome];
-    return `<button class="wstrip${pg ? ' paga' : ''}" style="--c1:${o1};--c2:${o2}" onclick="walletSel(${o.i})">
-      <span class="wstrip-nome">${_escHtml(o.c.nome)}</span><span class="wstrip-v">${pg ? '✓ ' : ''}${fmt(v)}</span></button>`;
-  }).join('');
-
-  el.innerHTML = `${cartao}
-    <div class="wdet">
+  el.innerHTML = `<div class="wdet">
       <div class="wmeses">${chips}</div>
       <div class="wres">
-        <div><div class="wres-l">Fatura de ${MESES[k]}${k > mi ? ' <span class="wres-tag">futura</span>' : ''}</div>
+        <div><div class="wres-l">${_escHtml(c.nome)} · fatura de ${MESES[k]}${k > mi ? ' <span class="wres-tag">futura</span>' : ''}</div>
           <div class="wres-v">${fmtHero(valor)}</div>
           <div class="wres-st${!pago && valor > 0 && dias < 0 ? ' atr' : ''}">${status} · vence ${dueTxt}</div></div>
         ${pagar}
       </div>
       <div class="wlista">${lista}</div>
-    </div>
-    ${outros ? `<div class="woutros"><div class="woutros-t">Outros cartões · fatura de ${MESES[mi].split('/')[0]}</div>${outros}</div>` : ''}`;
+    </div>`;
 }
 
 function walletSel(i) {
   const c = state.cartoes[i];
   if (!c) return;
-  state._walletSel = c.nome;
-  state._walletMes = state.currentMonth;
-  renderFaturas();
-  document.getElementById('faturas-carteira')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (c.nome !== state._walletSel) _walletEscolher(c.nome);
+  _walletRolarPara(c.nome, true);
 }
 
 function walletMes(k) {
   state._walletMes = k;
-  renderFaturas();
+  _walletRenderDetalhe();
 }
 
 // `cartoes.conta_nome` é só uma SUGESTÃO de conta pagadora, não a fonte da
