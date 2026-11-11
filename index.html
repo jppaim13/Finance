@@ -2306,7 +2306,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-11-11b"></script>
+<script src="date-utils.js?v=2026-11-11c"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2339,7 +2339,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-11b';
+const APP_VERSION = '2026-11-11c';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -5177,10 +5177,38 @@ async function rcSalvarCategoria(sel, id, fonte, compraChave) {
   if (!ok) { showToast('Erro ao mudar a categoria ❌'); sel.value = ''; return; }
   if (compraChave) await _aplicarCategoriaPorCompra(compraChave, categoria, null);
   const abertas = [...document.querySelectorAll('#rel-cat-list details[open]')].map(d => d.dataset.cat);
+  const abertasMetas = [...document.querySelectorAll('#metas-list details[open]')].map(d => d.dataset.cat);
   await loadData();
   renderRelCategorias();
+  renderMetas();
   document.querySelectorAll('#rel-cat-list details').forEach(d => { if (abertas.includes(d.dataset.cat)) d.open = true; });
+  document.querySelectorAll('#metas-list details').forEach(d => { if (abertasMetas.includes(d.dataset.cat)) d.open = true; });
   showToast('Categoria atualizada ✅');
+}
+
+// Linha (mini-card) de um lançamento com seletor de categoria — usada por
+// Relatórios > Categorias e pelo painel de Metas.
+function _rcLinhaTx(t, cat) {
+  const escJs = v => String(v).replace(/'/g, "\'").replace(/"/g, '&quot;');
+  const credito = Number(t.valor) < 0; // estorno reduz a categoria
+  // Subtítulo (apelido) em destaque quando existe; a descrição original fica embaixo, em cinza.
+  const titulo = t.apelido
+    ? `<span class="fat-item-apelido">${_escHtml(t.apelido)}</span><div class="ex-sub-titulo">${_escHtml(t.descricao)}</div>`
+    : _escHtml(t.descricao);
+  return `
+    <div class="fat-item rc-tx${credito ? ' credito' : ''}" onclick="rcAbrirEdicao(this, event)" title="Toque para mudar a categoria">
+      <div class="fat-item-info">
+        <div class="fat-item-desc">${t.data ? `<span class="fat-item-data">${t.data.slice(8)}/${t.data.slice(5, 7)}</span>` : ''}${titulo}${t.conta ? `<span class="fat-item-data" style="margin:0 0 0 6px">· ${_escHtml(t.conta)}</span>` : ''}</div>
+        <div class="fat-item-val">${credito ? '+' : '−'} ${fmt(Math.abs(t.valor))}</div>
+        <div class="rc-edit" style="display:none">
+          <select class="form-select" onchange="rcSalvarCategoria(this, '${t.id}', '${t.fonte}', ${t.chave ? `'${escJs(t.chave)}'` : 'null'})">
+            <option value="">Mudar categoria…</option>
+            ${_optsCategoria('despesa', cat).replace('<option value="">Categorizar...</option>', '')}
+          </select>
+        </div>
+      </div>
+      <span class="rc-lapis">✏️</span>
+    </div>`;
 }
 
 function pieMesNav(dir) {
@@ -5239,28 +5267,7 @@ function renderRelCategorias() {
     const cor    = catCor(cat);
     const pct    = total ? (val / total * 100) : 0;
     const txList = items[cat] || [];
-    const escJs = v => String(v).replace(/'/g, "\\'").replace(/"/g, '&quot;');
-    const txRows = txList.map(t => {
-      const credito = Number(t.valor) < 0; // estorno reduz a categoria
-      // Subtítulo (apelido) em destaque quando existe; a descrição original fica embaixo, em cinza.
-      const titulo = t.apelido
-        ? `<span class="fat-item-apelido">${_escHtml(t.apelido)}</span><div class="ex-sub-titulo">${_escHtml(t.descricao)}</div>`
-        : _escHtml(t.descricao);
-      return `
-        <div class="fat-item rc-tx${credito ? ' credito' : ''}" onclick="rcAbrirEdicao(this, event)" title="Toque para mudar a categoria">
-          <div class="fat-item-info">
-            <div class="fat-item-desc">${t.data ? `<span class="fat-item-data">${t.data.slice(8)}/${t.data.slice(5, 7)}</span>` : ''}${titulo}${t.conta ? `<span class="fat-item-data" style="margin:0 0 0 6px">· ${_escHtml(t.conta)}</span>` : ''}</div>
-            <div class="fat-item-val">${credito ? '+' : '−'} ${fmt(Math.abs(t.valor))}</div>
-            <div class="rc-edit" style="display:none">
-              <select class="form-select" onchange="rcSalvarCategoria(this, '${t.id}', '${t.fonte}', ${t.chave ? `'${escJs(t.chave)}'` : 'null'})">
-                <option value="">Mudar categoria…</option>
-                ${_optsCategoria('despesa', cat).replace('<option value="">Categorizar...</option>', '')}
-              </select>
-            </div>
-          </div>
-          <span class="rc-lapis">✏️</span>
-        </div>`;
-    }).join('');
+    const txRows = txList.map(t => _rcLinhaTx(t, cat)).join('');
 
     return `
       <details class="rc-card" data-cat="${_escHtml(cat)}" style="--rc-cor:${cor}">
@@ -5511,28 +5518,45 @@ function renderMetas() {
     || (t.fonte === 'extrato' && !!t.pluggy_compra_chave);
   const _conta = t => t.tipo !== 'receita' && t.categoria !== 'fatura';
   const gastos = {};
-  const _soma = t => { gastos[t.categoria] = (gastos[t.categoria] || 0) + (t.valor || 0); };
+  const itensCat = {};
+  const _soma = t => {
+    gastos[t.categoria] = (gastos[t.categoria] || 0) + (t.valor || 0);
+    (itensCat[t.categoria] = itensCat[t.categoria] || []).push({
+      id: t.id, fonte: t.fonte, apelido: t.apelido || null, chave: t.pluggy_compra_chave || null,
+      data: t.data || null, descricao: t.descricao, valor: Number(t.valor) || 0, conta: t.contaCartao || '',
+    });
+  };
   _lista(false).filter(t => _conta(t) && !_ehParcela(t)).forEach(_soma);   // data da compra
   _lista(true).filter(t => _conta(t) && _ehParcela(t)).forEach(_soma);     // parcela no mês da fatura
 
+  const _abertas = [...el.querySelectorAll('details[open]')].map(d => d.dataset.cat);
   el.innerHTML = state.metas.map(meta => {
     const gasto = gastos[meta.categoria] || 0;
+    const lista = (itensCat[meta.categoria] || []).sort((x, y) => (y.data || '').localeCompare(x.data || ''));
+    const aberta = _abertas.includes(meta.categoria) ? ' open' : '';
     const pct = Math.min(100, (gasto/meta.limite)*100);
     const color = pct>90?'var(--red)':pct>70?'var(--amber)':'var(--green)';
     const info = [...(state.catsExtra||[]),...CATS_DESPESA,...CATS_RECEITA].find(c=>c.id===meta.categoria)||{emoji:'📦',nome:meta.categoria};
+    // Toque na meta abre as despesas da categoria no mês (mesmo mini-card de
+    // Relatórios > Categorias; tocar numa despesa permite mudar a categoria).
     return `
-      <div class="meta-item">
-        <div style="font-size:20px">${info.emoji}</div>
-        <div class="meta-info">
-          <div class="meta-name">${info.nome}</div>
-          <div class="meta-progress-wrap"><div class="meta-progress" style="width:${pct.toFixed(0)}%;background:${color}"></div></div>
-          <div class="text-xs text-3 mt-4">${pct.toFixed(0)}% utilizado</div>
-        </div>
-        <div class="meta-values">
-          <div class="meta-spent" style="color:${color}">${fmt(gasto)}</div>
-          <div class="meta-limit">de ${fmt(meta.limite)}</div>
-        </div>
-      </div>
+      <details class="rc-card" data-cat="${_escHtml(meta.categoria)}" style="--rc-cor:${color}"${aberta}>
+        <summary style="display:block">
+          <div class="meta-item" style="padding:0;border:0">
+            <div style="font-size:20px">${info.emoji}</div>
+            <div class="meta-info">
+              <div class="meta-name">${info.nome}<span class="rc-sub">${lista.length} ${lista.length === 1 ? 'lançamento' : 'lançamentos'}</span></div>
+              <div class="meta-progress-wrap"><div class="meta-progress" style="width:${pct.toFixed(0)}%;background:${color}"></div></div>
+              <div class="text-xs text-3 mt-4">${pct.toFixed(0)}% utilizado</div>
+            </div>
+            <div class="meta-values">
+              <div class="meta-spent" style="color:${color}">${fmt(gasto)}</div>
+              <div class="meta-limit">de ${fmt(meta.limite)}</div>
+            </div>
+          </div>
+        </summary>
+        <div class="rc-tx-list">${lista.length ? lista.map(t => _rcLinhaTx(t, meta.categoria)).join('') : '<div class="text-xs text-3" style="padding:4px 2px">Nenhuma despesa neste mês</div>'}</div>
+      </details>
     `;
   }).join('');
 }
