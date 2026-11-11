@@ -1144,21 +1144,17 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 .cat-chip > .cat-ic { width: 22px; height: 22px; }
 
 /* Carteira de cartões (estilo Apple Wallet) */
-.wallet { max-width: 420px; margin: 0 auto 18px; }
+.wallet { max-width: 460px; margin: 0 auto 18px; }
 .wcard { position: relative; width: 100%; aspect-ratio: 1.586; border-radius: 16px; padding: 16px 18px; color: #fff; cursor: pointer;
   background: radial-gradient(120% 90% at 0% 0%, rgba(255,255,255,.22), transparent 55%), linear-gradient(135deg, var(--c1), var(--c2));
   box-shadow: 0 -1px 0 rgba(255,255,255,.25) inset, 0 8px 22px rgba(15,18,22,.22); display: flex; flex-direction: column; overflow: hidden;
   transition: margin-top .35s ease, transform .2s ease; }
 .wcard::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(115deg, rgba(255,255,255,.12) 0 30%, transparent 30%); }
 /* Empilhado: cada cartão cobre o anterior e deixa só a faixa do topo à mostra; depois do escolhido, abre espaço. */
-.wcard + .wcard { margin-top: calc(50px - 63.05%); }
-.wcard.sel + .wcard { margin-top: 12px; }
-.wcard:not(.sel):hover { transform: translateY(-3px); }
 .wcard.paga { filter: saturate(.55); }
 .wcard-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; min-height: 26px; }
 .wcard-nome { font-size: 15px; font-weight: 600; letter-spacing: .2px; text-shadow: 0 1px 2px rgba(0,0,0,.25); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wcard-top-val { font-family: var(--font-mono); font-size: 13px; font-weight: 500; opacity: .9; white-space: nowrap; }
-.wcard.sel .wcard-top-val { visibility: hidden; }
 .wcard-mid { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 .wcard-chip { width: 36px; height: 27px; border-radius: 6px; background: linear-gradient(135deg, #f7e7a8, #c9a24a 60%, #e8cf7a); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
 .wcard-nfc { width: 20px; height: 20px; opacity: .85; }
@@ -1176,7 +1172,40 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 .wcard-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
 .wcard-btn { border: 1px solid rgba(255,255,255,.55); background: rgba(255,255,255,.15); color: #fff; border-radius: 999px; padding: 5px 12px; font-family: var(--font); font-size: 11.5px; font-weight: 600; cursor: pointer; }
 .wcard-band { font-size: 15px; font-weight: 800; font-style: italic; letter-spacing: .5px; opacity: .95; }
-@media (max-width: 420px) { .wcard { padding: 14px 15px; } .wcard-v { font-size: 22px; } .wcard + .wcard { margin-top: calc(46px - 63.05%); } }
+@media (max-width: 420px) { .wcard { padding: 14px 15px; } .wcard-v { font-size: 22px; } }
+
+.wdet { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-top: 12px; padding: 12px 12px 8px; box-shadow: var(--shadow-sm); }
+.wmeses { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.wmeses::-webkit-scrollbar { display: none; }
+.wmes { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--border-2); background: var(--bg-card); color: var(--text); cursor: pointer; font-family: var(--font); }
+.wmes-m { font-size: 11px; font-weight: 600; color: var(--text-2); }
+.wmes-v { font-family: var(--font-mono); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.wmes.paga .wmes-v { color: var(--green); }
+.wmes.sel { background: var(--text); border-color: var(--text); color: #fff; }
+.wmes.sel .wmes-m, .wmes.sel .wmes-v { color: #fff; }
+.wres { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; padding: 12px 4px 10px; border-bottom: 1px solid var(--bg-hover); }
+.wres-l { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.wres-tag { font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--accent); background: var(--accent-soft); border-radius: 3px; padding: 1px 5px; margin-left: 4px; }
+.wres-v { font-family: var(--font-mono); font-size: 26px; font-weight: 500; letter-spacing: -.8px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.wres-st { font-size: 11.5px; color: var(--text-3); }
+.wres-st.atr { color: var(--red); font-weight: 600; }
+.wres .fat-btn { height: 34px; flex-shrink: 0; }
+.wlista { padding-top: 8px; }
+.wlista .fat-item { font-size: 12.5px; }
+.fat-item > .cat-ic { width: 16px; height: 16px; flex-shrink: 0; }
+.wvazio { font-size: 12px; color: var(--text-3); padding: 14px 4px; text-align: center; }
+.woutros { margin-top: 16px; }
+.woutros-t { font-size: 10px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--text-3); padding: 0 4px 6px; }
+.wstrip { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 16px; margin-top: -8px; border: none; border-radius: 14px 14px 10px 10px; color: #fff; cursor: pointer; font-family: var(--font); background: linear-gradient(135deg, var(--c1), var(--c2)); box-shadow: 0 -2px 8px rgba(15,18,22,.15); position: relative; text-align: left; }
+.wstrip:first-of-type { margin-top: 0; }
+.wstrip:hover { filter: brightness(1.08); }
+.wstrip.paga { filter: saturate(.55); }
+.wstrip-nome { font-size: 13.5px; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.wstrip-v { font-family: var(--font-mono); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.fat-tabela-wrap { margin-top: 8px; }
+.fat-tabela-wrap > summary { list-style: none; cursor: pointer; font-size: 12.5px; font-weight: 500; color: var(--text-2); padding: 10px 4px; text-align: center; }
+.fat-tabela-wrap > summary::-webkit-details-marker { display: none; }
+.fat-tabela-wrap[open] > summary { color: var(--accent); }
 
 /* Valor de destaque: reais grandes, centavos pequenos */
 .hv-cur { font-size: .5em; color: var(--text-3); margin-right: .15em; letter-spacing: 0; }
@@ -1677,6 +1706,8 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
         </div>
       </div>
       <div id="faturas-carteira" class="wallet"></div>
+      <details class="fat-tabela-wrap">
+      <summary>Ver todos os cartões em tabela</summary>
       <div class="fat-table">
         <div class="fat-head">
           <div>Cartão</div><div>Fecha</div><div>Vence</div>
@@ -1687,6 +1718,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
           <div class="empty-state"><p>Nenhuma fatura encontrada</p></div>
         </div>
       </div>
+      </details>
     </div>
 
     <!-- ── SINCRONIZAÇÃO (PLUGGY — FASE 1, SOMENTE LEITURA) ────────────── -->
@@ -2590,7 +2622,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-11h';
+const APP_VERSION = '2026-11-11i';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -4711,67 +4743,11 @@ function renderFaturas() {
     const pct   = c.limite ? Math.min(100, valor / c.limite * 100) : 0;
     const color = pago ? 'var(--text-3)' : vencida ? 'var(--red)' : pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--amber)' : 'var(--accent)';
 
-    // Itens da fatura: compras que VENCEM no mês selecionado (usando getVencimentoIdx)
-    const fec = c.fechamento || 1;
-    const ven = c.vencimento || 10;
-    const itensExtrato = (state._allExtrato || [])
-      .filter(tx =>
-        tx.origem === 'cartao' && tx.cartao_nome === c.nome && tx.data &&
-        getVencimentoIdx(tx.data, fec, ven) === mesIdx
-      )
-      .map(tx => ({
-        id:          tx.id,
-        data:        tx.data,
-        descricao:   tx.descricao,
-        apelido:     tx.apelido || null,
-        origem_dado: tx.origem_dado || null,
-        pluggy_compra_chave: tx.pluggy_compra_chave || null,
-        categoria:   tx.categoria,
-        valor:       Number(tx.valor),
-        tipo:        tx.tipo,
-        origem:      tx.origem,
-        contaCartao: tx.cartao_nome || tx.conta_nome,
-        cartaoNome:  tx.cartao_nome || '',
-        fonte:       'extrato',
-      }));
-
-    const itensLan = [];
-    for (const lan of (state._allLancamentos || [])) {
-      if (!lan.ativo || lan.origem !== 'cartao' || lan.conta_nome !== c.nome) continue;
-      const tipo = (lan.tipo||'').toLowerCase().trim();
-      if (tipo === 'receita' || tipo === 'receita única' || tipo === 'receita unica') continue;
-      const startIdx  = Number(lan.ano_ini || anoMes) * 12 + Number(lan.mes_ini || 1);
-      const endFimIdx = lan.ano_fim && lan.mes_fim ? Number(lan.ano_fim)*12 + Number(lan.mes_fim) : Infinity;
-      const maxOffset = tipo === 'parcelado' ? Number(lan.parcelas || 1) : 999;
-      for (let n = 0; n < maxOffset; n++) {
-        if (startIdx + n > endFimIdx) break;
-        const vIdx = getInstVencIdx(lan, n, fec, ven);
-        if (vIdx === mesIdx) {
-          const parc = tipo === 'parcelado' ? ` (${n+1}/${lan.parcelas})` : '';
-          const occIdx = startIdx + n - 1, occAno = Math.floor(occIdx / 12), occMes = occIdx % 12;
-          const occDia = Math.min(Number(lan.dia_ini || 1), new Date(occAno, occMes + 1, 0).getDate());
-          const occData = `${occAno}-${String(occMes + 1).padStart(2,'0')}-${String(occDia).padStart(2,'0')}`;
-          itensLan.push({ id: lan.id, data: occData, descricao: lan.descricao + parc, apelido: lan.apelido || null, valor: Number(lan.valor), fonte: 'lancamentos' });
-          break;
-        }
-        if (vIdx > mesIdx) break;
-      }
-    }
-
-    const itens = [...itensExtrato, ...itensLan].sort((a, b) => String(a.data || '').localeCompare(String(b.data || '')));
+    const itens = _itensFatura(c, mesIdx, anoMes);
     const somaItens = itens.reduce((s, t) => s + t.valor, 0);
 
     const itensHtml = itens.length
-      ? itens.map(t => {
-          const credito = Number(t.valor) < 0; // estorno/cancelamento reduz a fatura
-          return `
-          <div class="fat-item${credito ? ' credito' : ''}">
-            <div class="fat-item-info">
-              <div class="fat-item-desc"><span class="fat-item-data">${t.data ? String(t.data).slice(8, 10) + '/' + String(t.data).slice(5, 7) : '—'}</span>${t.apelido ? `<span class="fat-item-apelido">${_escHtml(t.apelido)}</span><div class="ex-sub-titulo">${_escHtml(t.descricao || '')}</div>` : _escHtml(t.descricao || "—")}</div>
-              <div class="fat-item-val">${credito ? '+' : '−'} ${fmt(Math.abs(t.valor))}</div>
-            </div>
-            <button class="tx-act-btn edit" onclick='${t.fonte === "lancamentos" ? `abrirEditFixo("${t.id}")` : `editarTx(${_jsonAttr(t)})`}' title="Editar">✏️</button>
-          </div>`; }).join(``) +
+      ? itens.map(_htmlItemFatura).join('') +
         `<div class="fat-item-total"><span>${itens.length} ${itens.length > 1 ? "despesas" : "despesa"}</span><span>${fmt(somaItens)}</span></div>`
       : '<div class="text-xs text-3" style="padding:8px 0">Nenhuma compra nesta competência</div>';
 
@@ -4842,62 +4818,161 @@ const BANDEIRAS = [
 ];
 function _bandeiraCartao(nome) { return (BANDEIRAS.find(([re]) => re.test(nome || '')) || [])[1] || ''; }
 
+// Compras de um cartão que vencem na fatura `mesIdx` (ano*12+mês): linhas de extrato pela
+// competência (getVencimentoIdx) + ocorrências de lançamentos (getInstVencIdx). Usado pela tabela
+// de Faturas e pela carteira — um cálculo só, para as duas nunca divergirem.
+function _itensFatura(c, mesIdx, anoMes) {
+  const fec = c.fechamento || 1;
+  const ven = c.vencimento || 10;
+  const itensExtrato = (state._allExtrato || [])
+    .filter(tx =>
+      tx.origem === 'cartao' && tx.cartao_nome === c.nome && tx.data &&
+      getVencimentoIdx(tx.data, fec, ven) === mesIdx
+    )
+    .map(tx => ({
+      id:          tx.id,
+      data:        tx.data,
+      descricao:   tx.descricao,
+      apelido:     tx.apelido || null,
+      origem_dado: tx.origem_dado || null,
+      pluggy_compra_chave: tx.pluggy_compra_chave || null,
+      categoria:   tx.categoria,
+      valor:       Number(tx.valor),
+      tipo:        tx.tipo,
+      origem:      tx.origem,
+      contaCartao: tx.cartao_nome || tx.conta_nome,
+      cartaoNome:  tx.cartao_nome || '',
+      fonte:       'extrato',
+    }));
+
+  const itensLan = [];
+  for (const lan of (state._allLancamentos || [])) {
+    if (!lan.ativo || lan.origem !== 'cartao' || lan.conta_nome !== c.nome) continue;
+    const tipo = (lan.tipo||'').toLowerCase().trim();
+    if (tipo === 'receita' || tipo === 'receita única' || tipo === 'receita unica') continue;
+    const startIdx  = Number(lan.ano_ini || anoMes) * 12 + Number(lan.mes_ini || 1);
+    const endFimIdx = lan.ano_fim && lan.mes_fim ? Number(lan.ano_fim)*12 + Number(lan.mes_fim) : Infinity;
+    const maxOffset = tipo === 'parcelado' ? Number(lan.parcelas || 1) : 999;
+    for (let n = 0; n < maxOffset; n++) {
+      if (startIdx + n > endFimIdx) break;
+      const vIdx = getInstVencIdx(lan, n, fec, ven);
+      if (vIdx === mesIdx) {
+        const parc = tipo === 'parcelado' ? ` (${n+1}/${lan.parcelas})` : '';
+        const occIdx = startIdx + n - 1, occAno = Math.floor(occIdx / 12), occMes = occIdx % 12;
+        const occDia = Math.min(Number(lan.dia_ini || 1), new Date(occAno, occMes + 1, 0).getDate());
+        const occData = `${occAno}-${String(occMes + 1).padStart(2,'0')}-${String(occDia).padStart(2,'0')}`;
+        itensLan.push({ id: lan.id, data: occData, descricao: lan.descricao + parc, apelido: lan.apelido || null, categoria: lan.categoria, valor: Number(lan.valor), fonte: 'lancamentos' });
+        break;
+      }
+      if (vIdx > mesIdx) break;
+    }
+  }
+
+  return [...itensExtrato, ...itensLan].sort((a, b) => String(a.data || '').localeCompare(String(b.data || '')));
+}
+
+function _htmlItemFatura(t) {
+  const credito = Number(t.valor) < 0; // estorno/cancelamento reduz a fatura
+  return `
+          <div class="fat-item${credito ? ' credito' : ''}">
+            ${t.categoria && t.categoria !== 'nao_classificado' ? catIcone(t.categoria) : ''}
+            <div class="fat-item-info">
+              <div class="fat-item-desc"><span class="fat-item-data">${t.data ? String(t.data).slice(8, 10) + '/' + String(t.data).slice(5, 7) : '—'}</span>${t.apelido ? `<span class="fat-item-apelido">${_escHtml(t.apelido)}</span><div class="ex-sub-titulo">${_escHtml(t.descricao || '')}</div>` : _escHtml(t.descricao || "—")}</div>
+              <div class="fat-item-val">${credito ? '+' : '−'} ${fmt(Math.abs(t.valor))}</div>
+            </div>
+            <button class="tx-act-btn edit" onclick='${t.fonte === "lancamentos" ? `abrirEditFixo("${t.id}")` : `editarTx(${_jsonAttr(t)})`}' title="Editar">✏️</button>
+          </div>`;
+}
+
 function renderCarteiraCartoes(ordenados, faturas, mesNome, anoMes, mesNum, hoje) {
   const el = document.getElementById('faturas-carteira');
   if (!el) return;
   if (!ordenados.length) { el.innerHTML = ''; return; }
+  const mi = state.currentMonth;
   const nomes = ordenados.map(o => o.c.nome);
   // Mantém o cartão escolhido entre re-renders; sem escolha, o primeiro com fatura em aberto.
   if (!nomes.includes(state._walletSel)) {
     const aberto = ordenados.find(({ c }) => (faturas[c.nome] || 0) > 0 && !(state.faturasPagas || {})[c.nome + '-' + mesNome]);
     state._walletSel = (aberto || ordenados[0]).c.nome;
   }
+  const { c, i } = ordenados.find(o => o.c.nome === state._walletSel);
+  const [c1, c2] = _corCartao(c.nome, i);
+  const valorDe = k => ((state.resumo[k] || {}).faturas || {})[c.nome] || 0;
+  const pagaDe  = k => !!(state.faturasPagas || {})[c.nome + '-' + MESES_NOMES[k]];
+
+  // Faturas mostradas: a do mês selecionado sempre + as próximas que têm valor (até 12 meses).
+  const meses = [];
+  for (let k = mi; k < MESES_NOMES.length && k <= mi + 12; k++) if (k === mi || valorDe(k) > 0) meses.push(k);
+  if (state._walletMesBase !== mi || !meses.includes(state._walletMes)) { state._walletMes = mi; state._walletMesBase = mi; }
+  const k = state._walletMes;
+  const [aK, mK] = mesNomeToAnoMes(MESES_NOMES[k]);
+  const valor = valorDe(k), pago = pagaDe(k);
+  const due   = _vencimentoRealPluggy(c.nome, aK, mK) || calcularDataVencimento(aK, mK, c.vencimento);
+  const dias  = Math.round((due - hoje) / 86400000);
+  const dueTxt = String(due.getDate()).padStart(2, '0') + '/' + String(due.getMonth() + 1).padStart(2, '0');
+  const status = pago ? '✓ paga' : valor <= 0 ? 'sem compras'
+    : dias < 0 ? `vencida há ${-dias} ${-dias === 1 ? 'dia' : 'dias'}` : dias === 0 ? 'vence hoje' : `vence em ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
+  const disp = c.limite ? calcularLimiteDisponivel(c) : null;
+  const pct  = c.limite ? Math.max(0, Math.min(100, (c.limite - disp) / c.limite * 100)) : 0;
   const contactless = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8.5 8.5a5 5 0 0 1 0 7"/><path d="M12 6a8.5 8.5 0 0 1 0 12"/><path d="M15.5 3.5a12 12 0 0 1 0 17"/></svg>';
-  const mesCurto = MESES[state.currentMonth].split('/')[0];
-  el.innerHTML = ordenados.map(({ c, i }) => {
-    const [c1, c2] = _corCartao(c.nome, i);
-    const valor = faturas[c.nome] || 0;
-    const pago  = !!(state.faturasPagas || {})[c.nome + '-' + mesNome];
-    const due   = _vencimentoRealPluggy(c.nome, anoMes, mesNum) || calcularDataVencimento(anoMes, mesNum, c.vencimento);
-    const dias  = Math.round((due - hoje) / 86400000);
-    const dueTxt = String(due.getDate()).padStart(2, '0') + '/' + String(due.getMonth() + 1).padStart(2, '0');
-    const status = pago ? '✓ paga' : valor <= 0 ? 'sem fatura'
-      : dias < 0 ? `vencida há ${-dias} ${-dias === 1 ? 'dia' : 'dias'}` : dias === 0 ? 'vence hoje' : `vence em ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
-    const disp = c.limite ? calcularLimiteDisponivel(c) : null;
-    const pct  = c.limite ? Math.max(0, Math.min(100, (c.limite - disp) / c.limite * 100)) : 0;
-    const sel  = state._walletSel === c.nome;
-    return `<div class="wcard${sel ? ' sel' : ''}${pago ? ' paga' : ''}" data-wallet-idx="${i}" style="--c1:${c1};--c2:${c2}" onclick="walletSel(${i})">
-      <div class="wcard-top">
-        <div class="wcard-nome">${_escHtml(c.nome)}</div>
-        <div class="wcard-top-val">${fmt(valor)}</div>
-      </div>
+
+  const cartao = `<div class="wcard sel${pagaDe(mi) ? ' paga' : ''}" style="--c1:${c1};--c2:${c2}">
+      <div class="wcard-top"><div class="wcard-nome">${_escHtml(c.nome)}</div><span class="wcard-band">${_bandeiraCartao(c.nome)}</span></div>
       <div class="wcard-mid"><i class="wcard-chip"></i><span class="wcard-nfc">${contactless}</span></div>
       <div class="wcard-info">
-        <div><div class="wcard-l">Fatura de ${mesCurto}</div><div class="wcard-v">${fmtHero(valor)}</div>
-          <div class="wcard-st${!pago && valor > 0 && dias < 0 ? ' atr' : ''}">${status} · vence ${dueTxt}</div></div>
+        <div><div class="wcard-l">Fatura de ${MESES[mi].split('/')[0]}</div><div class="wcard-v">${fmtHero(valorDe(mi))}</div></div>
         ${disp != null ? `<div class="wcard-lim"><div class="wcard-l">Limite livre</div><div class="wcard-lv">${fmt(disp)}</div>
           <div class="wcard-bar"><div style="width:${pct.toFixed(0)}%"></div></div></div>` : ''}
       </div>
-      <div class="wcard-bottom">
-        <button class="wcard-btn" onclick="event.stopPropagation();walletVerCompras(${i})">Ver compras</button>
-        <span class="wcard-band">${_bandeiraCartao(c.nome)}</span>
-      </div>
     </div>`;
+
+  const chips = meses.map(m => `<button class="wmes${m === k ? ' sel' : ''}${pagaDe(m) ? ' paga' : ''}" onclick="walletMes(${m})">
+      <span class="wmes-m">${m === mi ? 'Atual' : _rotuloMesCurto(m)}</span>
+      <span class="wmes-v">${pagaDe(m) ? '✓ ' : ''}${fmt(valorDe(m))}</span></button>`).join('');
+
+  const itens = _itensFatura(c, aK * 12 + mK, aK);
+  const soma  = itens.reduce((sm, t) => sm + t.valor, 0);
+  const lista = itens.length
+    ? itens.map(_htmlItemFatura).join('') + `<div class="fat-item-total"><span>${itens.length} ${itens.length > 1 ? 'despesas' : 'despesa'}</span><span>${fmt(soma)}</span></div>`
+    : `<div class="wvazio">Nenhuma despesa nesta fatura.</div>`;
+  // Pagar só na fatura do mês selecionado no app: a chave de "fatura paga" usa esse mês.
+  const pagar = (k === mi && !pago && valor > 0)
+    ? `<button class="fat-btn ${dias < 0 ? 'urgente' : 'normal'}" onclick="abrirModalPagarFatura('${_jsStrAttr(c.nome)}','${_jsStrAttr(c.conta || '')}',${valor},'${formatarData(due)}')">${dias < 0 ? 'Pagar agora' : 'Pagar fatura'}</button>` : '';
+
+  const outros = ordenados.filter(o => o.c.nome !== c.nome).map(o => {
+    const [o1, o2] = _corCartao(o.c.nome, o.i);
+    const v = faturas[o.c.nome] || 0;
+    const pg = !!(state.faturasPagas || {})[o.c.nome + '-' + mesNome];
+    return `<button class="wstrip${pg ? ' paga' : ''}" style="--c1:${o1};--c2:${o2}" onclick="walletSel(${o.i})">
+      <span class="wstrip-nome">${_escHtml(o.c.nome)}</span><span class="wstrip-v">${pg ? '✓ ' : ''}${fmt(v)}</span></button>`;
   }).join('');
+
+  el.innerHTML = `${cartao}
+    <div class="wdet">
+      <div class="wmeses">${chips}</div>
+      <div class="wres">
+        <div><div class="wres-l">Fatura de ${MESES[k]}${k > mi ? ' <span class="wres-tag">futura</span>' : ''}</div>
+          <div class="wres-v">${fmtHero(valor)}</div>
+          <div class="wres-st${!pago && valor > 0 && dias < 0 ? ' atr' : ''}">${status} · vence ${dueTxt}</div></div>
+        ${pagar}
+      </div>
+      <div class="wlista">${lista}</div>
+    </div>
+    ${outros ? `<div class="woutros"><div class="woutros-t">Outros cartões · fatura de ${MESES[mi].split('/')[0]}</div>${outros}</div>` : ''}`;
 }
 
 function walletSel(i) {
   const c = state.cartoes[i];
-  if (!c || state._walletSel === c.nome) return;
+  if (!c) return;
   state._walletSel = c.nome;
-  document.querySelectorAll('#faturas-carteira .wcard').forEach(el => el.classList.toggle('sel', el.dataset.walletIdx === String(i)));
+  state._walletMes = state.currentMonth;
+  renderFaturas();
+  document.getElementById('faturas-carteira')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function walletVerCompras(i) {
-  const d = document.querySelector(`#faturas-list details[data-wallet-idx="${i}"]`);
-  if (!d) return;
-  d.open = true;
-  d.scrollIntoView({ behavior: 'smooth', block: 'start' });
+function walletMes(k) {
+  state._walletMes = k;
+  renderFaturas();
 }
 
 // `cartoes.conta_nome` é só uma SUGESTÃO de conta pagadora, não a fonte da
