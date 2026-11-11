@@ -1143,6 +1143,41 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 .account-icon > .cat-ic { width: 20px; height: 20px; }
 .cat-chip > .cat-ic { width: 22px; height: 22px; }
 
+/* Carteira de cartões (estilo Apple Wallet) */
+.wallet { max-width: 420px; margin: 0 auto 18px; }
+.wcard { position: relative; width: 100%; aspect-ratio: 1.586; border-radius: 16px; padding: 16px 18px; color: #fff; cursor: pointer;
+  background: radial-gradient(120% 90% at 0% 0%, rgba(255,255,255,.22), transparent 55%), linear-gradient(135deg, var(--c1), var(--c2));
+  box-shadow: 0 -1px 0 rgba(255,255,255,.25) inset, 0 8px 22px rgba(15,18,22,.22); display: flex; flex-direction: column; overflow: hidden;
+  transition: margin-top .35s ease, transform .2s ease; }
+.wcard::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(115deg, rgba(255,255,255,.12) 0 30%, transparent 30%); }
+/* Empilhado: cada cartão cobre o anterior e deixa só a faixa do topo à mostra; depois do escolhido, abre espaço. */
+.wcard + .wcard { margin-top: calc(50px - 63.05%); }
+.wcard.sel + .wcard { margin-top: 12px; }
+.wcard:not(.sel):hover { transform: translateY(-3px); }
+.wcard.paga { filter: saturate(.55); }
+.wcard-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; min-height: 26px; }
+.wcard-nome { font-size: 15px; font-weight: 600; letter-spacing: .2px; text-shadow: 0 1px 2px rgba(0,0,0,.25); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wcard-top-val { font-family: var(--font-mono); font-size: 13px; font-weight: 500; opacity: .9; white-space: nowrap; }
+.wcard.sel .wcard-top-val { visibility: hidden; }
+.wcard-mid { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.wcard-chip { width: 36px; height: 27px; border-radius: 6px; background: linear-gradient(135deg, #f7e7a8, #c9a24a 60%, #e8cf7a); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.wcard-nfc { width: 20px; height: 20px; opacity: .85; }
+.wcard-nfc svg { width: 100%; height: 100%; }
+.wcard-info { margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+.wcard-l { font-size: 9.5px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; opacity: .8; }
+.wcard-v { font-family: var(--font-mono); font-size: 26px; font-weight: 500; letter-spacing: -.8px; line-height: 1.1; }
+.wcard-v .hv-cur, .wcard-v .hv-cents { color: rgba(255,255,255,.8); }
+.wcard-st { font-size: 11px; opacity: .9; margin-top: 2px; }
+.wcard-st.atr { opacity: 1; font-weight: 700; color: #ffd5d5; }
+.wcard-lim { text-align: right; min-width: 0; }
+.wcard-lv { font-family: var(--font-mono); font-size: 13px; font-weight: 500; }
+.wcard-bar { width: 96px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.3); margin: 4px 0 0 auto; overflow: hidden; }
+.wcard-bar > div { height: 100%; background: #fff; border-radius: 2px; }
+.wcard-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.wcard-btn { border: 1px solid rgba(255,255,255,.55); background: rgba(255,255,255,.15); color: #fff; border-radius: 999px; padding: 5px 12px; font-family: var(--font); font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.wcard-band { font-size: 15px; font-weight: 800; font-style: italic; letter-spacing: .5px; opacity: .95; }
+@media (max-width: 420px) { .wcard { padding: 14px 15px; } .wcard-v { font-size: 22px; } .wcard + .wcard { margin-top: calc(46px - 63.05%); } }
+
 /* Valor de destaque: reais grandes, centavos pequenos */
 .hv-cur { font-size: .5em; color: var(--text-3); margin-right: .15em; letter-spacing: 0; }
 .hv-cents { font-size: .5em; color: var(--text-2); letter-spacing: 0; }
@@ -1641,6 +1676,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
           </div>
         </div>
       </div>
+      <div id="faturas-carteira" class="wallet"></div>
       <div class="fat-table">
         <div class="fat-head">
           <div>Cartão</div><div>Fecha</div><div>Vence</div>
@@ -2554,7 +2590,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-11g';
+const APP_VERSION = '2026-11-11h';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -4767,7 +4803,7 @@ function renderFaturas() {
     const dispColor = !c.limite ? 'var(--text-3)' : disp < 0 ? 'var(--red)' : disp < c.limite * 0.2 ? 'var(--amber)' : 'var(--text-3)';
 
     return `
-      <details class="fat-row-wrap ${pago ? "paga" : ""}">
+      <details class="fat-row-wrap ${pago ? "paga" : ""}" data-wallet-idx="${i}">
         <summary class="fat-row">
           <div class="fat-name-cell">
             <span class="fat-arrow">&#9656;</span>
@@ -4793,6 +4829,75 @@ function renderFaturas() {
       </details>
     `;
   }).join('');
+  renderCarteiraCartoes(ordenados, faturas, mesNome, anoMes, mesNum, hoje);
+}
+
+// ── Carteira (estilo Apple Wallet) no topo de Faturas ───────────────────────
+// Cartões grandes empilhados; tocar traz o cartão para a frente com os detalhes
+// da fatura do mês. Só exibição — os números são os mesmos da tabela abaixo.
+// Bandeira pelo nome do cartão (não há coluna para isso).
+const BANDEIRAS = [
+  [/visa/i, 'VISA'], [/master|\bmc\b/i, 'mastercard'],
+  [/nubank|\bnu\b|inter|latam|\bc6\b|mercado ?pago/i, 'mastercard'], [/magalu|\bxp\b/i, 'VISA'],
+];
+function _bandeiraCartao(nome) { return (BANDEIRAS.find(([re]) => re.test(nome || '')) || [])[1] || ''; }
+
+function renderCarteiraCartoes(ordenados, faturas, mesNome, anoMes, mesNum, hoje) {
+  const el = document.getElementById('faturas-carteira');
+  if (!el) return;
+  if (!ordenados.length) { el.innerHTML = ''; return; }
+  const nomes = ordenados.map(o => o.c.nome);
+  // Mantém o cartão escolhido entre re-renders; sem escolha, o primeiro com fatura em aberto.
+  if (!nomes.includes(state._walletSel)) {
+    const aberto = ordenados.find(({ c }) => (faturas[c.nome] || 0) > 0 && !(state.faturasPagas || {})[c.nome + '-' + mesNome]);
+    state._walletSel = (aberto || ordenados[0]).c.nome;
+  }
+  const contactless = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8.5 8.5a5 5 0 0 1 0 7"/><path d="M12 6a8.5 8.5 0 0 1 0 12"/><path d="M15.5 3.5a12 12 0 0 1 0 17"/></svg>';
+  const mesCurto = MESES[state.currentMonth].split('/')[0];
+  el.innerHTML = ordenados.map(({ c, i }) => {
+    const [c1, c2] = _corCartao(c.nome, i);
+    const valor = faturas[c.nome] || 0;
+    const pago  = !!(state.faturasPagas || {})[c.nome + '-' + mesNome];
+    const due   = _vencimentoRealPluggy(c.nome, anoMes, mesNum) || calcularDataVencimento(anoMes, mesNum, c.vencimento);
+    const dias  = Math.round((due - hoje) / 86400000);
+    const dueTxt = String(due.getDate()).padStart(2, '0') + '/' + String(due.getMonth() + 1).padStart(2, '0');
+    const status = pago ? '✓ paga' : valor <= 0 ? 'sem fatura'
+      : dias < 0 ? `vencida há ${-dias} ${-dias === 1 ? 'dia' : 'dias'}` : dias === 0 ? 'vence hoje' : `vence em ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
+    const disp = c.limite ? calcularLimiteDisponivel(c) : null;
+    const pct  = c.limite ? Math.max(0, Math.min(100, (c.limite - disp) / c.limite * 100)) : 0;
+    const sel  = state._walletSel === c.nome;
+    return `<div class="wcard${sel ? ' sel' : ''}${pago ? ' paga' : ''}" data-wallet-idx="${i}" style="--c1:${c1};--c2:${c2}" onclick="walletSel(${i})">
+      <div class="wcard-top">
+        <div class="wcard-nome">${_escHtml(c.nome)}</div>
+        <div class="wcard-top-val">${fmt(valor)}</div>
+      </div>
+      <div class="wcard-mid"><i class="wcard-chip"></i><span class="wcard-nfc">${contactless}</span></div>
+      <div class="wcard-info">
+        <div><div class="wcard-l">Fatura de ${mesCurto}</div><div class="wcard-v">${fmtHero(valor)}</div>
+          <div class="wcard-st${!pago && valor > 0 && dias < 0 ? ' atr' : ''}">${status} · vence ${dueTxt}</div></div>
+        ${disp != null ? `<div class="wcard-lim"><div class="wcard-l">Limite livre</div><div class="wcard-lv">${fmt(disp)}</div>
+          <div class="wcard-bar"><div style="width:${pct.toFixed(0)}%"></div></div></div>` : ''}
+      </div>
+      <div class="wcard-bottom">
+        <button class="wcard-btn" onclick="event.stopPropagation();walletVerCompras(${i})">Ver compras</button>
+        <span class="wcard-band">${_bandeiraCartao(c.nome)}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function walletSel(i) {
+  const c = state.cartoes[i];
+  if (!c || state._walletSel === c.nome) return;
+  state._walletSel = c.nome;
+  document.querySelectorAll('#faturas-carteira .wcard').forEach(el => el.classList.toggle('sel', el.dataset.walletIdx === String(i)));
+}
+
+function walletVerCompras(i) {
+  const d = document.querySelector(`#faturas-list details[data-wallet-idx="${i}"]`);
+  if (!d) return;
+  d.open = true;
+  d.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // `cartoes.conta_nome` é só uma SUGESTÃO de conta pagadora, não a fonte da
