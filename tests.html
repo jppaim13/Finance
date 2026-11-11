@@ -307,6 +307,26 @@ assertEqual(getVencimentoIdx('2026-12-28', 25, 5), 2027 * 12 + 2,
   assertEqual(resolverSaldoCaixinha({ pluggy_reserva_id: 'r1' }, 100, reservas).reserva.identificacao, 'r1', 'devolve a reserva usada');
 }
 
+// ─── ocorrenciasAgenda (lembretes da Agenda) ───────────────────────────────
+{
+  const L = [
+    { id: 'a', descricao: 'Aluguel', tipo: 'fixa', dia: 10, mes_ini: 3, ano_ini: 2026, ativo: true },
+    { id: 'b', descricao: 'Luz', tipo: 'fixa', dia: 31, mes_ini: 1, ano_ini: 2026, mes_fim: 6, ano_fim: 2026, ativo: true },
+    { id: 'c', descricao: 'Sofá', tipo: 'parcelada', dia: 5, mes_ini: 11, ano_ini: 2026, parcelas: 3, ativo: true },
+    { id: 'd', descricao: 'IPVA', tipo: 'avulsa', dia: 20, mes_ini: 12, ano_ini: 2026, ativo: true },
+    { id: 'e', descricao: 'Inativo', tipo: 'fixa', dia: 1, mes_ini: 1, ano_ini: 2026, ativo: false },
+  ];
+  const ids = (a, m) => ocorrenciasAgenda(L, a, m).map(o => o.lembrete.id + (o.parcela ? ':' + o.parcela + '/' + o.total : '') + '@' + o.dia).join(',');
+  assertEqual(ids(2026, 2), 'b@28', 'agenda: fixa no mês curto vira o último dia; antes do início não aparece; inativo some');
+  assertEqual(ids(2026, 3), 'a@10,b@31', 'agenda: fixas começam no mês de início, em ordem de dia');
+  assertEqual(ids(2026, 7), 'a@10', 'agenda: fixa com fim some depois do mês final');
+  assertEqual(ids(2026, 11), 'c:1/3@5,a@10', 'agenda: parcelada começa na parcela 1 do mês de início');
+  assertEqual(ids(2027, 1), 'c:3/3@5,a@10', 'agenda: parcelada na última parcela (virada de ano)');
+  assertEqual(ids(2027, 2), 'a@10', 'agenda: parcelada some depois da última parcela');
+  assertEqual(ids(2026, 12), 'c:2/3@5,a@10,d@20', 'agenda: avulsa só no mês de início');
+  assertEqual(ids(2027, 12), 'a@10', 'agenda: avulsa não se repete no ano seguinte');
+}
+
 // ─── Render ─────────────────────────────────────────────────────────────────
 const el = document.getElementById('results');
 el.innerHTML =

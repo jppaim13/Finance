@@ -414,6 +414,24 @@ body:not(.acesso-total) [data-page="config"] { display: none !important; }
 /* ── Category Pills ─────────────────────────────────────────────── */
 .cat-list { display: flex; flex-direction: column; gap: 8px; }
 /* Relatórios > Categorias: cada categoria é um card (nome · %, barra, valor sozinho) que abre os lançamentos em mini-cards */
+.ag-resumo { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.ag-resumo > div { flex: 1 1 130px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+.ag-resumo .ag-r-l { font-size: 11px; color: var(--text-3); }
+.ag-resumo .ag-r-v { font-family: var(--font-mono); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ag-sec { font-size: 11px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--text-3); margin: 14px 0 6px; }
+.ag-item { display: flex; align-items: center; gap: 10px; background: var(--bg-card); border: 1px solid var(--border); border-left: 4px solid var(--ag-cor, var(--border)); border-radius: 8px; padding: 9px 10px; margin-bottom: 6px; }
+.ag-item.paga { opacity: .55; }
+.ag-item.paga .ag-desc { text-decoration: line-through; }
+.ag-check { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--text-3); background: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; line-height: 1; padding: 0; }
+.ag-item.paga .ag-check { background: var(--green); border-color: var(--green); }
+.ag-dia { flex: 0 0 auto; width: 38px; text-align: center; font-family: var(--font-mono); font-size: 15px; font-weight: 600; line-height: 1.1; }
+.ag-dia small { display: block; font-size: 9px; font-weight: 500; color: var(--text-3); text-transform: uppercase; }
+.ag-corpo { flex: 1 1 auto; min-width: 0; cursor: pointer; }
+.ag-desc { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.ag-meta { font-size: 11px; color: var(--text-3); }
+.ag-valor { flex: 0 0 auto; font-family: var(--font-mono); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.ag-tag-atraso { color: var(--red); font-weight: 600; }
+.ag-tag-hoje { color: var(--amber); font-weight: 600; }
 .rc-card { background: var(--bg-card); border: 1px solid var(--border); border-left: 4px solid var(--rc-cor, var(--red)); border-radius: 8px; margin-bottom: 6px; overflow: hidden; }
 .rc-card > summary { list-style: none; cursor: pointer; padding: 10px 12px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 8px; align-items: center; user-select: none; }
 .rc-card > summary::-webkit-details-marker { display: none; }
@@ -1309,6 +1327,10 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
         Metas
       </button>
+      <button class="sidebar-item" data-page="agenda">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        Agenda
+      </button>
       <button class="sidebar-item" data-page="sincronizacao">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
         Sincronização
@@ -1701,6 +1723,30 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
       </div>
     </div>
 
+    <!-- ── AGENDA ───────────────────────────────────────────────────── -->
+    <div class="page" id="page-agenda">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Agenda</div>
+          <div class="page-subtitle">Lembretes de pagamento — não entram em saldos nem relatórios</div>
+        </div>
+        <button class="month-nav-btn" style="width:36px;height:36px;border-radius:10px" onclick="abrirAgendaModal()" title="Novo lembrete">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width:18px;height:18px"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <div class="month-selector" style="margin-bottom:12px;justify-content:center">
+        <button class="month-nav-btn" onclick="agendaMes(-1)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <span id="agenda-mes-label">—</span>
+        <button class="month-nav-btn" onclick="agendaMes(1)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      </div>
+      <div class="ag-resumo" id="agenda-resumo"></div>
+      <div id="agenda-lista"><div class="empty-state"><p>Carregando...</p></div></div>
+    </div>
+
     <!-- ── METAS ────────────────────────────────────────────────────── -->
     <div class="page" id="page-metas">
       <div class="page-header">
@@ -1872,6 +1918,12 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
       </div>
       Metas
+    </button>
+    <button class="nav-item" data-page="agenda">
+      <div class="nav-icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      </div>
+      Agenda
     </button>
     <button class="nav-item" data-page="repasses">
       <div class="nav-icon-wrap">
@@ -2203,6 +2255,54 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 </div>
 
 <!-- ── MODAL META ────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modalAgenda" onclick="closeIfOverlay(event,'modalAgenda')">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="agTitulo">Novo lembrete</div>
+    <div class="form-group">
+      <label class="form-label">Descrição</label>
+      <input class="form-input" id="agDesc" type="text" placeholder="Ex.: Conta de luz, Aluguel, Sofá">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Valor (opcional)</label>
+        <div class="amount-input-wrap">
+          <span class="amount-prefix">R$</span>
+          <input class="form-input" id="agValor" type="number" inputmode="decimal" placeholder="variável" step="0.01">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Dia do vencimento</label>
+        <input class="form-input" id="agDia" type="number" inputmode="numeric" min="1" max="31" placeholder="1–31">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tipo</label>
+      <select class="form-select" id="agTipo" onchange="agendaAtualizaCampos()">
+        <option value="fixa">Fixa (todo mês)</option>
+        <option value="parcelada">Parcelada</option>
+        <option value="avulsa">Avulsa (uma vez)</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label" id="agIniLabel">Começa em</label>
+        <select class="form-select" id="agIni"></select>
+      </div>
+      <div class="form-group" id="agParcelasWrap" style="display:none">
+        <label class="form-label">Nº de parcelas</label>
+        <input class="form-input" id="agParcelas" type="number" inputmode="numeric" min="1" placeholder="Ex.: 10">
+      </div>
+      <div class="form-group" id="agFimWrap">
+        <label class="form-label">Termina em</label>
+        <select class="form-select" id="agFim"></select>
+      </div>
+    </div>
+    <button class="btn-primary" onclick="salvarAgenda()">Salvar lembrete</button>
+    <button class="btn-secondary" id="agExcluir" style="display:none;margin-top:8px;width:100%;color:var(--red)" onclick="excluirAgenda()">Excluir lembrete</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalMeta" onclick="closeIfOverlay(event,'modalMeta')">
   <div class="modal">
     <div class="modal-handle"></div>
@@ -2306,7 +2406,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
      como network-first (igual index.html), então não precisa de
      cache-busting manual (?v=N) — sempre carrega junto com a versão mais
      recente do index.html. -->
-<script src="date-utils.js?v=2026-11-11c"></script>
+<script src="date-utils.js?v=2026-11-11d"></script>
 <script>
 // Defesa contra index.html NOVO + date-utils.js ANTIGO em cache (aconteceu em
 // 15/10/2026: loadData() quebrava com "resolverSaldoCaixinha is not defined" e
@@ -2315,7 +2415,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // recarrega UMA vez e, se persistir, avisa. Ao criar função nova em
 // date-utils.js que o index.html use, acrescente-a nesta checagem.
 (function () {
-  if (typeof gerarListaMeses === 'function' && typeof resolverSaldoCaixinha === 'function') return;
+  if (typeof gerarListaMeses === 'function' && typeof resolverSaldoCaixinha === 'function' && typeof ocorrenciasAgenda === 'function') return;
   try {
     if (!sessionStorage.getItem('dateUtilsRecarregado')) {
       sessionStorage.setItem('dateUtilsRecarregado', '1');
@@ -2339,7 +2439,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-11c';
+const APP_VERSION = '2026-11-11d';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -2658,6 +2758,7 @@ const PAGES = {
   faturas:        renderFaturas,
   relatorios:     renderRelatorios,
   metas:          renderMetas,
+  agenda:         renderAgenda,
   config:         renderConfig,
   repasses:       renderRepasses,
   sincronizacao:  renderSincronizacao,
@@ -5489,6 +5590,198 @@ function renderRelContas() {
       </div>
     </div>
   `).join('');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// AGENDA — lembretes de pagamento (migration 021). Só lembrete visual: nada
+// aqui entra em saldo, resumo, metas ou relatório, e loadData() não lê estas
+// tabelas (carregamento próprio, isolado: se a tabela não existir a Agenda
+// avisa e o resto do app segue normal).
+// ════════════════════════════════════════════════════════════════════════════
+state._agenda = [];
+state._agendaPagos = new Set();   // chave: `${lembrete_id}|${ano}-${mes}`
+state._agendaIdx = null;          // ano*12+mes exibido
+state._agendaEditId = null;
+
+function _agendaChave(id, ano, mes) { return `${id}|${ano}-${mes}`; }
+
+function _agendaMesAtual() {
+  const [a, m] = mesNomeToAnoMes(MESES_NOMES[getCurrentMonthIndex()]);
+  return a * 12 + m;
+}
+
+async function carregarAgenda() {
+  if (!_sb) return true;
+  const [l, p] = await Promise.all([
+    _sb.from('agenda_lembretes').select('*').eq('ativo', true),
+    _sb.from('agenda_pagos').select('*'),
+  ]);
+  if (l.error || p.error) { console.error('agenda', l.error || p.error); return false; }
+  state._agenda = l.data || [];
+  state._agendaPagos = new Set((p.data || []).map(r => _agendaChave(r.lembrete_id, r.ano, r.mes)));
+  return true;
+}
+
+function agendaMes(dir) {
+  if (state._agendaIdx == null) state._agendaIdx = _agendaMesAtual();
+  const [a0, m0] = mesNomeToAnoMes(MESES_NOMES[0]);
+  const [a1, m1] = mesNomeToAnoMes(MESES_NOMES[MESES_NOMES.length - 1]);
+  state._agendaIdx = Math.max(a0 * 12 + m0, Math.min(a1 * 12 + m1, state._agendaIdx + dir));
+  renderAgenda(false);
+}
+
+async function renderAgenda(recarregar = true) {
+  const lista = document.getElementById('agenda-lista');
+  if (!lista) return;
+  if (state._agendaIdx == null) state._agendaIdx = _agendaMesAtual();
+  if (recarregar) {
+    const ok = await carregarAgenda();
+    if (!ok) {
+      lista.innerHTML = '<div class="empty-state"><div class="emoji">🗓️</div><p>A Agenda ainda não foi ativada no banco.<br>Falta aplicar a migration 021.</p></div>';
+      document.getElementById('agenda-resumo').innerHTML = '';
+      return;
+    }
+  }
+  const idx = state._agendaIdx;
+  const ano = Math.floor((idx - 1) / 12), mes = ((idx - 1) % 12) + 1;
+  document.getElementById('agenda-mes-label').textContent = MESES[MESES_NOMES.findIndex(n => { const [a, m] = mesNomeToAnoMes(n); return a * 12 + m === idx; })] || `${mes}/${ano}`;
+
+  const hoje = new Date();
+  const hojeIdx = hoje.getFullYear() * 12 + hoje.getMonth() + 1;
+  const diaHoje = hoje.getDate();
+  const ocs = ocorrenciasAgenda(state._agenda, ano, mes).map(o => {
+    const paga = state._agendaPagos.has(_agendaChave(o.lembrete.id, ano, mes));
+    let estado = 'avencer';
+    if (paga) estado = 'paga';
+    else if (idx < hojeIdx || (idx === hojeIdx && o.dia < diaHoje)) estado = 'atrasada';
+    else if (idx === hojeIdx && o.dia === diaHoje) estado = 'hoje';
+    return { ...o, paga, estado };
+  });
+
+  const soma = arr => arr.reduce((s, o) => s + (Number(o.lembrete.valor) || 0), 0);
+  const pend = ocs.filter(o => !o.paga), pagas = ocs.filter(o => o.paga);
+  const semValor = pend.filter(o => o.lembrete.valor == null).length;
+  document.getElementById('agenda-resumo').innerHTML = ocs.length ? `
+    <div><div class="ag-r-l">A pagar (${pend.length})</div><div class="ag-r-v" style="color:${pend.length ? 'var(--red)' : 'var(--text)'}">${fmt(soma(pend))}</div>${semValor ? `<div class="ag-meta">+ ${semValor} sem valor definido</div>` : ''}</div>
+    <div><div class="ag-r-l">Pago (${pagas.length})</div><div class="ag-r-v" style="color:var(--green)">${fmt(soma(pagas))}</div></div>` : '';
+
+  if (!ocs.length) {
+    lista.innerHTML = '<div class="empty-state"><div class="emoji">🗓️</div><p>Nenhum lembrete neste mês.<br>Toque no + para adicionar.</p></div>';
+    return;
+  }
+  const cor = { atrasada: 'var(--red)', hoje: 'var(--amber)', avencer: 'var(--accent)', paga: 'var(--green)' };
+  const secoes = [['atrasada', 'Atrasadas'], ['hoje', 'Vence hoje'], ['avencer', 'A vencer'], ['paga', 'Pagas']];
+  lista.innerHTML = secoes.map(([est, titulo]) => {
+    const itens = ocs.filter(o => o.estado === est);
+    if (!itens.length) return '';
+    return `<div class="ag-sec">${titulo}</div>` + itens.map(o => {
+      const l = o.lembrete;
+      const tipoTxt = l.tipo === 'fixa' ? 'fixa' : l.tipo === 'avulsa' ? 'avulsa' : `parcela ${o.parcela}/${o.total}`;
+      const tag = o.estado === 'atrasada' ? '<span class="ag-tag-atraso"> · atrasada</span>' : o.estado === 'hoje' ? '<span class="ag-tag-hoje"> · hoje</span>' : '';
+      return `
+        <div class="ag-item${o.paga ? ' paga' : ''}" style="--ag-cor:${cor[o.estado]}">
+          <button class="ag-check" onclick="agendaTogglePago('${l.id}', ${ano}, ${mes})" title="${o.paga ? 'Desmarcar' : 'Marcar como pago'}">${o.paga ? '✓' : ''}</button>
+          <div class="ag-dia">${o.dia}<small>dia</small></div>
+          <div class="ag-corpo" onclick="abrirAgendaModal('${l.id}')">
+            <div class="ag-desc">${_escHtml(l.descricao)}</div>
+            <div class="ag-meta">${tipoTxt}${tag}</div>
+          </div>
+          <div class="ag-valor">${l.valor != null ? fmt(l.valor) : '<span class="ag-meta">variável</span>'}</div>
+        </div>`;
+    }).join('');
+  }).join('');
+}
+
+async function agendaTogglePago(id, ano, mes) {
+  const chave = _agendaChave(id, ano, mes);
+  const estava = state._agendaPagos.has(chave);
+  // Atualiza na tela já (otimista) e desfaz se o banco recusar.
+  if (estava) state._agendaPagos.delete(chave); else state._agendaPagos.add(chave);
+  renderAgenda(false);
+  const { error } = estava
+    ? await _sb.from('agenda_pagos').delete().eq('lembrete_id', id).eq('ano', ano).eq('mes', mes)
+    : await _sb.from('agenda_pagos').upsert({ lembrete_id: id, ano, mes }, { onConflict: 'lembrete_id,ano,mes' });
+  if (error) {
+    console.error('agenda pago', error);
+    if (estava) state._agendaPagos.add(chave); else state._agendaPagos.delete(chave);
+    renderAgenda(false);
+    showToast('Erro ao salvar ❌');
+  }
+}
+
+function _agendaOptsMes(vazio) {
+  return (vazio ? `<option value="">${vazio}</option>` : '') +
+    MESES_NOMES.map((n, i) => { const [a, m] = mesNomeToAnoMes(n); return `<option value="${a}-${m}">${MESES[i]}</option>`; }).join('');
+}
+
+function agendaAtualizaCampos() {
+  const t = document.getElementById('agTipo').value;
+  document.getElementById('agParcelasWrap').style.display = t === 'parcelada' ? '' : 'none';
+  document.getElementById('agFimWrap').style.display = t === 'fixa' ? '' : 'none';
+  document.getElementById('agIniLabel').textContent = t === 'avulsa' ? 'Mês' : t === 'parcelada' ? 'Primeira parcela em' : 'Começa em';
+}
+
+function abrirAgendaModal(id) {
+  const l = id ? state._agenda.find(x => x.id === id) : null;
+  state._agendaEditId = l ? l.id : null;
+  document.getElementById('agTitulo').textContent = l ? 'Editar lembrete' : 'Novo lembrete';
+  document.getElementById('agIni').innerHTML = _agendaOptsMes();
+  document.getElementById('agFim').innerHTML = _agendaOptsMes('Sem fim');
+  const hojeIdx = state._agendaIdx != null ? state._agendaIdx : _agendaMesAtual();
+  const padraoIni = `${Math.floor((hojeIdx - 1) / 12)}-${((hojeIdx - 1) % 12) + 1}`;
+  document.getElementById('agDesc').value = l ? l.descricao : '';
+  document.getElementById('agValor').value = l && l.valor != null ? l.valor : '';
+  document.getElementById('agDia').value = l ? l.dia : '';
+  document.getElementById('agTipo').value = l ? l.tipo : 'fixa';
+  document.getElementById('agIni').value = l ? `${l.ano_ini}-${l.mes_ini}` : padraoIni;
+  document.getElementById('agParcelas').value = l && l.parcelas ? l.parcelas : '';
+  document.getElementById('agFim').value = l && l.ano_fim && l.mes_fim ? `${l.ano_fim}-${l.mes_fim}` : '';
+  document.getElementById('agExcluir').style.display = l ? '' : 'none';
+  agendaAtualizaCampos();
+  document.getElementById('modalAgenda').classList.add('open');
+}
+
+async function salvarAgenda() {
+  const descricao = document.getElementById('agDesc').value.trim();
+  const valorTxt = document.getElementById('agValor').value;
+  const dia = parseInt(document.getElementById('agDia').value, 10);
+  const tipo = document.getElementById('agTipo').value;
+  const [anoIni, mesIni] = (document.getElementById('agIni').value || '').split('-').map(Number);
+  const parcelas = parseInt(document.getElementById('agParcelas').value, 10);
+  const fimVal = document.getElementById('agFim').value;
+  if (!descricao) { showToast('Informe a descrição'); return; }
+  if (!dia || dia < 1 || dia > 31) { showToast('Dia do vencimento entre 1 e 31'); return; }
+  if (!anoIni || !mesIni) { showToast('Escolha o mês'); return; }
+  if (tipo === 'parcelada' && (!parcelas || parcelas < 1)) { showToast('Informe o número de parcelas'); return; }
+  const row = {
+    descricao,
+    valor: valorTxt === '' ? null : parseFloat(valorTxt),
+    tipo, dia, mes_ini: mesIni, ano_ini: anoIni,
+    parcelas: tipo === 'parcelada' ? parcelas : null,
+    mes_fim: null, ano_fim: null,
+  };
+  if (tipo === 'fixa' && fimVal) {
+    const [af, mf] = fimVal.split('-').map(Number);
+    if (af * 12 + mf < anoIni * 12 + mesIni) { showToast('O fim não pode ser antes do início'); return; }
+    row.ano_fim = af; row.mes_fim = mf;
+  }
+  const { error } = state._agendaEditId
+    ? await _sb.from('agenda_lembretes').update(row).eq('id', state._agendaEditId)
+    : await _sb.from('agenda_lembretes').insert(row);
+  if (error) { console.error('agenda salvar', error); showToast('Erro ao salvar ❌'); return; }
+  closeModal('modalAgenda');
+  showToast('Lembrete salvo ✅');
+  renderAgenda(true);
+}
+
+async function excluirAgenda() {
+  if (!state._agendaEditId) return;
+  if (!confirm('Excluir este lembrete (e os meses marcados como pagos)?')) return;
+  const { error } = await _sb.from('agenda_lembretes').delete().eq('id', state._agendaEditId);
+  if (error) { console.error('agenda excluir', error); showToast('Erro ao excluir ❌'); return; }
+  closeModal('modalAgenda');
+  showToast('Lembrete excluído');
+  renderAgenda(true);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

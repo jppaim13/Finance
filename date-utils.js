@@ -271,3 +271,32 @@ function resolverSaldoCaixinha(caixinha, saldoCalculado, reservas) {
   const r = (reservas || []).find(x => x.identificacao === caixinha.pluggy_reserva_id);
   return r ? { saldo: Number(r.valor), reserva: r } : { saldo: saldoCalculado, reserva: null };
 }
+
+// ─── Agenda de lembretes ───────────────────────────────────────────────────
+// Ocorrências de lembretes (tabela `agenda_lembretes`) em um ano/mês.
+// fixa = todo mês de (mes_ini,ano_ini) até (mes_fim,ano_fim) se houver;
+// parcelada = `parcelas` meses seguidos; avulsa = só no mês de início.
+// `dia` em mês curto vira o último dia. Devolve [{ lembrete, dia, parcela, total }]
+// ordenado por dia. Só lembrete visual: não toca saldo nem relatório.
+function ocorrenciasAgenda(lembretes, ano, mes) {
+  const idx = ano * 12 + mes;
+  const ultimoDia = new Date(ano, mes, 0).getDate();
+  const out = [];
+  for (const l of (lembretes || [])) {
+    if (!l || l.ativo === false) continue;
+    const ini = Number(l.ano_ini) * 12 + Number(l.mes_ini);
+    if (idx < ini) continue;
+    let parcela = null, total = null;
+    if (l.tipo === 'avulsa') {
+      if (idx !== ini) continue;
+    } else if (l.tipo === 'parcelada') {
+      total = Number(l.parcelas || 1);
+      if (idx - ini >= total) continue;
+      parcela = idx - ini + 1;
+    } else { // fixa
+      if (l.ano_fim && l.mes_fim && idx > Number(l.ano_fim) * 12 + Number(l.mes_fim)) continue;
+    }
+    out.push({ lembrete: l, dia: Math.min(Number(l.dia) || 1, ultimoDia), parcela, total });
+  }
+  return out.sort((a, b) => a.dia - b.dia || String(a.lembrete.descricao).localeCompare(String(b.lembrete.descricao)));
+}
