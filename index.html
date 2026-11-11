@@ -150,6 +150,29 @@ body {
   border-radius: 10px;
   padding: 4px 10px;
 }
+/* Celular: barra flutuante com 4 telas + "Mais"; a ativa vira uma pílula escura */
+@media (max-width: 767px) {
+  .nav-bottom {
+    left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom));
+    padding: 6px; gap: 2px; overflow: visible;
+    border: 1px solid var(--border); border-radius: 999px;
+    box-shadow: 0 6px 24px rgba(31,35,40,.16);
+  }
+  .nav-item { flex: 1 1 0; min-width: 0; padding: 7px 2px; border-radius: 999px; transition: background var(--transition), color var(--transition); }
+  .nav-item.active { background: var(--text); color: #fff; }
+  .nav-item.active .nav-icon-wrap { background: none; padding: 0; }
+  .fab { bottom: calc(86px + env(safe-area-inset-bottom)); }
+  .fab-lote { bottom: calc(148px + env(safe-area-inset-bottom)); }
+  .ocultar-btn, .acesso-pill { bottom: calc(88px + env(safe-area-inset-bottom)); }
+  .main-content { padding-bottom: 120px; }
+}
+.nav-sheet-fundo { display: none; position: fixed; inset: 0; background: rgba(15,18,22,.35); z-index: 300; }
+.nav-sheet-fundo.aberto { display: block; }
+.nav-sheet { position: absolute; left: 12px; right: 12px; bottom: calc(80px + env(safe-area-inset-bottom)); background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px; padding: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.2); display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.nav-sheet-t { grid-column: 1 / -1; font-size: 10px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--text-3); padding: 0 2px 2px; }
+.nav-sheet .nav-item { flex: none; width: auto; padding: 12px 4px; border-radius: 14px; background: var(--bg-hover); color: var(--text-2); font-size: 11px; }
+.nav-sheet .nav-item.active { background: var(--text); color: #fff; }
+@media (min-width: 768px) { .nav-sheet-fundo { display: none !important; } }
 
 /* Desktop sidebar */
 @media (min-width: 768px) {
@@ -1095,6 +1118,74 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 .fat-item-total { display: flex; justify-content: space-between; padding: 6px 4px 0; margin-top: 4px; border-top: 1px solid var(--border-2); font-size: 12px; font-weight: 600; color: var(--text); }
 .fat-item-total span:last-child { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
+/* Cartão desenhado (cor do banco) no lugar da marquinha da fatura */
+.fat-cartao { position: relative; width: 38px; height: 25px; border-radius: 5px; flex-shrink: 0; background: linear-gradient(135deg, var(--c1), var(--c2)); box-shadow: 0 2px 5px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.25); overflow: hidden; }
+.fat-cartao::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, rgba(255,255,255,.28) 0 28%, transparent 28% 100%); }
+.fat-cartao i { position: absolute; left: 5px; top: 8px; width: 8px; height: 6px; border-radius: 1.5px; background: linear-gradient(135deg, #f6e3a1, #c9a24a); }
+
+/* Próximas faturas (dentro da fatura aberta) */
+.fat-prox { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px 10px; margin-bottom: 8px; }
+.fat-prox-t { font-size: 9.5px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--text-3); margin-bottom: 6px; }
+.fat-prox-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.fat-prox-box { border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px; min-width: 0; }
+.fat-prox-box.atual { border-color: var(--accent); background: var(--accent-soft); }
+.fat-prox-m { font-size: 11px; font-weight: 600; color: var(--text-2); }
+.fat-prox-bar { height: 28px; display: flex; align-items: flex-end; margin: 4px 0; }
+.fat-prox-bar > div { width: 100%; border-radius: 3px 3px 0 0; background: oklch(0.80 0.06 195); min-height: 2px; }
+.fat-prox-box.atual .fat-prox-bar > div { background: var(--accent); }
+.fat-prox-v { font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+/* Valor de destaque: reais grandes, centavos pequenos */
+.hv-cur { font-size: .5em; color: var(--text-3); margin-right: .15em; letter-spacing: 0; }
+.hv-cents { font-size: .5em; color: var(--text-2); letter-spacing: 0; }
+
+/* Ilustrações (SVG em gradiente, sem imagem externa) */
+.ilus svg { width: 100%; height: 100%; display: block; }
+.hero-card { position: relative; }
+.hero-card .ilus { position: absolute; top: 12px; right: 14px; width: 72px; height: 72px; pointer-events: none; }
+.hero-card .hero-label, .hero-card .hero-value { padding-right: 76px; }
+@media (max-width: 420px) { .hero-card .ilus { width: 58px; height: 58px; } .hero-card .hero-label, .hero-card .hero-value { padding-right: 60px; } }
+.ilus-sm { width: 56px; height: 56px; flex-shrink: 0; }
+.page-title-wrap { display: flex; align-items: center; gap: 10px; }
+.page-title-wrap .ilus { width: 46px; height: 46px; flex-shrink: 0; }
+
+/* Contas a pagar (Dashboard) */
+.venc-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 16px 10px; margin-top: 12px; box-shadow: var(--shadow-sm); }
+.venc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.venc-titulo { font-size: 13px; font-weight: 600; color: var(--text); }
+.venc-titulo span { font-weight: 400; color: var(--text-3); font-size: 11.5px; }
+.venc-total { font-family: var(--font-mono); font-size: 26px; font-weight: 500; letter-spacing: -.8px; margin-top: 6px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.venc-sub { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.venc-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 12px 0 6px; padding-bottom: 2px; }
+.venc-chips::-webkit-scrollbar { display: none; }
+.venc-chip { flex: 0 0 auto; min-width: 48px; padding: 7px 8px 5px; border-radius: 10px; border: 1px solid var(--border-2); background: var(--bg-card); color: var(--text); font-family: var(--font-mono); font-size: 14px; font-weight: 600; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.venc-chip small { font-family: var(--font); font-size: 9px; font-weight: 500; color: var(--text-3); letter-spacing: .3px; }
+.venc-dots { display: flex; gap: 2px; height: 4px; }
+.venc-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+.venc-chip.atr .venc-dots i { background: var(--red); }
+.venc-chip.ok { color: var(--text-3); }
+.venc-chip.ok .venc-dots i { background: var(--green); }
+.venc-chip.sel { background: var(--accent); border-color: var(--accent); color: #fff; }
+.venc-chip.sel small { color: rgba(255,255,255,.8); }
+.venc-chip.sel .venc-dots i { background: #fff; }
+.venc-item { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--bg-hover); }
+.venc-item:last-child { border-bottom: none; }
+.venc-item.paga { opacity: .55; }
+.venc-check { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--border-2); background: var(--bg-card); color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 0; }
+.venc-item.paga .venc-check { background: var(--green); border-color: var(--green); }
+.venc-item.atrasada .venc-check { border-color: var(--red); }
+.venc-corpo { flex: 1; min-width: 0; cursor: pointer; }
+.venc-desc { font-size: 13px; font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
+.venc-item.paga .venc-desc { text-decoration: line-through; }
+.venc-meta { font-size: 11px; color: var(--text-3); }
+.venc-meta .atr { color: var(--red); font-weight: 600; }
+.venc-val { font-family: var(--font-mono); font-size: 13px; font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Seletor de mês: o rótulo abre a lista de meses */
+.month-pick { font-size: 14px; font-weight: 500; min-width: 80px; justify-content: center; position: relative; display: inline-flex; align-items: center; gap: 2px; cursor: pointer; }
+.month-pick::after { content: '⌄'; font-size: 12px; color: var(--text-3); margin-top: -5px; }
+.month-pick select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+
 /* Celular: quatro linhas empilhadas, rótulo de coluna vira prefixo da célula */
 .fat-head { display: none; }
 .fat-row {
@@ -1375,6 +1466,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 
       <!-- Herói: patrimônio, com a divisão líquido x investido -->
       <div class="hero-card">
+        <div class="ilus" data-ilus="carteira"></div>
         <div class="hero-label" id="pat-label">Patrimônio</div>
         <div class="hero-value" id="kpi-patrimonio">R$ —</div>
         <div class="pat-bar">
@@ -1433,10 +1525,10 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
         </div>
       </div>
 
-      <!-- Fixo × Pluggy: sugestão de vínculo (confirmar/desfazer) e "previsto,
-           ainda não debitado" — populado por renderFixoConciliacao(), fica
-           vazio (sem section-label nenhum) quando não há nada relevante. -->
-      <div id="fixo-conciliacao"></div>
+      <!-- Contas a pagar do mês: faturas dos cartões + lembretes da Agenda,
+           com chips por dia. Só lembrete visual — não entra em nenhum total
+           do app (a Agenda nunca entra). Populado por renderVencimentos(). -->
+      <div id="dash-vencimentos"></div>
 
       <div class="section-label">Contas e caixinhas</div>
       <div class="card">
@@ -1518,9 +1610,12 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
     <!-- ── FATURAS ──────────────────────────────────────────────────── -->
     <div class="page" id="page-faturas" data-screen-label="Faturas">
       <div class="page-header">
-        <div>
-          <div class="page-title">Faturas</div>
-          <div class="page-subtitle" id="faturas-subtitle">—</div>
+        <div class="page-title-wrap">
+          <div class="ilus" data-ilus="cartao"></div>
+          <div>
+            <div class="page-title">Faturas</div>
+            <div class="page-subtitle" id="faturas-subtitle">—</div>
+          </div>
         </div>
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end">
           <div style="text-align:right">
@@ -1893,7 +1988,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
       <div class="nav-icon-wrap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       </div>
-      Dashboard
+      Início
     </button>
     <button class="nav-item" data-page="extrato">
       <div class="nav-icon-wrap">
@@ -1907,50 +2002,62 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
       </div>
       Faturas
     </button>
-    <button class="nav-item" data-page="relatorios">
-      <div class="nav-icon-wrap">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-      </div>
-      Relatórios
-    </button>
-    <button class="nav-item" data-page="metas">
-      <div class="nav-icon-wrap">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-      </div>
-      Metas
-    </button>
     <button class="nav-item" data-page="agenda">
       <div class="nav-icon-wrap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
       </div>
       Agenda
     </button>
-    <button class="nav-item" data-page="repasses">
+    <button class="nav-item" id="navMais" type="button" onclick="abrirNavSheet()" aria-label="Mais telas">
+      <div class="nav-icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </div>
+      Mais
+    </button>
+  </nav>
+
+  <!-- "Mais" do menu do celular: as telas que não cabem na barra -->
+  <div class="nav-sheet-fundo" id="navSheet" onclick="fecharNavSheet(event)">
+    <div class="nav-sheet">
+      <div class="nav-sheet-t">Mais telas</div>
+        <button class="nav-item" data-page="relatorios">
+      <div class="nav-icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+      </div>
+      Relatórios
+    </button>
+        <button class="nav-item" data-page="metas">
+      <div class="nav-icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+      </div>
+      Metas
+    </button>
+        <button class="nav-item" data-page="repasses">
       <div class="nav-icon-wrap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
       </div>
       Repasses
     </button>
-    <button class="nav-item" data-page="sincronizacao">
-      <div class="nav-icon-wrap">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-      </div>
-      Sincro
-    </button>
-    <button class="nav-item" data-page="categorizacao">
+        <button class="nav-item" data-page="categorizacao">
       <div class="nav-icon-wrap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20.59 13.41L13.42 20.58a2 2 0 01-2.83 0L2.59 12.58A2 2 0 012 11.17V4a2 2 0 012-2h7.17a2 2 0 011.42.59l8 8a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
       </div>
-      Categ.
+      Categorização
     </button>
-    <button class="nav-item" data-page="config">
+        <button class="nav-item" data-page="sincronizacao">
+      <div class="nav-icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+      </div>
+      Sincronização
+    </button>
+        <button class="nav-item" data-page="config">
       <div class="nav-icon-wrap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
       </div>
       Config
     </button>
-    
-  </nav>
+    </div>
+  </div>
 
   <!-- Ocultar/mostrar saldos (privacidade) -->
   <button class="ocultar-btn" id="ocultarBtn" onclick="alternarOcultarSaldos()" title="Ocultar saldos" aria-label="Ocultar saldos">👁️</button>
@@ -2439,7 +2546,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-11d';
+const APP_VERSION = '2026-11-11e';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -2878,8 +2985,15 @@ function navigate(page) {
   document.querySelectorAll('[data-page]').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + page)?.classList.add('active');
   document.querySelectorAll(`[data-page="${page}"]`).forEach(b => b.classList.add('active'));
+  // Celular: "Mais" fica ativo quando a tela aberta é uma das que moram nele.
+  document.getElementById('navMais')?.classList.toggle('active', !!document.querySelector(`#navSheet [data-page="${page}"]`));
+  document.getElementById('navSheet')?.classList.remove('aberto');
   PAGES[page]?.();
 }
+
+function abrirNavSheet() { document.getElementById('navSheet')?.classList.add('aberto'); }
+// Fecha ao tocar no fundo escuro; os botões de tela fecham via navigate().
+function fecharNavSheet(ev) { if (ev.target.id === 'navSheet') ev.target.classList.remove('aberto'); }
 
 // ════════════════════════════════════════════════════════════════════════════
 // MONTH
@@ -2893,8 +3007,33 @@ function updateMonthLabels() {
   const m = MESES[state.currentMonth];
   ['currentMonthLabel','currentMonthLabelE','currentMonthLabelF','currentMonthLabelR','currentMonthLabelS'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.textContent = m;
+    if (!el) return;
+    el.textContent = m;
+    _instalarSeletorMes(el);
   });
+}
+// Tocar no nome do mês abre a lista de meses (select nativo invisível por cima
+// do rótulo — no celular abre o seletor do próprio sistema). Instalado uma vez
+// por rótulo; as opções são refeitas se a lista de meses crescer.
+function _instalarSeletorMes(el) {
+  let sel = el.parentNode.querySelector('select.month-pick-sel');
+  if (!sel) {
+    const wrap = document.createElement('label');
+    wrap.className = 'month-pick';
+    el.parentNode.insertBefore(wrap, el);
+    wrap.appendChild(el);
+    sel = document.createElement('select');
+    sel.className = 'month-pick-sel';
+    sel.setAttribute('aria-label', 'Escolher mês');
+    sel.onchange = () => {
+      state.currentMonth = Number(sel.value);
+      updateMonthLabels();
+      loadData();
+    };
+    wrap.appendChild(sel);
+  }
+  if (sel.options.length !== MESES.length) sel.innerHTML = MESES.map((n, i) => `<option value="${i}">${n}</option>`).join('');
+  sel.value = String(state.currentMonth);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -3474,7 +3613,7 @@ function renderDashboard() {
   elSaldo.className = 'metric-value ' + _classePorSinal(saldo);
   document.getElementById('kpi-saldo-acum').textContent = 'acumulado ' + fmt(acum);
 
-  document.getElementById('kpi-patrimonio').textContent = fmt(patrimonio);
+  document.getElementById('kpi-patrimonio').innerHTML = fmtHero(patrimonio);
 
   // Barra: fatia de contas (líquido) contra o restante (investido).
   // Patrimônio pode ser <= 0 (conta negativa e nenhuma caixinha) — nesse caso
@@ -3504,6 +3643,107 @@ function renderDashboard() {
   renderAccounts();
   renderCaixinhas();
   atualizarKpiPendentes();
+  renderVencimentos();
+}
+
+// ── Contas a pagar (Dashboard) ───────────────────────────────────────────────
+// Faturas do mês selecionado (vencimento real da Pluggy quando houver) + lembretes
+// da Agenda do mesmo mês. Só exibe; nada daqui soma em saldo/resumo/relatório.
+state._vencDia = null;        // dia filtrado pelos chips (null = todos)
+state._agendaBuscadaEm = 0;   // a Agenda tem carga própria; o Dashboard a pede no máximo 1x/min
+
+function _vencimentosDoMes() {
+  const mi = state.currentMonth, mesNome = MESES_NOMES[mi];
+  const [ano, mes] = mesNomeToAnoMes(mesNome);
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const itens = [];
+  const faturas = (state.resumo[mi] || {}).faturas || {};
+  state.cartoes.forEach(c => {
+    const v = faturas[c.nome] || 0;
+    if (v <= 0) return;
+    const due = _vencimentoRealPluggy(c.nome, ano, mes) || calcularDataVencimento(ano, mes, c.vencimento);
+    itens.push({ tipo: 'fatura', id: c.nome, conta: c.conta || '', desc: 'Fatura ' + c.nome, dia: due.getDate(), data: due,
+                 valor: v, pago: !!(state.faturasPagas || {})[c.nome + '-' + mesNome] });
+  });
+  if (state._agendaCarregada) {
+    ocorrenciasAgenda(state._agenda || [], ano, mes).forEach(o => {
+      const l = o.lembrete;
+      itens.push({ tipo: 'agenda', id: l.id, desc: l.descricao, dia: o.dia, data: new Date(ano, mes - 1, o.dia),
+                   valor: l.valor != null ? Number(l.valor) : null,
+                   sub: l.tipo === 'parcelada' ? `parcela ${o.parcela}/${o.total}` : l.tipo === 'avulsa' ? 'avulsa' : 'fixa',
+                   pago: (state._agendaPagos || new Set()).has(_agendaChave(l.id, ano, mes)) });
+    });
+  }
+  itens.forEach(it => { it.atrasada = !it.pago && it.data < hoje; });
+  return { itens: itens.sort((a, b) => a.dia - b.dia || String(a.desc).localeCompare(String(b.desc))), ano, mes };
+}
+
+function renderVencimentos() {
+  const el = document.getElementById('dash-vencimentos');
+  if (!el) return;
+  // Carga preguiçosa da Agenda (tabelas da migration 021). Falhou = segue só com faturas.
+  if (_sb && Date.now() - state._agendaBuscadaEm > 60000) {
+    state._agendaBuscadaEm = Date.now();
+    carregarAgenda().then(ok => { if (ok && paginaAtiva() === 'dashboard') renderVencimentos(); });
+  }
+  const { itens, ano, mes } = _vencimentosDoMes();
+  if (!itens.length) {
+    el.innerHTML = `<div class="venc-card"><div class="venc-head"><div><div class="venc-titulo">Contas a pagar</div>
+      <div class="venc-sub" style="margin-top:6px">Nada vencendo em ${MESES[state.currentMonth]}.</div></div>
+      <div class="ilus ilus-sm">${ILUS.calendario}</div></div></div>`;
+    return;
+  }
+  const pend = itens.filter(i => !i.pago);
+  const total = pend.reduce((s, i) => s + (i.valor || 0), 0);
+  const semValor = pend.filter(i => i.valor == null).length;
+  const proximo = pend[0];
+  const dias = [...new Set(itens.map(i => i.dia))];
+  if (state._vencDia != null && !dias.includes(state._vencDia)) state._vencDia = null;
+  const dd = d => String(d).padStart(2, '0');
+
+  const chips = dias.map(d => {
+    const doDia = itens.filter(i => i.dia === d);
+    const cls = [state._vencDia === d ? 'sel' : '', doDia.some(i => i.atrasada) ? 'atr' : '', doDia.every(i => i.pago) ? 'ok' : ''].join(' ');
+    const pontos = '<i></i>'.repeat(Math.min(5, doDia.length));
+    return `<button class="venc-chip ${cls}" onclick="vencSelDia(${d})"><span>${dd(d)}</span><span class="venc-dots">${pontos}</span></button>`;
+  }).join('');
+
+  const lista = itens.filter(i => state._vencDia == null || i.dia === state._vencDia).map(i => {
+    let check, abrir;
+    if (i.tipo === 'agenda') {
+      check = `<button class="venc-check" onclick="agendaTogglePago('${_jsStrAttr(i.id)}', ${ano}, ${mes})" title="${i.pago ? 'Desmarcar' : 'Marcar como pago'}">${i.pago ? '✓' : ''}</button>`;
+      abrir = `navigate('agenda')`;
+    } else {
+      check = i.pago
+        ? `<button class="venc-check" disabled title="Fatura paga">✓</button>`
+        : `<button class="venc-check" onclick="abrirModalPagarFatura('${_jsStrAttr(i.id)}','${_jsStrAttr(i.conta)}',${i.valor},'${formatarData(i.data)}')" title="Pagar fatura"></button>`;
+      abrir = `navigate('faturas')`;
+    }
+    const meta = `dia ${dd(i.dia)} · ${i.tipo === 'fatura' ? 'fatura do cartão' : _escHtml(i.sub)}${i.atrasada ? ' · <span class="atr">atrasada</span>' : ''}`;
+    return `<div class="venc-item${i.pago ? ' paga' : ''}${i.atrasada ? ' atrasada' : ''}">
+      ${check}
+      <div class="venc-corpo" onclick="${abrir}"><div class="venc-desc">${_escHtml(i.desc)}</div><div class="venc-meta">${meta}</div></div>
+      <div class="venc-val">${i.valor != null ? fmt(i.valor) : '<span class="venc-meta">variável</span>'}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="venc-card">
+    <div class="venc-head">
+      <div style="min-width:0">
+        <div class="venc-titulo">Contas a pagar${proximo ? ` <span>· próxima: dia ${dd(proximo.dia)}</span>` : ''}</div>
+        <div class="venc-total">${fmtHero(total)}</div>
+        <div class="venc-sub">${itens.length - pend.length} de ${itens.length} pagas${semValor ? ` · ${semValor} sem valor definido` : ''}</div>
+      </div>
+      <div class="ilus ilus-sm">${ILUS.calendario}</div>
+    </div>
+    <div class="venc-chips">${chips}</div>
+    <div class="venc-lista">${lista}</div>
+  </div>`;
+}
+
+function vencSelDia(d) {
+  state._vencDia = state._vencDia === d ? null : d;
+  renderVencimentos();
 }
 
 // Ocorrências de Fixo/Parcelado (origem='conta') ativas num ano-mês —
@@ -4313,7 +4553,7 @@ function renderFaturas() {
     if (v > 0 && !(state.faturasPagas || {})[c.nome + "-" + mesNome]) { totalAPagar += v; nAbertas++; }
   });
   const totalEl = document.getElementById('faturas-total');
-  if (totalEl) totalEl.textContent = fmt(totalAPagar);
+  if (totalEl) totalEl.innerHTML = fmtHero(totalAPagar);
   if (subEl) subEl.textContent = 'Vencimento em ' + MESES[mi] + ' · ' +
     (nAbertas ? nAbertas + (nAbertas > 1 ? ' abertas' : ' aberta') : 'nenhuma aberta') +
     ' de ' + state.cartoes.length;
@@ -4442,6 +4682,19 @@ function renderFaturas() {
       acaoHtml = '<span class="text-xs text-3">sem fatura</span>';
     }
 
+    const corCartao = _corCartao(c.nome, i);
+
+    // Próximas faturas: este mês e os dois seguintes, do mesmo resumo (competência)
+    // que já dá o total da linha — nenhum cálculo novo.
+    const proxIdx = [mi, mi + 1, mi + 2].filter(k => k < MESES_NOMES.length);
+    const proxVals = proxIdx.map(k => ((state.resumo[k] || {}).faturas || {})[c.nome] || 0);
+    const proxMax = Math.max(1, ...proxVals);
+    const proxHtml = `<div class="fat-prox"><div class="fat-prox-t">Próximas faturas</div><div class="fat-prox-grid">` +
+      proxIdx.map((k, j) => `<div class="fat-prox-box${k === mi ? ' atual' : ''}">
+        <div class="fat-prox-m">${_rotuloMesCurto(k)}${k === mi ? ' · este' : ''}</div>
+        <div class="fat-prox-bar"><div style="height:${Math.max(4, proxVals[j] / proxMax * 100).toFixed(0)}%"></div></div>
+        <div class="fat-prox-v">${fmt(proxVals[j])}</div></div>`).join('') + `</div></div>`;
+
     const disp = c.limite ? calcularLimiteDisponivel(c) : 0;
     const dispColor = !c.limite ? 'var(--text-3)' : disp < 0 ? 'var(--red)' : disp < c.limite * 0.2 ? 'var(--amber)' : 'var(--text-3)';
 
@@ -4450,7 +4703,7 @@ function renderFaturas() {
         <summary class="fat-row">
           <div class="fat-name-cell">
             <span class="fat-arrow">&#9656;</span>
-            <div class="fat-mark" style="background:${CAT_COLORS[i % CAT_COLORS.length]}"></div>
+            <div class="fat-cartao" style="--c1:${corCartao[0]};--c2:${corCartao[1]}"><i></i></div>
             <div style="min-width:0">
               <div class="fat-name">${c.nome}</div>
               <div class="fat-sub">${itens.length} ${itens.length === 1 ? "compra" : "compras"} · ${c.conta || "sem conta"}</div>
@@ -4468,7 +4721,7 @@ function renderFaturas() {
           </div>
           <div class="fat-acao">${acaoHtml}</div>
         </summary>
-        <div class="fat-body">${itensHtml}</div>
+        <div class="fat-body">${proxHtml}${itensHtml}</div>
       </details>
     `;
   }).join('');
@@ -4615,7 +4868,8 @@ function renderRepasses() {
     : saldo > 0 ? 'Você deve repassar para ela' : 'Ela deve repassar para você';
   cardEl.className = `repasse-saldo-card ${cardClass}`;
   cardEl.innerHTML = `
-    <div>
+    <div class="ilus ilus-sm">${ILUS.balanca}</div>
+    <div style="flex:1;min-width:0">
       <div class="repasse-saldo-label">${cardLabel}</div>
       <div class="repasse-saldo-valor">${fmt(Math.abs(saldo))}</div>
     </div>
@@ -5619,7 +5873,14 @@ async function carregarAgenda() {
   if (l.error || p.error) { console.error('agenda', l.error || p.error); return false; }
   state._agenda = l.data || [];
   state._agendaPagos = new Set((p.data || []).map(r => _agendaChave(r.lembrete_id, r.ano, r.mes)));
+  state._agendaCarregada = true;
   return true;
+}
+
+// Depois de marcar/desmarcar: redesenha a Agenda e o quadro "Contas a pagar" do Dashboard.
+function _agendaRedesenhar() {
+  renderAgenda(false);
+  if (paginaAtiva() === 'dashboard') renderVencimentos();
 }
 
 function agendaMes(dir) {
@@ -5697,14 +5958,14 @@ async function agendaTogglePago(id, ano, mes) {
   const estava = state._agendaPagos.has(chave);
   // Atualiza na tela já (otimista) e desfaz se o banco recusar.
   if (estava) state._agendaPagos.delete(chave); else state._agendaPagos.add(chave);
-  renderAgenda(false);
+  _agendaRedesenhar();
   const { error } = estava
     ? await _sb.from('agenda_pagos').delete().eq('lembrete_id', id).eq('ano', ano).eq('mes', mes)
     : await _sb.from('agenda_pagos').upsert({ lembrete_id: id, ano, mes }, { onConflict: 'lembrete_id,ano,mes' });
   if (error) {
     console.error('agenda pago', error);
     if (estava) state._agendaPagos.add(chave); else state._agendaPagos.delete(chave);
-    renderAgenda(false);
+    _agendaRedesenhar();
     showToast('Erro ao salvar ❌');
   }
 }
@@ -9094,6 +9355,96 @@ function fmt(val) {
   if (_ocultarSaldos) return MASCARA_VALOR;
   return (val||0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 }
+
+// Valor de destaque (HTML): "R$" e centavos pequenos, reais grandes. Passa
+// pelo fmt(), então o modo "ocultar saldos" continua valendo.
+function fmtHero(val) {
+  const s = fmt(val);
+  const m = s.match(/^(-?)R\$\s?(.+),(\d{2})$/);
+  if (!m) return _escHtml(s);
+  return `${m[1]}<span class="hv-cur">R$</span>${m[2]}<span class="hv-cents">,${m[3]}</span>`;
+}
+
+// Cor do cartão desenhado: pelo nome do cartão (não há coluna de banco em
+// `cartoes`). Sem banco reconhecido, usa a cor de marcação de sempre.
+const BANCO_CORES = [
+  [/nubank|\bnu\b/i,      ['#a463ff', '#5b0fb8']],
+  [/inter/i,              ['#ffa24d', '#e85d00']],
+  [/\bxp\b/i,             ['#4a4a4a', '#0b0b0b']],
+  [/mercado ?pago/i,      ['#4fc3f7', '#0a7fd0']],
+  [/\bc6\b/i,             ['#5a5a5a', '#161616']],
+  [/latam/i,              ['#e3405f', '#22307a']],
+  [/magalu|luiza/i,       ['#3aa0ff', '#0057c2']],
+  [/ita[uú]/i,            ['#ff8a00', '#e35d00']],
+  [/caixa/i,              ['#3a8ae0', '#004b99']],
+  [/santander/i,          ['#ff4b4b', '#c00000']],
+  [/bradesco/i,           ['#e8364e', '#a8002a']],
+];
+function _corCartao(nome, i) {
+  const achou = BANCO_CORES.find(([re]) => re.test(nome || ''));
+  if (achou) return achou[1];
+  const c = CAT_COLORS[i % CAT_COLORS.length];
+  return [c, c];
+}
+
+// Ilustrações "3D" em SVG com gradientes: ficam dentro do próprio arquivo
+// (a CSP só permite imagem do próprio site). Ids de gradiente prefixados por
+// ilustração — cada uma aparece uma vez por tela.
+const ILUS = {
+  carteira: `<svg viewBox="0 0 96 96" aria-hidden="true"><defs>
+    <linearGradient id="ilCa1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#55595f"/><stop offset="1" stop-color="#1b1d21"/></linearGradient>
+    <linearGradient id="ilCa2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#86efac"/><stop offset="1" stop-color="#15803d"/></linearGradient>
+    <linearGradient id="ilCa3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3d4148"/><stop offset="1" stop-color="#0f1012"/></linearGradient>
+    <radialGradient id="ilCaS"><stop offset="0" stop-color="#000" stop-opacity=".3"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs>
+    <ellipse cx="48" cy="87" rx="34" ry="6" fill="url(#ilCaS)"/>
+    <rect x="20" y="16" width="46" height="30" rx="3" fill="url(#ilCa2)" transform="rotate(-9 43 31)"/>
+    <rect x="30" y="11" width="46" height="30" rx="3" fill="#22c55e" transform="rotate(7 53 26)"/>
+    <circle cx="53" cy="26" r="6" fill="none" stroke="#dcfce7" stroke-width="2"/>
+    <rect x="13" y="31" width="70" height="51" rx="11" fill="url(#ilCa1)"/>
+    <rect x="17" y="34" width="44" height="3" rx="1.5" fill="#fff" opacity=".14"/>
+    <rect x="52" y="45" width="35" height="23" rx="9" fill="url(#ilCa3)"/>
+    <circle cx="75" cy="56.5" r="4.6" fill="#d4d7dc"/><circle cx="75" cy="56.5" r="2" fill="#8b9097"/></svg>`,
+  calendario: `<svg viewBox="0 0 96 96" aria-hidden="true"><defs>
+    <linearGradient id="ilCl1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dfe5ee"/></linearGradient>
+    <linearGradient id="ilCl2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b9bff"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient>
+    <linearGradient id="ilCl3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fde68a"/><stop offset="1" stop-color="#d97706"/></linearGradient>
+    <radialGradient id="ilClS"><stop offset="0" stop-color="#000" stop-opacity=".28"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs>
+    <ellipse cx="50" cy="87" rx="34" ry="6" fill="url(#ilClS)"/>
+    <rect x="18" y="18" width="64" height="62" rx="10" fill="url(#ilCl1)" stroke="#c7d0dc"/>
+    <path d="M18 28a10 10 0 0 1 10-10h44a10 10 0 0 1 10 10v8H18z" fill="url(#ilCl2)"/>
+    <rect x="30" y="11" width="6" height="16" rx="3" fill="#9aa6b6"/><rect x="64" y="11" width="6" height="16" rx="3" fill="#9aa6b6"/>
+    <g fill="#c3ccd8"><rect x="26" y="44" width="9" height="7" rx="2"/><rect x="40" y="44" width="9" height="7" rx="2"/><rect x="54" y="44" width="9" height="7" rx="2"/><rect x="68" y="44" width="7" height="7" rx="2"/>
+    <rect x="26" y="56" width="9" height="7" rx="2"/><rect x="54" y="56" width="9" height="7" rx="2"/><rect x="68" y="56" width="7" height="7" rx="2"/><rect x="40" y="68" width="9" height="7" rx="2"/></g>
+    <rect x="40" y="56" width="9" height="7" rx="2" fill="#ef4444"/>
+    <circle cx="24" cy="74" r="13" fill="url(#ilCl3)" stroke="#b45309" stroke-width="1.5"/>
+    <text x="24" y="79" text-anchor="middle" font-family="Arial" font-weight="700" font-size="13" fill="#92400e">$</text></svg>`,
+  cartao: `<svg viewBox="0 0 96 96" aria-hidden="true"><defs>
+    <linearGradient id="ilCt1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient>
+    <linearGradient id="ilCt2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fde68a"/><stop offset="1" stop-color="#ca8a04"/></linearGradient>
+    <radialGradient id="ilCtS"><stop offset="0" stop-color="#000" stop-opacity=".28"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs>
+    <ellipse cx="48" cy="80" rx="36" ry="6" fill="url(#ilCtS)"/>
+    <g transform="rotate(-14 48 48)"><rect x="12" y="26" width="72" height="46" rx="8" fill="url(#ilCt1)"/>
+    <path d="M12 34a8 8 0 0 1 8-8h40L30 72H20a8 8 0 0 1-8-8z" fill="#fff" opacity=".14"/>
+    <rect x="20" y="40" width="14" height="10" rx="2.5" fill="url(#ilCt2)"/>
+    <rect x="20" y="58" width="34" height="3.5" rx="1.75" fill="#dbeafe" opacity=".8"/></g></svg>`,
+  balanca: `<svg viewBox="0 0 96 96" aria-hidden="true"><defs>
+    <linearGradient id="ilBa1" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#9ca3af"/><stop offset=".5" stop-color="#f3f4f6"/><stop offset="1" stop-color="#6b7280"/></linearGradient>
+    <linearGradient id="ilBa2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient>
+    <linearGradient id="ilBa3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fb7185"/><stop offset="1" stop-color="#be123c"/></linearGradient>
+    <radialGradient id="ilBaS"><stop offset="0" stop-color="#000" stop-opacity=".28"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs>
+    <ellipse cx="48" cy="88" rx="26" ry="5" fill="url(#ilBaS)"/>
+    <rect x="45" y="20" width="6" height="60" rx="3" fill="url(#ilBa1)"/>
+    <path d="M30 84h36l-6-8H36z" fill="#4b5563"/>
+    <rect x="14" y="24" width="68" height="4" rx="2" fill="#374151" transform="rotate(-6 48 26)"/>
+    <circle cx="48" cy="20" r="5" fill="#374151"/>
+    <path d="M18 28 10 54M18 28l8 26M78 22l-8 26M78 22l8 26" stroke="#6b7280" stroke-width="1.2" fill="none"/>
+    <path d="M6 54h24a12 7 0 0 1-24 0z" fill="url(#ilBa2)"/>
+    <path d="M66 48h24a12 7 0 0 1-24 0z" fill="url(#ilBa3)"/></svg>`,
+};
+function _preencherIlustracoes() {
+  document.querySelectorAll('[data-ilus]').forEach(el => { if (!el.innerHTML) el.innerHTML = ILUS[el.dataset.ilus] || ''; });
+}
+document.addEventListener('DOMContentLoaded', _preencherIlustracoes);
 
 function formatDate(dateStr) {
   if (!dateStr) return '';
