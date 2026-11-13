@@ -513,15 +513,15 @@ body:not(.acesso-total) [data-page="config"] { display: none !important; }
   position: fixed;
   bottom: calc(72px + env(safe-area-inset-bottom));
   right: 0;
-  width: 32px; height: 46px;
-  border-radius: 23px 0 0 23px;
+  width: 38px; height: 40px;
+  border-radius: 10px 0 0 10px;
   background: var(--accent);
   border: none;
   box-shadow: -2px 2px 10px rgba(31,35,40,.18);
   cursor: pointer;
   display: flex; align-items: center; justify-content: flex-start;
-  padding: 0 0 0 7px;
-  transform: translateX(10px);
+  padding: 0 0 0 8px;
+  transform: translateX(12px);
   z-index: 90;
   transition: transform .2s ease, box-shadow var(--transition);
 }
@@ -2664,7 +2664,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-13f';
+const APP_VERSION = '2026-11-13g';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
