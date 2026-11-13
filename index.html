@@ -167,10 +167,20 @@ body {
 }
 .nav-sheet-fundo { display: none; position: fixed; inset: 0; background: rgba(15,18,22,.35); z-index: 300; }
 .nav-sheet-fundo.aberto { display: block; }
-.nav-sheet { position: absolute; left: 12px; right: 12px; bottom: calc(var(--nav-b, 16px) + var(--nav-h, 61px) + 8px); background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px; padding: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.2); display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.nav-sheet-t { grid-column: 1 / -1; font-size: 10px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--text-3); padding: 0 2px 2px; }
-.nav-sheet .nav-item { flex: none; width: auto; padding: 12px 4px; border-radius: 14px; background: var(--bg-hover); color: var(--text-2); font-size: 11px; }
+/* "Mais": os itens ocultos SOBEM em coluna a partir do botão "Mais", com a mesma largura/altura/raio dos itens da barra.
+   Posição e medidas vêm de abrirNavSheet() (mede #navMais e a barra): --mais-h = altura do item; left/width/bottom no style. */
+.nav-sheet { position: absolute; display: flex; flex-direction: column-reverse; gap: 2px; padding: 4px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 22px; box-shadow: 0 8px 26px rgba(15,18,22,.22);
+  max-height: calc(100vh - 24px); overflow-y: auto; overflow-x: hidden; scrollbar-width: none; box-sizing: border-box; }
+.nav-sheet::-webkit-scrollbar { display: none; }
+.nav-sheet .nav-item { flex: none; width: 100%; min-width: 0; height: var(--mais-h, 51px); padding: 5px 2px; border-radius: 18px; background: transparent; color: var(--text-3); letter-spacing: 0; white-space: nowrap; justify-content: center;
+  /* o rótulo mais longo ("Categorização", ~6,8em) precisa caber na largura do item (= 1/5 da barra): fonte encolhe em tela estreita, no máx. 10px */
+  font-size: min(10px, calc(((100vw - 28px) / 5 - 4px) / 6.9)); }
 .nav-sheet .nav-item.active { background: var(--accent); color: #fff; }
+.nav-sheet .nav-item.active .nav-icon-wrap { background: none; padding: 0; }
+.nav-sheet-fundo.aberto .nav-sheet { animation: navSubir .18s ease-out; }
+@keyframes navSubir { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.nav-item.aberto { background: var(--bg-hover); color: var(--text); }
 @media (min-width: 768px) { .nav-sheet-fundo { display: none !important; } }
 
 /* Desktop sidebar */
@@ -2152,7 +2162,6 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
   <!-- "Mais" do menu do celular: as telas que não cabem na barra -->
   <div class="nav-sheet-fundo" id="navSheet" onclick="fecharNavSheet(event)">
     <div class="nav-sheet">
-      <div class="nav-sheet-t">Mais telas</div>
         <button class="nav-item" data-page="relatorios">
       <div class="nav-icon-wrap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
@@ -2670,7 +2679,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-13o';
+const APP_VERSION = '2026-11-13p';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -3175,13 +3184,33 @@ function navigate(page) {
   document.querySelectorAll(`[data-page="${page}"]`).forEach(b => b.classList.add('active'));
   // Celular: "Mais" fica ativo quando a tela aberta é uma das que moram nele.
   document.getElementById('navMais')?.classList.toggle('active', !!document.querySelector(`#navSheet [data-page="${page}"]`));
-  document.getElementById('navSheet')?.classList.remove('aberto');
+  _fecharNavSheet();
   PAGES[page]?.();
 }
 
-function abrirNavSheet() { document.getElementById('navSheet')?.classList.add('aberto'); }
+function abrirNavSheet() {
+  const fundo = document.getElementById('navSheet'), mais = document.getElementById('navMais'), barra = document.querySelector('.nav-bottom');
+  if (!fundo || !mais || !barra) return;
+  const m = mais.getBoundingClientRect(), b = barra.getBoundingClientRect(), sheet = fundo.querySelector('.nav-sheet');
+  // A coluna é a "barra esticada para cima": mesma largura do item "Mais" (+ padding e borda), alinhada a ele e acima da barra.
+  sheet.style.setProperty('--mais-h', Math.round(m.height) + 'px');
+  sheet.style.left = Math.round(m.left - 5) + 'px';
+  sheet.style.width = Math.round(m.width + 10) + 'px';
+  sheet.style.bottom = Math.round(window.innerHeight - b.top + 6) + 'px';
+  _navSheetLargura = window.innerWidth;
+  fundo.classList.add('aberto');
+  mais.classList.add('aberto');
+}
 // Fecha ao tocar no fundo escuro; os botões de tela fecham via navigate().
-function fecharNavSheet(ev) { if (ev.target.id === 'navSheet') ev.target.classList.remove('aberto'); }
+function fecharNavSheet(ev) { if (ev.target.id === 'navSheet') _fecharNavSheet(); }
+function _fecharNavSheet() {
+  document.getElementById('navSheet')?.classList.remove('aberto');
+  document.getElementById('navMais')?.classList.remove('aberto');
+}
+// Girar a tela (largura muda) invalida as medidas: fecha em vez de ficar torto. Só a LARGURA conta: no celular a barra do
+// navegador aparece/some e dispara 'resize' só de altura, o que não deve fechar a folha.
+let _navSheetLargura = 0;
+window.addEventListener('resize', () => { if (window.innerWidth !== _navSheetLargura) _fecharNavSheet(); });
 
 // ════════════════════════════════════════════════════════════════════════════
 // MONTH
