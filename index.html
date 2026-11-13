@@ -2626,7 +2626,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-12a';
+const APP_VERSION = '2026-11-12b';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -6505,15 +6505,21 @@ function renderCatsConfig() {
     ...state.catsExtra.filter(c => !builtInIds.has(c.id)),
   ];
 
-  if (!rows.length) { el.innerHTML = '<div class="empty-state"><div class="emoji">🏷️</div><p>Nenhuma categoria.</p></div>'; return; }
+  const ocultas = rows.filter(c => c.oculta);
+  const visiveis = rows.filter(c => !c.oculta);
+  const restaurar = ocultas.length
+    ? `<div style="padding:8px 0 0"><button class="btn-secondary" style="width:100%" onclick="restaurarCategoriasOcultas()">Restaurar ${ocultas.length} categoria${ocultas.length === 1 ? '' : 's'} padrão removida${ocultas.length === 1 ? '' : 's'}</button></div>`
+    : '';
 
-  el.innerHTML = rows.map(c => {
+  if (!visiveis.length) { el.innerHTML = '<div class="empty-state"><div class="emoji">🏷️</div><p>Nenhuma categoria.</p></div>' + restaurar; return; }
+
+  el.innerHTML = visiveis.map(c => {
     const tag = c._builtin && !c._overridden
       ? `<span style="font-size:10px;background:var(--bg-input);color:var(--text-3);padding:1px 6px;border-radius:8px;margin-left:4px">padrão</span>`
       : '';
-    const delBtn = (!c._builtin || c._overridden)
-      ? `<button class="crud-del-btn" onclick="deletarCategoria('${c.id}')">×</button>`
-      : '';
+    // Toda categoria pode ser excluída, menos "Não classificado" (é a fila da Categorização).
+    const delBtn = c.id === 'nao_classificado' ? ''
+      : `<button class="crud-del-btn" onclick="deletarCategoria('${c.id}','${c.tipo}')">×</button>`;
     return `
     <div class="account-row">
       <div class="account-icon" style="background:var(--bg-input)">${catIcone(c.id, c.nome)}</div>
@@ -6524,7 +6530,7 @@ function renderCatsConfig() {
       <button class="crud-del-btn" onclick="editarCategoria('${c.id}','${c.tipo}')" style="background:var(--accent-soft);color:var(--accent);margin-right:2px">✏️</button>
       ${delBtn}
     </div>`;
-  }).join('');
+  }).join('') + restaurar;
 }
 
 // Soma faturas abertas (atuais e futuras) de um cartão para calcular limite ocupado
@@ -6785,17 +6791,55 @@ async function deletarRegistro(tipo, nome) {
   } else showToast('Erro ao excluir ❌');
 }
 
-async function deletarCategoria(id) {
-  if (!confirm('Excluir esta categoria?')) return;
-  if (_sb) {
-    const { error } = await _sb.from('categorias').delete().eq('id', id);
-    if (error) { showToast('Erro ao excluir ❌ ' + (error.message || '')); return; }
+function _usosCategoria(id) {
+  return (state._allExtrato || []).filter(t => t.categoria === id).length
+       + (state._allLancamentos || []).filter(t => t.categoria === id && t.ativo !== false).length;
+}
+
+async function deletarCategoria(id, tipoHint) {
+  if (id === 'nao_classificado') return;
+  const padrao = [...CATS_DESPESA, ...CATS_RECEITA].find(c => c.id === id);
+  const usos = _usosCategoria(id);
+  const sufixo = usos ? `\n\n${usos} lançamento${usos === 1 ? '' : 's'} usa${usos === 1 ? '' : 'm'} esta categoria.` : '';
+  if (padrao) {
+    // Categoria padrão está no código: "excluir" = ocultar (linha com oculta=true). Some dos menus; lançamentos
+    // antigos continuam com ela (o nome é resolvido pelo id) e dá para restaurar em Configurações.
+    if (!confirm('Excluir esta categoria? Ela deixa de aparecer nos menus; lançamentos antigos continuam com ela.' + sufixo)) return;
+    const atual = state.catsExtra.find(c => c.id === id);
+    const tipo = atual ? atual.tipo : (CATS_RECEITA.some(c => c.id === id) ? 'receita' : 'despesa');
+    const cat = { id, nome: atual ? atual.nome : padrao.nome, emoji: atual ? atual.emoji : padrao.emoji, tipo, neutro: atual ? !!atual.neutro : false, oculta: true };
+    if (_sb) {
+      const { error } = await _sb.from('categorias').upsert([cat], { onConflict: 'id' });
+      if (error) { showToast('Erro ao excluir ❌ ' + (error.message || '')); return; }
+    }
+    const i = state.catsExtra.findIndex(c => c.id === id);
+    if (i >= 0) state.catsExtra[i] = { ...state.catsExtra[i], oculta: true }; else state.catsExtra.push(cat);
+  } else {
+    if (!confirm('Excluir esta categoria?' + (usos ? sufixo + '\nEles ficam sem categoria cadastrada (aparecem pelo código) até você recategorizar.' : ''))) return;
+    if (_sb) {
+      const { error } = await _sb.from('categorias').delete().eq('id', id);
+      if (error) { showToast('Erro ao excluir ❌ ' + (error.message || '')); return; }
+    }
+    state.catsExtra = state.catsExtra.filter(c => c.id !== id);
   }
-  state.catsExtra = state.catsExtra.filter(c => c.id !== id);
   localStorage.setItem('financeCatsExtra', JSON.stringify(state.catsExtra));
   renderConfig();
   buildCatGrid();
   showToast('Categoria removida!');
+}
+
+async function restaurarCategoriasOcultas() {
+  const ocultas = state.catsExtra.filter(c => c.oculta);
+  if (!ocultas.length) return;
+  if (_sb) {
+    const { error } = await _sb.from('categorias').update({ oculta: false }).in('id', ocultas.map(c => c.id));
+    if (error) { showToast('Erro ao restaurar ❌ ' + (error.message || '')); return; }
+  }
+  state.catsExtra = state.catsExtra.map(c => c.oculta ? { ...c, oculta: false } : c);
+  localStorage.setItem('financeCatsExtra', JSON.stringify(state.catsExtra));
+  renderConfig();
+  buildCatGrid();
+  showToast('Categorias restauradas!');
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -8043,10 +8087,12 @@ function _escHtml(s) {
 
 function _optsCategoria(tipo, selecionado) {
   const base = tipo === 'receita' ? CATS_RECEITA : CATS_DESPESA;
-  // Sem repetir id: categoria padrão que também existe em `categorias` (ex.: lazer) aparece uma vez só, com o override do banco.
-  const todas = [...new Map([...base, ...(state.catsExtra || [])].map(c => [c.id, c])).values()].filter(c => c.id !== 'nao_classificado');
+  // Sem repetir id (padrão + override do banco, ex.: lazer), sem ocultas, em ordem alfabética, com o emoji da
+  // categoria (um <option> só aceita texto, então o emoji é o "ícone" possível aqui).
+  const todas = _ordenarCats([...new Map([...base, ...(state.catsExtra || [])].map(c => [c.id, c])).values()])
+    .filter(c => c.id !== 'nao_classificado');
   return `<option value="">Categorizar...</option>` +
-    todas.map(c => `<option value="${c.id}" ${c.id === selecionado ? 'selected' : ''}>${c.nome}</option>`).join('');
+    todas.map(c => `<option value="${_escHtml(c.id)}" ${c.id === selecionado ? 'selected' : ''}>${c.emoji ? _escHtml(c.emoji) + ' ' : ''}${_escHtml(c.nome)}</option>`).join('');
 }
 
 // Contas/caixinhas pra escolher o "outro lado" de uma transferência — exclui
@@ -9250,7 +9296,14 @@ function allCatsOf(tipo) {
   const base = tipo === 'receita' ? CATS_RECEITA : CATS_DESPESA;
   const map  = new Map(base.map(c => [c.id, {...c, tipo}]));
   (state.catsExtra || []).filter(c => c.tipo === tipo).forEach(c => map.set(c.id, c));
-  return [...map.values()];
+  return _ordenarCats([...map.values()]);
+}
+
+// Categorias que o usuário "excluiu" (padrão ocultada por linha com oculta=true em `categorias`) saem dos
+// menus; lançamentos antigos continuam resolvendo o nome pelo id. Ordem alfabética (pt-BR, sem acento/caixa).
+function _ordenarCats(lista) {
+  return lista.filter(c => !c.oculta)
+    .sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR', { sensitivity: 'base' }));
 }
 
 function buildCatGrid(tipo) {
