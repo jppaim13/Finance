@@ -153,9 +153,10 @@ body {
 /* Celular: barra de 4 telas + "Mais" quase de ponta a ponta (6px de folga), com cantos de 22px concêntricos aos da tela do aparelho; a ativa vira um quadrado arredondado verde (18px = 22 - 4 de padding) */
 @media (max-width: 767px) {
   /* --nav-b = distância da barra à base; --nav-h = altura da barra (medida); os botões laterais e a folha "Mais" derivam dos dois, então nunca se sobrepõem à barra */
-  :root { --nav-b: max(16px, calc(env(safe-area-inset-bottom) - 2px)); --nav-h: 61px; }
+  :root { --nav-b: max(16px, calc(env(safe-area-inset-bottom) - 2px)); --nav-h: 61px; --nav-lado: max(16px, calc(50vw - 224px)); }
   .nav-bottom {
-    left: 6px; right: 6px; bottom: var(--nav-b);
+    /* mesma largura dos cartões da página: .main-content tem no máx. 480px centralizado e .page tem 16px de padding lateral (50% = metade do espaço visível, sem a barra de rolagem; --nav-lado é só a versão em vw usada na conta da fonte) */
+    left: max(16px, calc(50% - 224px)); right: max(16px, calc(50% - 224px)); bottom: var(--nav-b);
     padding: 4px; gap: 2px; overflow: visible;
     border: 1px solid var(--border); border-radius: 22px;
     box-shadow: 0 4px 18px rgba(31,35,40,.12);
@@ -175,7 +176,7 @@ body {
 .nav-sheet::-webkit-scrollbar { display: none; }
 .nav-sheet .nav-item { flex: none; width: 100%; min-width: 0; height: var(--mais-h, 51px); padding: 5px 2px; border-radius: 18px; background: transparent; color: var(--text-3); letter-spacing: 0; white-space: nowrap; justify-content: center;
   /* o rótulo mais longo ("Categorização", ~6,8em) precisa caber na largura do item (= 1/5 da barra): fonte encolhe em tela estreita, no máx. 10px */
-  font-size: min(10px, calc(((100vw - 28px) / 5 - 4px) / 6.9)); }
+  font-size: min(10px, calc((((100vw - 2 * var(--nav-lado)) - 18px) / 5 - 4px) / 6.9)); }
 .nav-sheet .nav-item.active { background: var(--accent); color: #fff; }
 .nav-sheet .nav-item.active .nav-icon-wrap { background: none; padding: 0; }
 .nav-sheet-fundo.aberto .nav-sheet { animation: navSubir .18s ease-out; }
@@ -2679,7 +2680,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-13p';
+const APP_VERSION = '2026-11-13q';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
