@@ -229,11 +229,12 @@ body {
    por aplicarAcesso() com body.acesso-total. */
 body:not(.acesso-total) [data-page="sincronizacao"],
 body:not(.acesso-total) [data-page="config"] { display: none !important; }
-.ocultar-btn { position: fixed; left: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 150; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border-2); background: var(--bg-card); font-size: 16px; line-height: 1; cursor: pointer; box-shadow: var(--shadow-sm); display: flex; align-items: center; justify-content: center; }
-.ocultar-btn:hover { background: var(--bg-hover); }
-.ocultar-btn.ativo { background: var(--accent-soft); border-color: var(--accent); }
-@media (min-width: 768px) { .ocultar-btn { left: 16px; bottom: 16px; } }
-.acesso-pill { position: fixed; left: 56px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 150; display: none; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--bg-card); color: var(--text-2); font-family: var(--font); font-size: 12px; font-weight: 500; cursor: pointer; box-shadow: var(--shadow-sm); }
+.ocultar-btn { position: fixed; left: 8px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 150; width: 30px; height: 30px; border-radius: 50%; border: none; background: transparent; color: var(--text-3); opacity: .5; padding: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity var(--transition), color var(--transition), background var(--transition); }
+.ocultar-btn svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ocultar-btn:hover, .ocultar-btn:focus-visible { opacity: 1; background: var(--bg-hover); }
+.ocultar-btn.ativo { opacity: .85; color: var(--accent); }
+@media (min-width: 768px) { .ocultar-btn { left: 12px; bottom: 12px; } }
+.acesso-pill { position: fixed; left: 44px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 150; display: none; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--bg-card); color: var(--text-2); font-family: var(--font); font-size: 12px; font-weight: 500; cursor: pointer; box-shadow: var(--shadow-sm); }
 .acesso-pill:hover { background: var(--bg-hover); color: var(--text); }
 .acesso-pill.ativo { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 600; }
 @media (min-width: 768px) { .acesso-pill { left: auto; right: 24px; bottom: 24px; } }
@@ -2187,7 +2188,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
   </div>
 
   <!-- Ocultar/mostrar saldos (privacidade) -->
-  <button class="ocultar-btn" id="ocultarBtn" onclick="alternarOcultarSaldos()" title="Ocultar saldos" aria-label="Ocultar saldos">👁️</button>
+  <button class="ocultar-btn" id="ocultarBtn" onclick="alternarOcultarSaldos()" title="Ocultar saldos" aria-label="Ocultar saldos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg></button>
 
   <!-- Acesso: admin alterna "ver como Mylena"; demais usuários têm só o Sair (a tela de Config é restrita) -->
   <button class="acesso-pill" id="acessoPill" onclick="acessoPillClick()"></button>
@@ -2664,7 +2665,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-13g';
+const APP_VERSION = '2026-11-13h';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -2771,10 +2772,14 @@ let _ocultarSaldos = false;
 try { _ocultarSaldos = localStorage.getItem('ocultarSaldos') === '1'; } catch {}
 const MASCARA_VALOR = 'R$ ••••••';
 
+// Ícones de linha (Lucide eye / eye-off, ISC) — olho aberto = saldos visíveis; olho riscado = ocultos.
+const ICONE_OLHO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
+const ICONE_OLHO_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>';
+
 function atualizarOcultarBtn() {
   const b = document.getElementById('ocultarBtn');
   if (!b) return;
-  b.textContent = _ocultarSaldos ? '🙈' : '👁️';
+  b.innerHTML = _ocultarSaldos ? ICONE_OLHO_OFF : ICONE_OLHO;
   b.title = _ocultarSaldos ? 'Mostrar saldos' : 'Ocultar saldos';
   b.setAttribute('aria-label', b.title);
   b.classList.toggle('ativo', _ocultarSaldos);
