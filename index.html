@@ -1709,6 +1709,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
           </div>
         </div>
       </div>
+      <div id="fatura-avisos"></div>
       <div id="faturas-carteira" class="wallet"></div>
       <details class="fat-tabela-wrap">
       <summary>Ver todos os cartões em tabela</summary>
@@ -2626,7 +2627,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-12c';
+const APP_VERSION = '2026-11-13a';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -4688,7 +4689,33 @@ async function csvSalvar() {
 // ════════════════════════════════════════════════════════════════════════════
 // FATURAS
 // ════════════════════════════════════════════════════════════════════════════
+// Pagamentos de fatura que aparecem mais de uma vez para o MESMO cartão/mês (chave "<cartão>-<mês>-<ano>" em
+// extrato.parcela). Pode ser pagamento parcial legítimo ou duplicata (ex.: um "Pagar Fatura" manual + o débito
+// importado da Pluggy com centavos de diferença). Só avisa — nunca apaga sozinho.
+function _pagamentosFaturaDuplicados() {
+  const por = new Map();
+  (state._allExtrato || []).filter(t => t.categoria === 'fatura' && t.parcela).forEach(t => {
+    const k = t.parcela + '|' + (t.conta_nome || '');
+    if (!por.has(k)) por.set(k, []);
+    por.get(k).push(t);
+  });
+  return [...por.values()].filter(g => g.length > 1);
+}
+
+function _renderAvisosFaturas() {
+  const el = document.getElementById('fatura-avisos');
+  if (!el) return;
+  const dups = _pagamentosFaturaDuplicados();
+  el.innerHTML = dups.length ? `
+    <div class="card" style="border-left:4px solid var(--amber);margin-bottom:12px;padding:10px 12px">
+      <div style="font-weight:600;font-size:13px">⚠️ Pagamento de fatura lançado mais de uma vez</div>
+      <div class="text-xs text-3" style="margin:2px 0 6px">Se não foi pagamento parcial, é duplicata e o saldo da conta fica errado. Exclua a linha repetida pelo Extrato.</div>
+      ${dups.map(g => `<div style="font-size:12px;padding:3px 0">${_escHtml(g[0].parcela)} · ${_escHtml(g[0].conta_nome || '')}: ${g.map(t => fmt(t.valor) + ' (' + t.data.slice(8) + '/' + t.data.slice(5, 7) + (t.origem_dado === 'pluggy' ? ', banco' : ', manual') + ')').join(' + ')}</div>`).join('')}
+    </div>` : '';
+}
+
 function renderFaturas() {
+  _renderAvisosFaturas();
   const el      = document.getElementById('faturas-list');
   const mi      = state.currentMonth;
   const mesNome = MESES_NOMES[mi];
@@ -7254,6 +7281,12 @@ function _diffDias(dataStr1, dataStr2) {
   return Math.abs((parseData(dataStr1) - parseData(dataStr2)) / 86400000);
 }
 
+// Transação da Pluggy que descreve pagamento de fatura de cartão (débito automático / pagamento de fatura).
+function _pluggyDescreveFatura(pt) {
+  return pt.operationType === 'PAGAMENTO_FATURA' || pt.metadata?.operationType === 'PAGAMENTO_FATURA'
+    || /fatura|pagto cart|pagamento de cart/i.test(String(pt.descricao || ''));
+}
+
 function _valorIgual(a, b) {
   return Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
 }
@@ -7298,6 +7331,25 @@ function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
     !cache.reivindicados?.has(e.id) &&
     _valorIgual(e.valor, valor) && _diffDias(e.data, pt.data) <= 3);
   if (matchAvista) { cache.reivindicados?.add(matchAvista.id); return { fonte: 'extrato', id: matchAvista.id }; }
+
+  // PAGAMENTO DE FATURA lançado à mão ("Pagar Fatura") antes de o banco debitar: o valor digitado pode diferir do
+  // débito real em centavos (caso real: Inter out/2026, 1.157,43 digitado × 1.157,42 debitado → a importação não
+  // casou e criou uma 2ª linha, contando o pagamento em dobro no saldo). Tolerância de até R$ 0,05 e 5 dias,
+  // SÓ quando (a) a linha manual já é categoria 'fatura' e (b) a transação da Pluggy descreve pagamento de fatura —
+  // nunca para despesa comum, onde "valor igual" continua sendo a regra (perda silenciosa é pior que duplicata).
+  // Ao casar, devolve o valor do banco em `corrigirValor`: o chamador acerta a linha manual, senão o saldo
+  // ficaria 1 centavo fora.
+  if (!ehCartao && pt.tipo === 'DEBIT' && _pluggyDescreveFatura(pt)) {
+    const centavos = n => Math.round(Number(n) * 100);
+    const matchFatura = extratoRows.find(e =>
+      e.tipo === 'despesa' && e.categoria === 'fatura' && e.origem_dado !== 'pluggy' &&
+      !cache.reivindicados?.has(e.id) &&
+      Math.abs(centavos(e.valor) - centavos(valor)) <= 5 && _diffDias(e.data, pt.data) <= 5);
+    if (matchFatura) {
+      cache.reivindicados?.add(matchFatura.id);
+      return { fonte: 'extrato', id: matchFatura.id, corrigirValor: _valorIgual(matchFatura.valor, valor) ? null : Number(valor) };
+    }
+  }
 
   // Transferência de CONTA já lançada (manual ou já convertida antes) — só
   // faz sentido pra transação de conta, nunca de cartão. Direção: CREDIT
@@ -7483,7 +7535,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
       .select('transacao_id').eq('transacao_fonte', 'extrato').not('transacao_id', 'is', null), 'pluggy_id');
     const reivindicados = new Set((vinculosExtrato || []).map(v => v.transacao_id));
 
-    let importadas = 0, casadas = 0, suspeitas = 0, planejadas = 0, transferidas = 0;
+    let importadas = 0, casadas = 0, suspeitas = 0, planejadas = 0, transferidas = 0, valoresAjustados = 0;
     const avisos = [];
 
     for (const m of alvos) {
@@ -7611,6 +7663,11 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
           await _sb.from('pluggy_transacoes')
             .update({ transacao_id: match.id, transacao_fonte: match.fonte })
             .eq('pluggy_id', pt.pluggy_id);
+          if (match.corrigirValor != null) {
+            // pagamento de fatura lançado à mão com centavos de diferença: fica com o valor real do banco
+            await _sb.from('extrato').update({ valor: match.corrigirValor }).eq('id', match.id);
+            valoresAjustados++;
+          }
           casadas++;
           continue;
         }
@@ -7759,6 +7816,7 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
     const partes = [];
     if (importadas > 0) partes.push(`${importadas} nova(s)`);
     if (casadas > 0) partes.push(`${casadas} já existia(m)`);
+    if (valoresAjustados > 0) partes.push(`${valoresAjustados} pagamento(s) de fatura com valor ajustado ao do banco`);
     if (transferidas > 0) partes.push(`${transferidas} transferência(s) identificada(s)`);
     if (faturasReconhecidas > 0) partes.push(`${faturasReconhecidas} pagamento(s) de fatura reconhecido(s)`);
     if (fixosReconciliados > 0) partes.push(`${fixosReconciliados} ocorrência(s) de Fixo reconciliada(s)`);
