@@ -2627,7 +2627,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-13a';
+const APP_VERSION = '2026-11-13b';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -4297,10 +4297,12 @@ function renderExtrato() {
     const selectedCat = state.filterCats.values().next().value || '';
     const catIds  = [...new Set(state.lancamentos.map(t => t.categoria).filter(Boolean))];
     if (selectedCat && !catIds.includes(selectedCat)) catIds.push(selectedCat);
-    catsEl.innerHTML = `<option value="">Todas as categorias</option>` + catIds.map(id => {
-      const info = allCats.find(c => c.id === id) || { emoji: '📦', nome: id };
-      return `<option value="${_escHtml(id)}"${id === selectedCat ? ' selected' : ''}>${_escHtml(info.nome)}</option>`;
-    }).join('');
+    // Ordem alfabética (pt-BR) e emoji da categoria antes do nome (um <option> só aceita texto).
+    const infoCat = id => allCats.find(c => c.id === id) || (id === 'fatura' ? { emoji: '💳', nome: 'Fatura' } : { emoji: '📦', nome: id });
+    const opcoesCat = catIds.map(id => ({ id, ...infoCat(id) }))
+      .sort((x, y) => String(x.nome).localeCompare(String(y.nome), 'pt-BR', { sensitivity: 'base' }));
+    catsEl.innerHTML = `<option value="">Todas as categorias</option>` + opcoesCat.map(c =>
+      `<option value="${_escHtml(c.id)}"${c.id === selectedCat ? ' selected' : ''}>${c.emoji ? _escHtml(c.emoji) + ' ' : ''}${_escHtml(c.nome)}</option>`).join('');
   }
 
   const search = document.getElementById('searchInput').value.toLowerCase();
@@ -4607,8 +4609,8 @@ function csvGoStep3() {
 
   const _catMap  = new Map(CATS_DESPESA.map(c=>[c.id,c]));
   (state.catsExtra||[]).filter(c=>c.tipo==='despesa').forEach(c=>_catMap.set(c.id,c));
-  const allCats  = [..._catMap.values()];
-  const catOpts  = allCats.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('');
+  const allCats  = _ordenarCats([..._catMap.values()]);
+  const catOpts  = allCats.map(c=>`<option value="${_escHtml(c.id)}">${_rotuloCat(c)}</option>`).join('');
   const dataRows = skip ? _csv.rawRows.slice(1) : _csv.rawRows;
 
   const rows = dataRows.map((row, i) => {
@@ -6472,7 +6474,7 @@ function openMetaModal() {
 
 function buildMetaCatSelect() {
   const sel = document.getElementById('metaCategoria');
-  sel.innerHTML = allCatsOf('despesa').map(c=>`<option value="${c.id}">${c.nome}</option>`).join('');
+  sel.innerHTML = allCatsOf('despesa').map(c=>`<option value="${_escHtml(c.id)}">${_rotuloCat(c)}</option>`).join('');
 }
 
 function salvarMeta() {
@@ -9132,7 +9134,7 @@ function abrirEditFixo(lanId) {
   // Categoria
   const isReceita = lan.tipo === 'Receita' || lan.tipo === 'Receita Única';
   document.getElementById('efCat').innerHTML =
-    allCatsOf(isReceita ? 'receita' : 'despesa').map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+    allCatsOf(isReceita ? 'receita' : 'despesa').map(c => `<option value="${_escHtml(c.id)}">${_rotuloCat(c)}</option>`).join('');
   document.getElementById('efCat').value = lan.categoria || 'outros';
 
   // Origem
@@ -9380,6 +9382,9 @@ function allCatsOf(tipo) {
 
 // Categorias que o usuário "excluiu" (padrão ocultada por linha com oculta=true em `categorias`) saem dos
 // menus; lançamentos antigos continuam resolvendo o nome pelo id. Ordem alfabética (pt-BR, sem acento/caixa).
+// Texto de uma categoria num <option>: emoji + nome (um <option> só aceita texto).
+function _rotuloCat(c) { return (c.emoji ? _escHtml(c.emoji) + ' ' : '') + _escHtml(c.nome); }
+
 function _ordenarCats(lista) {
   return lista.filter(c => !c.oculta)
     .sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR', { sensitivity: 'base' }));
@@ -9679,7 +9684,7 @@ function removeLoteRow(id) {
 
 function onLoteTipo(id, tipo) {
   document.getElementById(`lcat-${id}`).innerHTML =
-    allCatsOf(tipo).map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+    allCatsOf(tipo).map(c => `<option value="${_escHtml(c.id)}">${_rotuloCat(c)}</option>`).join('');
 }
 
 function onLoteOrigem(id, origem) {
