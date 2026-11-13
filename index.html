@@ -1351,6 +1351,62 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 .relbar-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
 .relbar-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
 .relbar-inner { min-width: 100%; }
+/* Evolução das faturas (Relatórios > Faturas) */
+.fev-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.fev-titulo { font-size: 15px; font-weight: 600; color: var(--text); }
+.fev-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.fev-range { display: inline-flex; background: var(--bg-hover); border: 1px solid var(--border); border-radius: 8px; padding: 2px; flex-shrink: 0; }
+.fev-range button { border: 0; background: none; font: inherit; font-size: 12px; font-weight: 500; color: var(--text-2); padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+.fev-range button.on { background: var(--bg-card); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.fev-kpis { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.fev-kpi { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.fev-kpi-l { font-size: 11px; color: var(--text-3); }
+.fev-kpi-v { font-family: var(--font-mono); font-size: 16px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; margin-top: 2px; overflow-wrap: anywhere; }
+.fev-kpi.dest .fev-kpi-v { font-size: 20px; }
+.fev-kpi-s { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+@media (max-width: 520px) { .fev-kpis { grid-template-columns: 1fr 1fr; } .fev-kpi.dest { grid-column: 1 / -1; } }
+.fev-legenda { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.fev-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font: inherit; font-size: 12px; padding: 4px 9px; border-radius: 999px; cursor: pointer; }
+.fev-chip i { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.fev-chip.off { color: var(--text-3); background: var(--bg-hover); }
+.fev-chip.off i { opacity: .3; }
+.fev-area { position: relative; display: flex; gap: 6px; }
+.fev-y { position: relative; width: 38px; height: 200px; margin-top: 18px; flex-shrink: 0; }
+.fev-y span { position: absolute; right: 0; transform: translateY(50%); font-size: 10px; color: var(--text-3); font-family: var(--font-mono); white-space: nowrap; }
+.fev-scroll { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.fev-plot { position: relative; display: flex; align-items: flex-end; height: 218px; padding-top: 18px; box-sizing: border-box; border-bottom: 1px solid var(--border); }
+.fev-grid { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--border); pointer-events: none; }
+.fev-col { position: relative; flex: 1 0 34px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; border: 0; background: none; padding: 0 3px; cursor: pointer; font: inherit; min-width: 34px; }
+.fev-col:hover, .fev-col.tip { background: var(--bg-hover); }
+.fev-col.sel { background: var(--accent-soft); }
+.fev-total { font-family: var(--font-mono); font-size: 10px; color: var(--text-2); margin-bottom: 3px; white-space: nowrap; }
+.fev-col.sel .fev-total { color: var(--text); font-weight: 600; }
+.fev-stack { width: 100%; max-width: 30px; display: flex; flex-direction: column-reverse; gap: 2px; }
+.fev-seg { min-height: 2px; flex-basis: 0; }
+.fev-stack .fev-seg:last-child { border-radius: 4px 4px 0 0; }
+.fev-col.fut .fev-seg { opacity: .42; }
+.fev-stack.baixa { gap: 1px; }
+.fev-stack.baixa .fev-seg { min-height: 1px; }
+.fev-x { display: flex; }
+.fev-x span { flex: 1 0 34px; min-width: 34px; text-align: center; font-size: 10px; color: var(--text-3); padding: 5px 0 0; white-space: nowrap; }
+.fev-x span.sel { color: var(--text); font-weight: 600; }
+.fev-tip { position: absolute; z-index: 5; min-width: 170px; max-width: 240px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.12); padding: 9px 11px; font-size: 12px; pointer-events: none; }
+.fev-tip-t { font-weight: 600; margin-bottom: 5px; }
+.fev-tip-r { display: flex; align-items: center; gap: 6px; padding: 2px 0; color: var(--text-2); }
+.fev-tip-r i { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.fev-tip-r b { margin-left: auto; font-family: var(--font-mono); font-weight: 500; color: var(--text); padding-left: 10px; white-space: nowrap; }
+.fev-tip-tot { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 5px; color: var(--text); font-weight: 600; }
+.fev-nota { font-size: 11px; color: var(--text-3); margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+.fev-nota i { width: 12px; height: 10px; border-radius: 2px; background-color: var(--text-2); opacity: .42; flex-shrink: 0; }
+.fev-tabela { margin-top: 10px; }
+.fev-tabela summary { font-size: 12px; color: var(--text-2); cursor: pointer; }
+.fev-tabela table { border-collapse: collapse; font-size: 12px; width: 100%; margin-top: 8px; }
+.fev-tabela th, .fev-tabela td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fev-tabela th { font-size: 10px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--text-3); }
+.fev-tabela th:first-child, .fev-tabela td:first-child { text-align: left; }
+.fev-tabela td { font-family: var(--font-mono); }
+.fev-tabela td:first-child { font-family: var(--font); }
+.fev-tabela tr.sel td { background: var(--accent-soft); }
 .relbar-plot { display: flex; align-items: flex-end; height: 160px; border-bottom: 1px solid var(--border); background: repeating-linear-gradient(to top, transparent 0, transparent calc(25% - 1px), var(--bg-hover) calc(25% - 1px), var(--bg-hover) 25%); }
 .relbar-col { flex: 1; min-width: 0; display: flex; align-items: flex-end; justify-content: center; gap: 3px; height: 100%; }
 .relbar-col.atual { background: var(--accent-soft); }
@@ -1886,11 +1942,18 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
       </div>
       <div id="report-faturas" style="display:none">
         <div class="card">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <div class="section-label" style="margin:0">Evolução de Faturas</div>
+          <div class="fev-head">
+            <div>
+              <div class="fev-titulo">Evolução das faturas</div>
+              <div class="fev-sub" id="fev-sub">—</div>
+            </div>
+            <div class="fev-range" id="fev-range"></div>
           </div>
-          <div class="filter-chips" id="faturaCartaoChips" style="margin-bottom:12px"></div>
-          <div class="chart-wrap" style="height:260px"><canvas id="chartFaturaEvolucao"></canvas></div>
+          <div class="fev-kpis" id="fev-kpis"></div>
+          <div class="fev-legenda" id="faturaCartaoChips"></div>
+          <div class="fev-area" id="fev-area"></div>
+          <div class="fev-nota" id="fev-nota"></div>
+          <details class="fev-tabela"><summary>Ver em tabela</summary><div id="fev-tabela"></div></details>
         </div>
         <div class="card">
           <div class="section-label" style="margin-top:0">Resumo por Cartão</div>
@@ -2627,7 +2690,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-13c';
+const APP_VERSION = '2026-11-13d';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -5696,97 +5759,186 @@ function toggleFaturaSel(nome) {
   renderRelFaturas();
 }
 
+// Paleta categórica validada (ordem fixa; ΔE entre vizinhas ok também para daltonismo). A cor segue o CARTÃO
+// (posição entre os cartões que têm alguma fatura), nunca a posição no filtro: filtrar não repinta os demais.
+// Do 9º cartão em diante tudo vira "Outros" (cinza) — cor gerada a mais não seria distinguível.
+const FEV_CORES = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+const FEV_COR_OUTROS = '#9aa1ab';
+
+function _fevSeries() {
+  const comDado = (state.cartoes || []).filter(c => (state.resumo || []).some(r => ((r.faturas || {})[c.nome] || 0) > 0));
+  const series = comDado.slice(0, FEV_CORES.length).map((c, i) => ({ nome: c.nome, cor: FEV_CORES[i], nomes: [c.nome] }));
+  const resto = comDado.slice(FEV_CORES.length);
+  if (resto.length) series.push({ nome: 'Outros', cor: FEV_COR_OUTROS, nomes: resto.map(c => c.nome) });
+  return series;
+}
+
+function setFevRange(r) { state._fevRange = r; renderRelFaturas(); }
+
+// Valor abreviado para rótulo de coluna/eixo (7,0k); respeita o "ocultar saldos".
+function _fevK(v) {
+  if (_ocultarSaldos) return '••';
+  if (v >= 1000) { const k = v / 1000; return (k >= 100 ? k.toFixed(0) : k.toFixed(1).replace('.', ',')) + 'k'; }
+  return v.toFixed(0);
+}
+
+// Teto "redondo" do eixo e o passo das linhas-guia (4 divisões).
+function _fevEscala(max) {
+  if (!(max > 0)) return { topo: 1, passo: 0.25 };
+  const bruto = max / 4;
+  const pot = Math.pow(10, Math.floor(Math.log10(bruto)));
+  const passo = [1, 2, 2.5, 5, 10].map(m => m * pot).find(p => p >= bruto);
+  return { topo: passo * Math.ceil(max / passo), passo };
+}
+
+function fevTip(k, el) {
+  const area = document.getElementById('fev-area');
+  if (!area) return;
+  area.querySelectorAll('.fev-col.tip').forEach(c => c.classList.remove('tip'));
+  let tip = document.getElementById('fev-tip');
+  const m = (state._fevDados || [])[k];
+  if (!m || !el) { if (tip) tip.remove(); return; }
+  if (!tip) { tip = document.createElement('div'); tip.id = 'fev-tip'; tip.className = 'fev-tip'; area.appendChild(tip); }
+  el.classList.add('tip');
+  const linhas = m.itens.filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+  tip.innerHTML = '<div class="fev-tip-t">' + _escHtml(m.rotuloLongo) + (m.fut ? ' · previsto' : '') + '</div>'
+    + linhas.map(x => '<div class="fev-tip-r"><i style="background:' + x.cor + '"></i>' + _escHtml(x.nome) + '<b>' + fmt(x.v) + '</b></div>').join('')
+    + (linhas.length > 1 ? '<div class="fev-tip-r fev-tip-tot">Total<b>' + fmt(m.total) + '</b></div>' : '');
+  const a = area.getBoundingClientRect(), c = el.getBoundingClientRect();
+  const larg = tip.offsetWidth || 190;
+  let x = c.left - a.left + c.width + 6;
+  if (x + larg > a.width) x = c.left - a.left - larg - 6;      // sem espaço à direita: abre à esquerda
+  if (x < 0) x = Math.max(0, a.width - larg);
+  tip.style.left = x + 'px';
+  tip.style.top = '14px';
+}
+
 function renderRelFaturas() {
   if (!state._faturasSel) state._faturasSel = new Set();
-  const isDark = false;
-  const gridColor = isDark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.05)';
-  const textColor = isDark ? '#64748b' : '#9ca3af';
+  if (!state._fevRange) state._fevRange = '12';
+  const area = document.getElementById('fev-area');
+  const series = _fevSeries();
+  const ativa = s => state._faturasSel.size === 0 || s.nomes.some(n => state._faturasSel.has(n));
+  const sel = series.filter(ativa);
+  const valor = (i, s) => s.nomes.reduce((t, n) => t + (((state.resumo[i] || {}).faturas || {})[n] || 0), 0);
 
-  const allCartoes = state.cartoes || [];
-
-  // Filter chips
+  // Legenda = filtro: um chip por cartão, com a cor da série.
   const chipsEl = document.getElementById('faturaCartaoChips');
   if (chipsEl) {
-    chipsEl.innerHTML = allCartoes.map((c, i) => {
-      const isActive = state._faturasSel.size === 0 || state._faturasSel.has(c.nome);
-      const color = CAT_COLORS[i % CAT_COLORS.length];
-      return `<button class="filter-chip ${isActive ? 'active' : ''}"
-        style="${isActive ? `background:${color}22;border-color:${color};color:${color}` : ''}"
-        onclick="toggleFaturaSel('${c.nome}')">💳 ${c.nome}</button>`;
+    chipsEl.innerHTML = series.map(s => {
+      const acao = s.nomes.length === 1 ? ` onclick="toggleFaturaSel('${_jsStrAttr(s.nome)}')"` : '';
+      return `<button class="fev-chip${ativa(s) ? '' : ' off'}"${acao}><i style="background:${s.cor}"></i>${_escHtml(s.nome)}</button>`;
     }).join('');
   }
 
-  // Which cartões to chart
-  const cartoesSel = state._faturasSel.size > 0
-    ? allCartoes.filter(c => state._faturasSel.has(c.nome))
-    : allCartoes;
+  // Intervalo: 12 meses em volta do mês atual (6 antes, 5 depois) ou tudo. Só meses com fatura.
+  const hoje = getCurrentMonthIndex();
+  const comFatura = (state.resumo || []).map((r, i) => i).filter(i => sel.some(s => valor(i, s) > 0));
+  let idxMeses = state._fevRange === 'tudo' ? comFatura : comFatura.filter(i => i >= hoje - 6 && i <= hoje + 5);
+  if (!idxMeses.length) idxMeses = comFatura;
 
-  // Colunas empilhadas por cartão: cada mês mostra a composição E o total, sem as áreas
-  // sobrepostas do gráfico de linha. Só meses com fatura entram (mês zerado é mês que não aconteceu).
-  const idxMeses = state.resumo.map((r, i) => i)
-    .filter(i => cartoesSel.some(c => ((state.resumo[i].faturas || {})[c.nome] || 0) > 0));
-  const datasets = cartoesSel.map(c => {
-    const color = CAT_COLORS[allCartoes.indexOf(c) % CAT_COLORS.length];
-    return {
-      label: c.nome,
-      data: idxMeses.map(i => (state.resumo[i].faturas || {})[c.nome] || 0),
-      backgroundColor: color,
-      borderRadius: 3,
-      borderSkipped: false,
-      maxBarThickness: 34,
-    };
+  const rangeEl = document.getElementById('fev-range');
+  if (rangeEl) rangeEl.innerHTML = [['12', '12 meses'], ['tudo', 'Tudo']].map(([v, t]) =>
+    `<button class="${state._fevRange === v ? 'on' : ''}" onclick="setFevRange('${v}')">${t}</button>`).join('');
+
+  const dados = idxMeses.map(i => {
+    const itens = sel.map(s => ({ nome: s.nome, cor: s.cor, v: valor(i, s) }));
+    return { i, itens, total: itens.reduce((t, x) => t + x.v, 0), fut: i > hoje, rotulo: _rotuloMesCurto(i), rotuloLongo: MESES[i] };
   });
+  state._fevDados = dados;
 
-  const ctx = document.getElementById('chartFaturaEvolucao');
-  if (window._chartFatEv) { window._chartFatEv.destroy(); window._chartFatEv = null; }
-  if (ctx) {
-    window._chartFatEv = new Chart(ctx, {
-      type: 'bar',
-      data: { labels: idxMeses.map(i => _rotuloMesCurto(i)), datasets },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { position: 'bottom', labels: { color: textColor, font: { size: 11 }, boxWidth: 8, boxHeight: 8, usePointStyle: true, pointStyle: 'rectRounded', padding: 14 } },
-          tooltip: {
-            itemSort: (a, b) => b.raw - a.raw,
-            filter: item => item.raw > 0,
-            callbacks: {
-              label: c => ' ' + c.dataset.label + ': ' + fmt(c.raw),
-              footer: items => items.length > 1 ? 'Total: ' + fmt(items.reduce((t, it) => t + it.raw, 0)) : '',
-            },
-          },
-        },
-        scales: {
-          x: { stacked: true, grid: { display: false }, ticks: { color: textColor, font: { size: 10 }, maxRotation: 0, autoSkip: true } },
-          y: { stacked: true, beginAtZero: true, border: { display: false }, grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, maxTicksLimit: 5, callback: v => _ocultarSaldos ? '' : 'R$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v.toFixed(0)) } },
-        },
-      },
-    });
+  const subEl = document.getElementById('fev-sub');
+  if (subEl) subEl.textContent = dados.length
+    ? `${MESES[dados[0].i]} a ${MESES[dados[dados.length - 1].i]} · por cartão`
+    : 'Sem faturas no período';
+
+  // Números de destaque: mês selecionado no app, média dos meses fechados e maior fatura do período.
+  const kpisEl = document.getElementById('fev-kpis');
+  if (kpisEl) {
+    const mi = state.currentMonth;
+    const totalDe = i => sel.reduce((t, s) => t + valor(i, s), 0);
+    const atual = totalDe(mi);
+    const ant = mi > 0 ? totalDe(mi - 1) : 0;
+    let delta = '';
+    if (atual > 0 && ant > 0) {
+      const p = (atual - ant) / ant * 100;
+      delta = `${p >= 0 ? '▲' : '▼'} ${Math.abs(p).toFixed(0)}% em relação a ${_rotuloMesCurto(mi - 1)}`;
+    }
+    const fechados = dados.filter(m => !m.fut && m.total > 0);
+    const media = fechados.length ? fechados.reduce((t, m) => t + m.total, 0) / fechados.length : 0;
+    const maior = dados.reduce((a, m) => (m.total > (a ? a.total : 0) ? m : a), null);
+    kpisEl.innerHTML = `
+      <div class="fev-kpi dest"><div class="fev-kpi-l">Faturas de ${_escHtml(MESES[mi])}</div><div class="fev-kpi-v">${atual > 0 ? fmt(atual) : '—'}</div>${delta ? `<div class="fev-kpi-s">${delta}</div>` : ''}</div>
+      <div class="fev-kpi"><div class="fev-kpi-l">Média por mês</div><div class="fev-kpi-v">${media > 0 ? fmt(media) : '—'}</div><div class="fev-kpi-s">${fechados.length} ${fechados.length === 1 ? 'mês fechado' : 'meses fechados'}</div></div>
+      <div class="fev-kpi"><div class="fev-kpi-l">Maior fatura</div><div class="fev-kpi-v">${maior ? fmt(maior.total) : '—'}</div><div class="fev-kpi-s">${maior ? _escHtml(maior.rotuloLongo) : ''}</div></div>`;
   }
 
-  // Summary list
+  // Colunas empilhadas: composição por cartão + total em cima. 2px de respiro entre as fatias.
+  if (area) {
+    if (!dados.length) {
+      area.innerHTML = '<div style="color:var(--text-3);font-size:13px;padding:24px 0">Nenhuma fatura para os cartões selecionados.</div>';
+    } else {
+      const { topo, passo } = _fevEscala(Math.max(...dados.map(m => m.total)));
+      const linhas = []; for (let v = 0; v <= topo + 1e-9; v += passo) linhas.push(v);
+      const ALT = 200; // altura útil do gráfico (px)
+      const yHtml = linhas.map(v => `<span style="bottom:${(v / topo * ALT).toFixed(1)}px">${_fevK(v)}</span>`).join('');
+      const gridHtml = linhas.slice(1).map(v => `<div class="fev-grid" style="bottom:${(v / topo * ALT).toFixed(1)}px"></div>`).join('');
+      const colsHtml = dados.map((m, k) => {
+        const segs = m.itens.filter(x => x.v > 0)
+          .map(x => `<div class="fev-seg" style="flex-grow:${x.v};background-color:${x.cor}"></div>`).join('');
+        const cls = 'fev-col' + (m.i === state.currentMonth ? ' sel' : '') + (m.fut ? ' fut' : '');
+        return `<button class="${cls}" onmouseenter="fevTip(${k}, this)" onfocus="fevTip(${k}, this)" onclick="fevTip(${k}, this)" aria-label="${_escHtml(m.rotuloLongo)}: ${fmt(m.total)}">
+          <span class="fev-total">${_fevK(m.total)}</span>
+          <div class="fev-stack${m.total / topo * ALT < 40 ? ' baixa' : ''}" style="height:${(m.total / topo * ALT).toFixed(1)}px">${segs}</div>
+        </button>`;
+      }).join('');
+      const xHtml = dados.map(m => `<span class="${m.i === state.currentMonth ? 'sel' : ''}">${m.rotulo}</span>`).join('');
+      area.innerHTML = `<div class="fev-y">${yHtml}</div>
+        <div class="fev-scroll" id="fev-scroll"><div style="min-width:${dados.length * 40}px">
+          <div class="fev-plot" onmouseleave="fevTip(-1)">${gridHtml}${colsHtml}</div>
+          <div class="fev-x">${xHtml}</div>
+        </div></div>`;
+      // Se as colunas não couberem (modo "Tudo" no celular), abre mostrando o mês selecionado.
+      const sc = document.getElementById('fev-scroll');
+      const alvo = area.querySelector('.fev-col.sel');
+      if (sc && alvo && sc.scrollWidth > sc.clientWidth) sc.scrollLeft = Math.max(0, alvo.offsetLeft - sc.clientWidth / 2);
+    }
+  }
+
+  const notaEl = document.getElementById('fev-nota');
+  if (notaEl) notaEl.innerHTML = dados.some(m => m.fut)
+    ? '<i></i>Meses futuros (mais claros) mostram só o que já está lançado: parcelas e compras já feitas.' : '';
+
+  // Tabela: os mesmos números do gráfico, para ler valor exato.
+  const tabEl = document.getElementById('fev-tabela');
+  if (tabEl) {
+    tabEl.innerHTML = dados.length ? `<div style="overflow-x:auto"><table>
+      <thead><tr><th>Mês</th>${sel.map(s => `<th>${_escHtml(s.nome)}</th>`).join('')}<th>Total</th></tr></thead>
+      <tbody>${dados.map(m => `<tr class="${m.i === state.currentMonth ? 'sel' : ''}"><td>${_escHtml(m.rotuloLongo)}${m.fut ? ' *' : ''}</td>${m.itens.map(x => `<td>${x.v > 0 ? fmt(x.v) : '—'}</td>`).join('')}<td><b>${fmt(m.total)}</b></td></tr>`).join('')}</tbody>
+    </table></div>${dados.some(m => m.fut) ? '<div class="fev-sub" style="margin-top:6px">* previsto: só o que já está lançado</div>' : ''}` : '';
+  }
+
+  // Resumo por cartão (mesmas cores do gráfico)
   const listEl = document.getElementById('rel-faturas-list');
   if (!listEl) return;
-  if (!cartoesSel.length) {
-    listEl.innerHTML = '<div style="color:var(--text-3);font-size:13px;padding:8px 0">Nenhum cartão cadastrado</div>';
+  if (!sel.length) {
+    listEl.innerHTML = '<div style="color:var(--text-3);font-size:13px;padding:8px 0">Nenhum cartão com fatura</div>';
     return;
   }
-  listEl.innerHTML = cartoesSel.map((c, i) => {
-    const vals = state.resumo.map(r => (r.faturas || {})[c.nome] || 0);
-    const total = vals.reduce((s, v) => s + v, 0);
+  listEl.innerHTML = sel.map(s => {
+    const vals = (state.resumo || []).map((r, i) => valor(i, s));
+    const total = vals.reduce((t, v) => t + v, 0);
     const nonZero = vals.filter(v => v > 0);
     const media = nonZero.length ? total / nonZero.length : 0;
     const max = Math.max(...vals, 0);
-    const color = CAT_COLORS[i % CAT_COLORS.length];
     return `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></div>
-          <span style="font-size:13px">💳 ${c.nome}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0">
+          <div style="width:10px;height:10px;border-radius:3px;background:${s.cor};flex-shrink:0"></div>
+          <span style="font-size:13px;overflow-wrap:anywhere">${_escHtml(s.nome)}</span>
         </div>
-        <div style="text-align:right">
-          <div style="font-family:var(--font-mono);font-size:13px;color:var(--red)">${fmt(media)}<span style="color:var(--text-3);font-size:11px;font-family:var(--font)">/mês</span></div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-family:var(--font-mono);font-size:13px;color:var(--text)">${fmt(media)}<span style="color:var(--text-3);font-size:11px;font-family:var(--font)">/mês</span></div>
           <div style="font-size:11px;color:var(--text-3)">máx ${fmt(max)} · total ${fmt(total)}</div>
         </div>
       </div>`;
