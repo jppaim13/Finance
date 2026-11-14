@@ -163,6 +163,9 @@ body {
     border: none; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 0;
     box-shadow: 0 -4px 18px rgba(31,35,40,.10);
   }
+  .nav-bottom { transition: opacity .25s ease, transform .25s ease; }
+  /* Rolando a página para baixo (conteúdo sobe) a barra esmaece e desce; rolando para cima ela volta (ver _navAutoOcultar) */
+  body.nav-oculta .nav-bottom { opacity: 0; transform: translateY(28px); pointer-events: none; }
   .nav-item { flex: 1 1 0; min-width: 0; padding: 5px 2px; border-radius: 18px; transition: background var(--transition), color var(--transition); }
   .nav-item.active { background: var(--accent); color: #fff; }
   .nav-item.active .nav-icon-wrap { background: none; padding: 0; }
@@ -2682,7 +2685,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-13r';
+const APP_VERSION = '2026-11-14a';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -3188,8 +3191,21 @@ function navigate(page) {
   // Celular: "Mais" fica ativo quando a tela aberta é uma das que moram nele.
   document.getElementById('navMais')?.classList.toggle('active', !!document.querySelector(`#navSheet [data-page="${page}"]`));
   _fecharNavSheet();
+  _navMostrar(); _navLastY = 0;
   PAGES[page]?.();
 }
+
+// Barra de baixo some ao rolar a página para baixo e volta ao rolar para cima. Fica sempre visível perto do topo, com a
+// folha "Mais" aberta e ao trocar de tela. Limiar de 6px: rolagens minúsculas/tremida do dedo não piscam a barra.
+let _navLastY = 0;
+function _navMostrar() { document.body.classList.remove('nav-oculta'); }
+window.addEventListener('scroll', () => {
+  const y = Math.max(0, window.scrollY), dy = y - _navLastY;
+  if (y < 24 || document.getElementById('navSheet')?.classList.contains('aberto')) { _navMostrar(); _navLastY = y; return; }
+  if (Math.abs(dy) < 6) return; // ainda acumulando; não atualiza a referência
+  document.body.classList.toggle('nav-oculta', dy > 0);
+  _navLastY = y;
+}, { passive: true });
 
 function abrirNavSheet() {
   const fundo = document.getElementById('navSheet'), mais = document.getElementById('navMais'), barra = document.querySelector('.nav-bottom');
