@@ -2689,7 +2689,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-14c';
+const APP_VERSION = '2026-11-15';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -7788,7 +7788,24 @@ async function importarPendentes(filtroNomes = null, opts = {}) {
       // (armadilha apontada pelo Opus).
       const gruposParcelado = new Map();
 
+      // Registro "sombra" do cartão (achado 15/11/2026, XP Visa): a Pluggy às vezes
+      // manda a MESMA compra duas vezes com pluggy_id diferente — o original (com
+      // `payeeMCC`, hora real) e uma cópia sem MCC, hora 03:00 e descrição mais
+      // longa ("... PASSOS BR"). O casamento por id não pega; sem esta trava a
+      // compra entrava duas vezes em Extrato/Fatura/Metas. Ver `_pluggyEhSombra`.
+      let todasPt = [];
+      if (ehCartao) {
+        const r = await _sbTodos(() => _sb.from('pluggy_transacoes')
+          .select('pluggy_id,data,valor,descricao,metadata').eq('pluggy_account_id', m.pluggy_account_id)
+          .gte('data', dataInicial).lte('data', hojeStr), 'pluggy_id');
+        todasPt = r.data || [];
+      }
+
       for (const pt of pendentes) {
+        if (ehCartao && _pluggyEhSombra(pt, todasPt)) {
+          await _sb.from('pluggy_transacoes').update({ transacao_fonte: 'ignorada' }).eq('pluggy_id', pt.pluggy_id);
+          continue;
+        }
         // Cartão: só compra (DEBIT) — pagamento/estorno (CREDIT) não é
         // "gasto" a importar. Conta: os dois — DEBIT = despesa, CREDIT =
         // receita (sinal oposto ao de cartão, conferido antes de escrever
@@ -8955,6 +8972,22 @@ const TITULARES_PLUGGY = [
   { nome: 'JOAO PAULO', sobrenome: 'PAIM' },
   { nome: 'MYLENA', sobrenome: null },
 ];
+
+// Cópia "sombra" de compra de cartão: sem `payeeMCC`, com um irmão (mesmo cartão,
+// data e valor, id diferente) que TEM `payeeMCC` e cuja descrição é prefixo da dela
+// (ou vice-versa). Exigir o MCC no irmão e a relação de prefixo evita engolir duas
+// compras reais iguais no mesmo dia (essas têm MCC nas duas).
+function _pluggyEhSombra(pt, todas) {
+  if (pt.metadata?.creditCardMetadata?.payeeMCC) return false;
+  const dn = _normalizarTexto(pt.descricao).replace(/[^A-Z0-9]/g, '');
+  if (!dn) return false;
+  return (todas || []).some(o => {
+    if (o.pluggy_id === pt.pluggy_id || o.data !== pt.data || !_valorIgual(o.valor, pt.valor)) return false;
+    if (!o.metadata?.creditCardMetadata?.payeeMCC) return false;
+    const on = _normalizarTexto(o.descricao).replace(/[^A-Z0-9]/g, '');
+    return !!on && (dn.startsWith(on) || on.startsWith(dn));
+  });
+}
 
 function _normalizarTexto(s) {
   // Remove marcas de acentuação (NFD separa a letra base da marca combinante,
