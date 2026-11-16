@@ -2689,7 +2689,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-15';
+const APP_VERSION = '2026-11-16';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -6588,7 +6588,33 @@ async function excluirAgenda() {
 // ════════════════════════════════════════════════════════════════════════════
 // METAS
 // ════════════════════════════════════════════════════════════════════════════
-function renderMetas() {
+// Metas COMPARTILHADAS (migration 023, tabela `metas`): as mesmas para o João e a Mylena, em qualquer aparelho.
+// Antes ficavam em localStorage (só no aparelho que as criou). Carregamento isolado como o da Agenda: se a
+// tabela ainda não existir, cai no localStorage e a tela avisa — o resto do app não é afetado.
+async function carregarMetas() {
+  const local = (() => { try { return JSON.parse(localStorage.getItem('financeMetas') || '[]'); } catch (e) { return []; } })();
+  if (!_sb) { state.metas = local; return; }
+  const { data, error } = await _sb.from('metas').select('*').order('criado_em');
+  if (error) { console.error('metas', error); state._metasSemTabela = true; state.metas = local; return; }
+  state._metasSemTabela = false;
+  let metas = data || [];
+  // Uma vez por aparelho: sobe para a tabela as metas que só existiam aqui (as que a tabela já tem, prevalecem).
+  if (local.length && localStorage.getItem('financeMetasMigradas') !== '1') {
+    const jaTem = new Set(metas.map(m => m.categoria));
+    const novas = local.filter(m => m && m.categoria && Number(m.limite) > 0 && !jaTem.has(m.categoria))
+      .map(m => ({ categoria: m.categoria, limite: Number(m.limite) }));
+    if (novas.length) {
+      const { error: e2 } = await _sb.from('metas').upsert(novas, { onConflict: 'categoria' });
+      if (e2) { console.error('metas (importar)', e2); }
+      else { const r = await _sb.from('metas').select('*').order('criado_em'); metas = r.data || metas; }
+    }
+    try { localStorage.setItem('financeMetasMigradas', '1'); } catch (e) {}
+  }
+  state.metas = metas;
+}
+
+async function renderMetas() {
+  await carregarMetas();
   document.getElementById('metas-mes').textContent = MESES[state.currentMonth];
   const el = document.getElementById('metas-list');
   if (!state.metas.length) {
@@ -6624,7 +6650,9 @@ function renderMetas() {
   _lista(true).filter(t => _conta(t) && _ehParcela(t)).forEach(_soma);     // parcela no mês da fatura
 
   const _abertas = [...el.querySelectorAll('details[open]')].map(d => d.dataset.cat);
-  el.innerHTML = state.metas.map(meta => {
+  const aviso = state._metasSemTabela
+    ? '<div class="text-xs text-3" style="padding:0 0 8px">⚠️ As metas ainda estão só neste aparelho: falta aplicar a migration 023 para compartilhá-las.</div>' : '';
+  el.innerHTML = aviso + state.metas.map(meta => {
     const gasto = gastos[meta.categoria] || 0;
     const lista = (itensCat[meta.categoria] || []).sort((x, y) => (y.data || '').localeCompare(x.data || ''));
     const aberta = _abertas.includes(meta.categoria) ? ' open' : '';
@@ -6649,6 +6677,10 @@ function renderMetas() {
             </div>
           </div>
         </summary>
+        <div style="display:flex;gap:8px;justify-content:flex-end;padding:8px 10px 0;background:var(--bg-hover)">
+          <button class="btn-secondary" style="padding:5px 10px;font-size:12px" onclick="editarMeta('${_jsStrAttr(meta.categoria)}')">Alterar limite</button>
+          <button class="btn-secondary" style="padding:5px 10px;font-size:12px;color:var(--red)" onclick="removerMeta('${_jsStrAttr(meta.categoria)}')">Remover meta</button>
+        </div>
         <div class="rc-tx-list">${lista.length ? lista.map(t => _rcLinhaTx(t, meta.categoria)).join('') : '<div class="text-xs text-3" style="padding:4px 2px">Nenhuma despesa neste mês</div>'}</div>
       </details>
     `;
@@ -6665,17 +6697,42 @@ function buildMetaCatSelect() {
   sel.innerHTML = allCatsOf('despesa').map(c=>`<option value="${_escHtml(c.id)}">${_rotuloCat(c)}</option>`).join('');
 }
 
-function salvarMeta() {
+async function salvarMeta() {
   const cat = document.getElementById('metaCategoria').value;
   const val = parseFloat(document.getElementById('metaValor').value);
   if (!val || val <= 0) { showToast('Informe um valor válido'); return; }
-  const existing = state.metas.findIndex(m => m.categoria === cat);
-  if (existing >= 0) state.metas[existing].limite = val;
-  else state.metas.push({ categoria: cat, limite: val });
-  localStorage.setItem('financeMetas', JSON.stringify(state.metas));
+  if (state._metasSemTabela) {
+    // sem a tabela: comportamento antigo (só neste aparelho)
+    const i = state.metas.findIndex(m => m.categoria === cat);
+    if (i >= 0) state.metas[i].limite = val; else state.metas.push({ categoria: cat, limite: val });
+    localStorage.setItem('financeMetas', JSON.stringify(state.metas));
+  } else {
+    const { error } = await _sb.from('metas').upsert({ categoria: cat, limite: val }, { onConflict: 'categoria' });
+    if (error) { console.error('salvarMeta', error); showToast('Erro ao salvar a meta ❌'); return; }
+  }
   closeModal('modalMeta');
-  renderMetas();
+  await renderMetas();
   showToast('Meta salva! 🎯');
+}
+
+function editarMeta(cat) {
+  const m = state.metas.find(x => x.categoria === cat);
+  openMetaModal();
+  document.getElementById('metaCategoria').value = cat;
+  document.getElementById('metaValor').value = m ? Number(m.limite) : '';
+}
+
+async function removerMeta(cat) {
+  if (!confirm('Remover esta meta? Vale para todos os aparelhos.')) return;
+  if (state._metasSemTabela) {
+    state.metas = state.metas.filter(m => m.categoria !== cat);
+    localStorage.setItem('financeMetas', JSON.stringify(state.metas));
+  } else {
+    const { error } = await _sb.from('metas').delete().eq('categoria', cat);
+    if (error) { console.error('removerMeta', error); showToast('Erro ao remover ❌'); return; }
+  }
+  await renderMetas();
+  showToast('Meta removida');
 }
 
 // ════════════════════════════════════════════════════════════════════════════
