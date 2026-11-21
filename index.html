@@ -2689,7 +2689,7 @@ details[open] > .fat-row .fat-arrow { transform: rotate(90deg); }
 // e um indicador que sempre "parece atualizado" é pior que nenhum — só uma
 // constante no próprio arquivo garante que o valor vem do código que está
 // de fato rodando.
-const APP_VERSION = '2026-11-17';
+const APP_VERSION = '2026-11-21';
 // Lista gerada (date-utils.js, testada em tests.html): início FIXO em Mar/2026
 // (índice 0 nunca muda de significado) até o mês atual + 12. Era um literal de
 // 12 meses que parava o app em 01/03/2027 — ver Decisões no CLAUDE.md.
@@ -4803,16 +4803,63 @@ function _pagamentosFaturaDuplicados() {
   return [...por.values()].filter(g => g.length > 1);
 }
 
+// Série de Parcelado lançada À MÃO cujas parcelas a Pluggy já entrega (linha de extrato importada com chave de compra, ou
+// Parcelado criado pela Pluggy), no mesmo cartão, com nome parecido, valor aproximado e a MESMA competência de fatura:
+// esses meses estão sendo contados duas vezes. Só avisa — encerrar a série (Editar > fim) é decisão do usuário.
+function _duplicatasParcelado() {
+  const cartoes = new Map((state.cartoes || []).map(c => [c.nome, c]));
+  const lans = (state._allLancamentos || []).filter(l => l.ativo !== false && l.origem === 'cartao' && String(l.tipo || '').toLowerCase() === 'parcelado');
+  const doPluggy = lans.filter(l => l.origem_dado === 'pluggy');
+  const extPluggy = (state._allExtrato || []).filter(t => t.origem_dado === 'pluggy' && t.origem === 'cartao' && t.pluggy_compra_chave);
+  const out = [];
+  for (const m of lans.filter(l => l.origem_dado !== 'pluggy')) {
+    const key = _chaveNomeParcelado(m.descricao);
+    if (!key) continue;
+    const c = cartoes.get(m.conta_nome) || {};
+    const fec = c.fechamento || 1, ven = c.vencimento || 10;
+    const fimIdx = _lancFimIdx(m), iniIdx = _lancIniIdx(m);
+    const meses = new Set();
+    for (let n = 0; n < Number(m.parcelas || 1); n++) { if (iniIdx + n > fimIdx) break; meses.add(getInstVencIdx(m, n, fec, ven)); }
+    if (!meses.size) continue;
+    const tol = _toleranciaParcela(m.valor);
+    const cobertos = new Set();
+    for (const t of extPluggy) {
+      if (t.cartao_nome !== m.conta_nome || _chaveNomeParcelado(t.descricao) !== key) continue;
+      if (Math.abs(Number(t.valor) - Number(m.valor)) > tol) continue;
+      const idx = getVencimentoIdx(t.data, fec, ven);
+      if (meses.has(idx)) cobertos.add(idx);
+    }
+    for (const p of doPluggy) {
+      if (p.conta_nome !== m.conta_nome || _chaveNomeParcelado(p.descricao) !== key) continue;
+      if (Math.abs(Number(p.valor) - Number(m.valor)) > tol) continue;
+      for (let n = 0; n < Number(p.parcelas || 1); n++) {
+        if (_lancIniIdx(p) + n > _lancFimIdx(p)) break;
+        const idx = getInstVencIdx(p, n, fec, ven);
+        if (meses.has(idx)) cobertos.add(idx);
+      }
+    }
+    if (cobertos.size) out.push({ lan: m, meses: cobertos.size });
+  }
+  return out;
+}
+
 function _renderAvisosFaturas() {
   const el = document.getElementById('fatura-avisos');
   if (!el) return;
   const dups = _pagamentosFaturaDuplicados();
-  el.innerHTML = dups.length ? `
+  const series = _duplicatasParcelado();
+  const avisoSeries = series.length ? `
+    <div class="card" style="border-left:4px solid var(--amber);margin-bottom:12px;padding:10px 12px">
+      <div style="font-weight:600;font-size:13px">⚠️ Parcelado lançado à mão que a Pluggy já cobre</div>
+      <div class="text-xs text-3" style="margin:2px 0 6px">Estes meses estão sendo contados duas vezes. Edite a série e defina o fim no último mês em que ela ainda não é coberta pela Pluggy.</div>
+      ${series.map(s => `<div style="font-size:12px;padding:3px 0">${_escHtml(s.lan.descricao)} · ${_escHtml(s.lan.conta_nome)} · ${fmt(s.lan.valor)} × ${s.lan.parcelas} — ${s.meses} ${s.meses === 1 ? 'mês duplicado' : 'meses duplicados'}</div>`).join('')}
+    </div>` : '';
+  el.innerHTML = avisoSeries + (dups.length ? `
     <div class="card" style="border-left:4px solid var(--amber);margin-bottom:12px;padding:10px 12px">
       <div style="font-weight:600;font-size:13px">⚠️ Pagamento de fatura lançado mais de uma vez</div>
       <div class="text-xs text-3" style="margin:2px 0 6px">Se não foi pagamento parcial, é duplicata e o saldo da conta fica errado. Exclua a linha repetida pelo Extrato.</div>
       ${dups.map(g => `<div style="font-size:12px;padding:3px 0">${_escHtml(g[0].parcela)} · ${_escHtml(g[0].conta_nome || '')}: ${g.map(t => fmt(t.valor) + ' (' + t.data.slice(8) + '/' + t.data.slice(5, 7) + (t.origem_dado === 'pluggy' ? ', banco' : ', manual') + ')').join(' + ')}</div>`).join('')}
-    </div>` : '';
+    </div>` : '');
 }
 
 function renderFaturas() {
@@ -7529,6 +7576,16 @@ function _diffDias(dataStr1, dataStr2) {
   return Math.abs((parseData(dataStr1) - parseData(dataStr2)) / 86400000);
 }
 
+// Série de Parcelado lançada à mão × a mesma compra que a Pluggy passa a entregar: o valor digitado quase nunca é igual
+// ao centavo (200,47 × 200,36; 37,33 × 37,30). Exigir valor exato fazia o importador criar a parcela de novo e a série
+// manual continuar contando — fatura em dobro (caso real: XP nov/2026). Por isso, no casamento do Parcelado manual,
+// aceita-se diferença de até max(R$ 0,10; 1%) SE o nome da compra bater (_chaveNomeParcelado) — nome + número de parcelas
+// + competência da parcela + valor aproximado já é identidade forte; sem nome parecido, continua valor exato.
+function _chaveNomeParcelado(s) {
+  return _normalizarTexto(String(s || '').replace(/\s*\(\d+\/\d+\)\s*$/, '')).replace(/[^A-Za-z0-9]/g, '').toLowerCase().slice(0, 10);
+}
+function _toleranciaParcela(valor) { return Math.max(0.10, Math.abs(Number(valor)) * 0.01); }
+
 // Transação da Pluggy que descreve pagamento de fatura de cartão (débito automático / pagamento de fatura).
 function _pluggyDescreveFatura(pt) {
   return pt.operationType === 'PAGAMENTO_FATURA' || pt.metadata?.operationType === 'PAGAMENTO_FATURA'
@@ -7664,7 +7721,12 @@ function _pluggyJaExisteNoApp(pt, nome, ehCartao, valor, cache) {
       // Lançamento manual de sempre: usuário tracked a compra inteira, casa
       // pelo total real igual ao `parcelas` cadastrado.
       if (Number(lan.parcelas) !== instTot) continue;
-      if (!_valorIgual(lan.valor, valor)) continue;
+      if (!_valorIgual(lan.valor, valor)) {
+        // diferença de centavos: só com o mesmo nome da compra (ver _toleranciaParcela)
+        if (Math.abs(Number(lan.valor) - Number(valor)) > _toleranciaParcela(valor)) continue;
+        const kn = _chaveNomeParcelado(pt.descricao);
+        if (!kn || kn !== _chaveNomeParcelado(lan.descricao)) continue;
+      }
       if (_lancIniIdx(lan) + (instNum - 1) > _lancFimIdx(lan)) continue; // ocorrência além do fim: não conta no app
       const venidxLan = getInstVencIdx(lan, instNum - 1, cartaoObj?.fechamento, cartaoObj?.vencimento);
       if (venidxLan === venidxReal) return { fonte: 'lancamentos', id: lan.id };
